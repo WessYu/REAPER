@@ -14,6 +14,7 @@ reaper authz [path]      Show ownership findings
 reaper tenants [path]    Show tenant findings
 reaper supabase [path]   Show Supabase-specific findings
 reaper migrations [path] Show SQL migration security findings
+reaper crypto [path]     Show secret and password-crypto findings
 reaper rls              Inspect PostgreSQL catalogs and RLS
 reaper privileges       Inspect PostgreSQL table grants
 reaper schema           Export read-only PostgreSQL catalog snapshot
@@ -151,9 +152,15 @@ async function main(): Promise<void> {
       coverage: { source: false, database: true, runtime: false },
     };
   } else if (
-    ["scan", "sql", "authz", "tenants", "supabase", "migrations"].includes(
-      command!,
-    )
+    [
+      "scan",
+      "sql",
+      "authz",
+      "tenants",
+      "supabase",
+      "migrations",
+      "crypto",
+    ].includes(command!)
   ) {
     const root = path.resolve(arg ?? ".");
     let configFile = values.config;
@@ -194,6 +201,7 @@ async function main(): Promise<void> {
       tenants: "Tenant Isolation",
       supabase: "Supabase",
       migrations: "Migrations",
+      crypto: "Secrets & Crypto",
     };
     if (categories[command!])
       result.findings = result.findings.filter(

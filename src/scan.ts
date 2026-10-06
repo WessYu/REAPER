@@ -3,6 +3,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { analyze } from "./analysis.js";
 import { analyzeMigrations } from "./migrations.js";
+import { analyzeSecurity } from "./security.js";
 import { discover, inferResources } from "./project.js";
 import { readConfig, validateConfig } from "./config.js";
 import type { Config, ScanResult } from "./model.js";
@@ -30,6 +31,7 @@ export async function scan(options: {
   const resources = { ...(await inferResources(files)), ...config.resources };
   analyze(root, files, { ...config, resources }, result);
   await analyzeMigrations(root, files, result);
+  await analyzeSecurity(root, files, result);
   const baseline = new Set(options.baseline ?? []);
   const contents = new Map<string, string[]>();
   for (const f of result.findings) {

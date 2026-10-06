@@ -363,3 +363,39 @@ REVOKE ALL ON TABLE public.safe_orders FROM PUBLIC;`,
       ["REAPER-MIGRATION-001", "REAPER-MIGRATION-003", "REAPER-MIGRATION-004"],
     );
   }));
+
+
+test("security analyzer redacts hardcoded database credentials and private keys", async () =>
+  source(
+    `const database='postgres://app:super-secret@example.test/app';const key='-----BEGIN PRIVATE KEY-----\\nsecret\\n-----END PRIVATE KEY-----';`,
+    (r) => {
+      assert.deepEqual(
+        r.findings
+          .filter((f) => f.category === "Secrets & Crypto")
+          .map((f) => f.ruleId)
+          .sort(),
+        ["REAPER-CRYPTO-001", "REAPER-CRYPTO-002"],
+      );
+      assert.ok(!report(r, "json").includes("super-secret"));
+      assert.ok(!report(r, "json").includes("\\nsecret\\n"));
+    },
+  ));
+
+test("password-like input through fast crypto hashes is distinguished from bcrypt-style code", async () => {
+  await source(
+    `import {createHash} from 'node:crypto';const password='synthetic';createHash('sha256').update(password).digest('hex');`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-CRYPTO-003").length,
+        1,
+      ),
+  );
+  await source(
+    `import bcrypt from 'bcrypt';const password='synthetic';bcrypt.hash(password,12);`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-CRYPTO-003").length,
+        0,
+      ),
+  );
+});
