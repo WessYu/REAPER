@@ -1,6 +1,11 @@
-# REAPER
+<p align="center">
+  <img src="./assets/reaper-icon.png" width="180" alt="REAPER icon" />
+</p>
 
-**Data Access Security Engine**
+<h1 align="center">REAPER</h1>
+
+<p align="center"><strong>Data Access Security Engine</strong></p>
+<p align="center"><em>Know exactly who can access your data. Before an attacker does.</em></p>
 
 [![CI](https://github.com/WessYu/REAPER/actions/workflows/ci.yml/badge.svg)](https://github.com/WessYu/REAPER/actions/workflows/ci.yml)
 
