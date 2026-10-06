@@ -66,14 +66,8 @@ test("report, baseline, diff and explain use real persisted evidence", async () 
     const data = JSON.parse(await readFile(a, "utf8"));
     assert.equal(
       JSON.parse(
-        run(
-          "explain",
-          data.findings[0].id,
-          "--input",
-          a,
-          "--format",
-          "json",
-        ).stdout,
+        run("explain", data.findings[0].id, "--input", a, "--format", "json")
+          .stdout,
       ).id,
       data.findings[0].id,
     );
