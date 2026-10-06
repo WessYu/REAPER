@@ -148,7 +148,8 @@ export function analyze(
     )
       return undefined;
     const root = node.expression.expression;
-    if (ts.isIdentifier(root) && root.text === "process") return node.name.text;
+    if (ts.isIdentifier(root) && root.text === "process")
+      return node.name.text;
     if (
       ts.isMetaProperty(root) &&
       root.keywordToken === ts.SyntaxKind.ImportKeyword &&
@@ -234,7 +235,8 @@ export function analyze(
       /^(?:NEXT_PUBLIC_|VITE_|PUBLIC_)/.test(envName);
     const hardcoded = credential.kind === "hardcoded-service-role";
     const clientContext = isClientSource(node);
-    if (!hardcoded && !(serviceRoleEnv && (publicEnv || clientContext))) return;
+    if (!hardcoded && !(serviceRoleEnv && (publicEnv || clientContext)))
+      return;
 
     const loc = location(node);
     const visitKey = `${loc.file}:${node.pos}:REAPER-SUPA-001`;
