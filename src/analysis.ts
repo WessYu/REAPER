@@ -24,6 +24,9 @@ interface Value {
   fields?: Map<string, Value>;
   items?: Value[];
   fn?: Fn;
+  resource?: string;
+  resourceField?: string;
+  queryKey?: string;
 }
 type Environment = Map<ts.Symbol, Value>;
 const empty = (): Value => ({ trace: [] });
@@ -86,6 +89,10 @@ export function analyze(
   const visitedSinks = new Set<string>();
   const sinkCounts = new Set<string>();
   const resolving = new Set<ts.Symbol>();
+  const pendingAuthorization = new Map<
+    string,
+    { ownership?: Finding; tenant?: Finding }
+  >();
   const defaults = [
     "req.user.id",
     "request.user.id",
@@ -181,6 +188,7 @@ export function analyze(
     return {
       ...base,
       origin,
+      resourceField: base.resource ? key : base.resourceField,
       text: base.text === undefined ? undefined : `${base.text}.${key}`,
     };
   }
@@ -371,12 +379,13 @@ export function analyze(
           route,
           depth + 1,
         );
-        inspectSink(node, method, receiver, args, route);
+        const sinkValue = inspectSink(node, method, receiver, args, route);
         if (
           ["json", "text", "get"].includes(method) &&
           receiver.origin?.startsWith("request")
         )
           return { trace: [evidence(node, "source", `request.${method}()`)] };
+        if (sinkValue) return sinkValue;
       }
       if (callee.fn) return invoke(callee.fn, args, env, route, depth + 1);
       if (callee.driver) return { trace: [], driver: callee.driver };
@@ -391,7 +400,7 @@ export function analyze(
     receiver: Value,
     args: Value[],
     route: string | undefined,
-  ): void {
+  ): Value | undefined {
     const loc = location(node);
     const key = `${loc.file}:${node.pos}:${route ?? ""}`;
     const driver = receiver.driver;
@@ -509,8 +518,8 @@ export function analyze(
         metadata?.ownership?.length &&
         where.trace.length &&
         !constrained(where, metadata.ownership)
-      )
-        emit(
+      ) {
+        const candidate = emit(
           "REAPER-AUTH-001",
           "Ownership constraint not established",
           "MEDIUM",
@@ -524,12 +533,18 @@ export function analyze(
             "No supported principal constraint was found in this query. External authorization may exist.",
           ],
         );
+        if (candidate) {
+          const pending = pendingAuthorization.get(key) ?? {};
+          pending.ownership = candidate;
+          pendingAuthorization.set(key, pending);
+        }
+      }
       if (
         route &&
         metadata?.tenant?.length &&
         !constrained(where, metadata.tenant)
-      )
-        emit(
+      ) {
+        const candidate = emit(
           "REAPER-TENANT-001",
           "Tenant constraint not established",
           "MEDIUM",
@@ -543,6 +558,13 @@ export function analyze(
             "No supported tenant constraint was found in this query. Database RLS is not inferred by source analysis.",
           ],
         );
+        if (candidate) {
+          const pending = pendingAuthorization.get(key) ?? {};
+          pending.tenant = candidate;
+          pendingAuthorization.set(key, pending);
+        }
+      }
+      return { trace: [], resource, queryKey: key };
     }
     function emit(
       ruleId: string,
@@ -554,31 +576,125 @@ export function analyze(
       recommendation: string,
       resource: string | undefined,
       details: string[],
-    ): void {
-      if (visitedSinks.has(`${key}:${ruleId}`)) return;
+    ): Finding | undefined {
+      if (visitedSinks.has(`${key}:${ruleId}`)) return undefined;
       visitedSinks.add(`${key}:${ruleId}`);
-      result.findings.push(
-        finding(
-          {
-            ...loc,
-            ruleId,
-            title,
-            description: details.join(" "),
-            severity,
-            confidence: category === "SQL Safety" ? "HIGH" : "MEDIUM",
-            category,
-            cwe,
-            route,
-            resource,
-            evidence: details,
-            dataFlow: [...value.trace, evidence(node, "sink", label)],
-            recommendation,
-          },
-          `${label}:${node.getText().replace(/\s+/g, " ")}`,
-        ),
+      const emitted = finding(
+        {
+          ...loc,
+          ruleId,
+          title,
+          description: details.join(" "),
+          severity,
+          confidence: category === "SQL Safety" ? "HIGH" : "MEDIUM",
+          category,
+          cwe,
+          route,
+          resource,
+          evidence: details,
+          dataFlow: [...value.trace, evidence(node, "sink", label)],
+          recommendation,
+        },
+        `${label}:${node.getText().replace(/\s+/g, " ")}`,
       );
+      result.findings.push(emitted);
+      return emitted;
     }
   }
+
+  type GuardDimension = "ownership" | "tenant";
+  interface GuardProof {
+    queryKey: string;
+    dimension: GuardDimension;
+  }
+  function principalMatches(
+    principal: string,
+    field: string,
+    dimension: GuardDimension,
+  ): boolean {
+    const leaf = principal.split(".").at(-1);
+    if (dimension === "ownership")
+      return (
+        leaf === field ||
+        (["userId", "ownerId"].includes(field) &&
+          ["id", "userId", "ownerId"].includes(leaf ?? ""))
+      );
+    return leaf === field;
+  }
+  function denialGuard(
+    node: ts.Expression,
+    env: Environment,
+    route: string | undefined,
+    depth: number,
+  ): GuardProof[] {
+    if (
+      !ts.isBinaryExpression(node) ||
+      ![
+        ts.SyntaxKind.ExclamationEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsEqualsToken,
+      ].includes(node.operatorToken.kind)
+    )
+      return [];
+    const supportedOperand = (value: ts.Expression): boolean =>
+      ts.isIdentifier(value) ||
+      ts.isPropertyAccessExpression(value) ||
+      ts.isElementAccessExpression(value);
+    if (!supportedOperand(node.left) || !supportedOperand(node.right)) return [];
+    const left = evaluate(node.left, env, route, depth + 1);
+    const right = evaluate(node.right, env, route, depth + 1);
+    function match(resourceValue: Value, principalValue: Value): GuardProof[] {
+      if (
+        !resourceValue.resource ||
+        !resourceValue.resourceField ||
+        !resourceValue.queryKey ||
+        !principalValue.principal
+      )
+        return [];
+      const metadata = config.resources?.[resourceValue.resource];
+      const proofs: GuardProof[] = [];
+      if (
+        metadata?.ownership?.includes(resourceValue.resourceField) &&
+        principalMatches(
+          principalValue.principal,
+          resourceValue.resourceField,
+          "ownership",
+        )
+      )
+        proofs.push({
+          queryKey: resourceValue.queryKey,
+          dimension: "ownership",
+        });
+      if (
+        metadata?.tenant?.includes(resourceValue.resourceField) &&
+        principalMatches(
+          principalValue.principal,
+          resourceValue.resourceField,
+          "tenant",
+        )
+      )
+        proofs.push({
+          queryKey: resourceValue.queryKey,
+          dimension: "tenant",
+        });
+      return proofs;
+    }
+    return [...match(left, right), ...match(right, left)];
+  }
+  function endsInThrow(node: ts.Statement): boolean {
+    if (ts.isThrowStatement(node)) return true;
+    if (!ts.isBlock(node) || node.statements.length === 0) return false;
+    return endsInThrow(node.statements[node.statements.length - 1]!);
+  }
+  function applyGuardProofs(proofs: GuardProof[]): void {
+    for (const proof of proofs) {
+      const pending = pendingAuthorization.get(proof.queryKey);
+      const candidate = pending?.[proof.dimension];
+      if (!candidate) continue;
+      result.findings = result.findings.filter((item) => item.id !== candidate.id);
+      if (pending) delete pending[proof.dimension];
+    }
+  }
+
   function statement(
     node: ts.Statement,
     env: Environment,
@@ -613,12 +729,15 @@ export function analyze(
     if (ts.isBlock(node)) return block(node, env, route, depth);
     if (ts.isIfStatement(node)) {
       evaluate(node.expression, env, route, depth);
+      const guardProofs = denialGuard(node.expression, env, route, depth);
       const yes = new Map(env),
         no = new Map(env);
       const a = statement(node.thenStatement, yes, route, depth);
       const b = node.elseStatement
         ? statement(node.elseStatement, no, route, depth)
         : { returned: false, value: empty() };
+      if (!node.elseStatement && endsInThrow(node.thenStatement))
+        applyGuardProofs(guardProofs);
       for (const s of new Set([...yes.keys(), ...no.keys()])) {
         const y = yes.get(s) ?? empty(),
           n = no.get(s) ?? empty();

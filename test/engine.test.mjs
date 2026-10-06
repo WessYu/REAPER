@@ -197,3 +197,39 @@ test("Next.js exported handler uses body input and route params", async () =>
       "REAPER-TENANT-001",
     ]);
   }));
+
+test("post-query throw guard proves direct ownership before resource return", async () =>
+  source(
+    prefix +
+      `app.get('/a',async(req)=>{const order=await prisma.order.findUnique({where:{id:req.params.id}});if(order.userId!==req.user.id){throw new Error('forbidden');}return order;});`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
+        0,
+      ),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
+
+test("post-query guard does not trust request-supplied ownership identity", async () =>
+  source(
+    prefix +
+      `app.get('/a',async(req)=>{const order=await prisma.order.findUnique({where:{id:req.params.id}});if(order.userId!==req.query.user){throw new Error('forbidden');}return order;});`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
+        1,
+      ),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
+
+test("non-terminating ownership comparison does not certify authorization", async () =>
+  source(
+    prefix +
+      `app.get('/a',async(req)=>{const order=await prisma.order.findUnique({where:{id:req.params.id}});if(order.userId!==req.user.id){const audit='denied';void audit;}return order;});`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
+        1,
+      ),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
