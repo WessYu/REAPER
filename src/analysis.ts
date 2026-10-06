@@ -782,7 +782,7 @@ export function analyze(
     for (const child of node.statements) {
       const step = statement(child, env, route, depth);
       returns.push(step.value);
-      if (step.returned) return { returned: true, value: combine(returns) };
+      if (step.returned) return { returned: true, value: step.value };
     }
     return { returned: false, value: combine(returns) };
   }
