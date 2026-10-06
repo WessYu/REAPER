@@ -163,3 +163,37 @@ test("principal from wrong domain does not establish tenant isolation", async ()
       `app.get('/a',(req)=>prisma.order.findMany({where:{organizationId:req.user.id}}));`,
     (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-TENANT-001")),
   ));
+test("compound string assignment preserves source provenance", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{let q='SELECT ';q+=req.query.q;return pool.query(q);});`,
+    (r) => assert.equal(r.findings[0].ruleId, "REAPER-SQL-001"),
+  ));
+test("property mutations cannot silently certify downstream constraints", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{const where={organizationId:req.user.organizationId};where.organizationId=req.query.org;return prisma.order.findMany({where});});`,
+    (r) => assert.ok(r.diagnostics.some((d) => d.message.includes("mutation"))),
+  ));
+test("Fastify request aliases and Knex raw preserve input provenance", async () =>
+  source(
+    `import fastify from 'fastify';import knex from 'knex';const server=fastify();const db=knex();server.get('/a',(input)=>db.raw('SELECT '+input.query.q));`,
+    (r) => {
+      assert.equal(r.metrics.routes, 1);
+      assert.equal(r.findings[0].ruleId, "REAPER-SQL-001");
+    },
+  ));
+test("Next.js exported handler uses body input and route params", async () =>
+  source("", async (_r, root) => {
+    await writeFile(
+      path.join(root, "route.ts"),
+      `import {PrismaClient} from '@prisma/client';const prisma=new PrismaClient();export async function GET(request,{params}){const {id}=await params;return prisma.order.findUnique({where:{id}});}export async function POST(request){const body=await request.json();return prisma.$queryRawUnsafe(body.query);}`,
+    );
+    const r = await scan({ root, config: { resources } });
+    assert.equal(r.metrics.routes, 2);
+    assert.deepEqual(r.findings.map((f) => f.ruleId).sort(), [
+      "REAPER-AUTH-001",
+      "REAPER-SQL-001",
+      "REAPER-TENANT-001",
+    ]);
+  }));

@@ -31,8 +31,6 @@ const drivers = new Map([
   ["@prisma/client", "prisma"],
   ["pg", "pg"],
   ["knex", "knex"],
-  ["drizzle-orm", "drizzle"],
-  ["@supabase/supabase-js", "supabase"],
 ]);
 const operations = new Set([
   "findUnique",
@@ -308,6 +306,28 @@ export function analyze(
       ) {
         bind(node.left, right, env);
         return right;
+      }
+      if (
+        node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken &&
+        ts.isIdentifier(node.left)
+      ) {
+        const combined = combine([
+          evaluate(node.left, env, route, depth + 1),
+          right,
+        ]);
+        bind(node.left, combined, env);
+        return combined;
+      }
+      if (
+        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+        !ts.isIdentifier(node.left)
+      ) {
+        result.diagnostics.push({
+          ...location(node),
+          message:
+            "Property/index mutation is not modeled; downstream constraints require manual review.",
+        });
       }
       const left = evaluate(node.left, env, route, depth + 1);
       return {
