@@ -126,3 +126,54 @@ test("verify config validation enforces budgets and safe methods", () => {
     /GET or HEAD/,
   );
 });
+
+test("verify supports global cancellation without continuing the request queue", async () => {
+  let requests = 0;
+  const { instance, origin } = await server((_req, res) => {
+    requests++;
+    setTimeout(() => {
+      res.statusCode = 403;
+      res.end();
+    }, 200);
+  });
+  const controller = new AbortController();
+  try {
+    setTimeout(() => controller.abort(), 30);
+    const result = await verify(
+      origin,
+      {
+        verify: {
+          concurrency: 1,
+          rateLimitPerSecond: 20,
+          timeoutMs: 1000,
+          assertions: [
+            { name: "first", path: "/one", expectStatus: 403 },
+            { name: "second", path: "/two", expectStatus: 403 },
+          ],
+        },
+      },
+      { signal: controller.signal },
+    );
+    assert.ok(requests <= 1);
+    assert.ok(
+      result.diagnostics.some((item) => /cancelled/.test(item.message)),
+    );
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("verify config caps active request rate", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        verify: {
+          rateLimitPerSecond: 21,
+          assertions: [{ name: "a", path: "/", expectStatus: 403 }],
+        },
+      }),
+    /rateLimitPerSecond/,
+  );
+});
+
