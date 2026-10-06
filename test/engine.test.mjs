@@ -335,7 +335,7 @@ test("Drizzle select/update operations discover declared table resources", async
 
 test("Drizzle sql.raw preserves tainted SQL text and tagged sql values are not raw", async () =>
   source(
-    `import express from 'express';import {sql} from 'drizzle-orm';const app=express();app.get('/a',(req)=>{sql.raw(req.query.sort);sql\`select * from users where id = ${req.query.id}\`;});`,
+    `import express from 'express';import {sql} from 'drizzle-orm';const app=express();app.get('/a',(req)=>{sql.raw(req.query.sort);sql\`select * from users where id = \${req.query.id}\`;});`,
     (r) =>
       assert.equal(
         r.findings.filter((f) => f.ruleId === "REAPER-SQL-001").length,
