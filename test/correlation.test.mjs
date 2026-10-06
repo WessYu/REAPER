@@ -144,3 +144,66 @@ test("Supabase correlation follows inherited client-role grants", () => {
   assert.equal(findings.length, 1);
   assert.match(findings[0].description, /RLS is disabled/);
 });
+
+test("Supabase RPC correlation flags broadly executable unsafe SECURITY DEFINER functions", () => {
+  const rpcSource = structuredClone(source);
+  rpcSource.graph.nodes[1] = {
+    id: "query:src/orders.ts:12:5",
+    kind: "query",
+    label: "supabase.rpc",
+  };
+  rpcSource.graph.nodes[2] = {
+    id: "resource:rpc:recalculate_totals",
+    kind: "resource",
+    label: "rpc:recalculate_totals",
+  };
+  rpcSource.graph.edges = [
+    {
+      from: "route:GET /orders",
+      to: "query:src/orders.ts:12:5",
+      relation: "calls",
+    },
+    {
+      from: "query:src/orders.ts:12:5",
+      to: "resource:rpc:recalculate_totals",
+      relation: "accesses",
+    },
+  ];
+  const findings = correlateSourceDatabase(
+    rpcSource,
+    snapshot({
+      functions: [
+        {
+          schema: "public",
+          name: "recalculate_totals",
+          identityArguments: "",
+          owner: "owner",
+          securityDefiner: true,
+          config: null,
+          executeRoles: ["PUBLIC"],
+        },
+      ],
+    }),
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].ruleId, "REAPER-SUPA-003");
+
+  const safe = correlateSourceDatabase(
+    rpcSource,
+    snapshot({
+      functions: [
+        {
+          schema: "public",
+          name: "recalculate_totals",
+          identityArguments: "",
+          owner: "owner",
+          securityDefiner: true,
+          config: ["search_path=pg_catalog, app_private"],
+          executeRoles: ["PUBLIC"],
+        },
+      ],
+    }),
+  );
+  assert.equal(safe.length, 0);
+});
+

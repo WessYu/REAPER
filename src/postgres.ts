@@ -229,10 +229,10 @@ function effectiveRoles(snapshot: DatabaseSnapshot, role: string): Set<string> {
   return result;
 }
 
-function broadGrant(
+export function broadGrant(
   snapshot: DatabaseSnapshot,
   role: string,
-  broad: Set<string>,
+  broad = new Set(["PUBLIC", "public", "anon", "authenticated"]),
 ): boolean {
   if (broad.has(role)) return true;
   for (const principal of broad)
@@ -263,7 +263,9 @@ function configuredSearchPath(fn: DatabaseFunction): string | undefined {
     ?.slice("search_path=".length);
 }
 
-function unsafeSecurityDefinerSearchPath(fn: DatabaseFunction): boolean {
+export function unsafeSecurityDefinerSearchPath(
+  fn: DatabaseFunction,
+): boolean {
   const configured = configuredSearchPath(fn);
   if (!configured) return true;
   const schemas = configured
