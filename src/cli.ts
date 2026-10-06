@@ -5,6 +5,7 @@ import path from "node:path";
 import { scan } from "./scan.js";
 import { introspect, analyzeDatabase } from "./postgres.js";
 import { report, fails } from "./reporter.js";
+import { calculateScore, renderScore } from "./score.js";
 import type { ScanResult } from "./model.js";
 const help = `REAPER 0.1.0 — Data Access Security Engine
 
@@ -22,6 +23,7 @@ reaper baseline <json>  Export finding fingerprints from a JSON report
 reaper diff <old> <new> Compare two JSON reports by fingerprint
 reaper report <json>    Render a saved JSON report
 reaper explain <id> --input <json>
+reaper score <json>      Calculate an explainable score from a saved report
 reaper doctor           Check runtime version
 
 --config <file>          Literal reaper.config.ts (never executed)
@@ -115,6 +117,11 @@ async function main(): Promise<void> {
         2,
       ) + "\n",
     );
+    return;
+  }
+  if (command === "score") {
+    const scored = calculateScore(await saved(arg));
+    await output(renderScore(scored, format));
     return;
   }
   if (command === "explain") {
