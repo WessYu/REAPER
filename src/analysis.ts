@@ -690,7 +690,9 @@ export function analyze(
       const pending = pendingAuthorization.get(proof.queryKey);
       const candidate = pending?.[proof.dimension];
       if (!candidate) continue;
-      result.findings = result.findings.filter((item) => item.id !== candidate.id);
+      result.findings = result.findings.filter(
+        (item) => item.id !== candidate.id,
+      );
       if (pending) delete pending[proof.dimension];
     }
   }
