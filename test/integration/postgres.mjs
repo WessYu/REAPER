@@ -53,8 +53,8 @@ test("live PostgreSQL catalogs, policies, grants and read-only role", async () =
     const snapshot = await introspect(readerUrl.toString());
     assert.ok(snapshot.serverVersion);
     assert.ok(snapshot.roles.some((r) => r.name === role && !r.superuser));
-    const findings = analyzeDatabase(snapshot).filter((f) =>
-      f.resource.startsWith(schema + "."),
+    const findings = analyzeDatabase(snapshot).filter(
+      (f) => f.resource === schema || f.resource.startsWith(schema + "."),
     );
     assert.deepEqual(findings.map((f) => f.ruleId).sort(), [
       "REAPER-PG-001",
