@@ -206,4 +206,3 @@ test("Supabase RPC correlation flags broadly executable unsafe SECURITY DEFINER 
   );
   assert.equal(safe.length, 0);
 });
-

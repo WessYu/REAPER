@@ -176,4 +176,3 @@ test("verify config caps active request rate", () => {
     /rateLimitPerSecond/,
   );
 });
-

@@ -263,9 +263,7 @@ function configuredSearchPath(fn: DatabaseFunction): string | undefined {
     ?.slice("search_path=".length);
 }
 
-export function unsafeSecurityDefinerSearchPath(
-  fn: DatabaseFunction,
-): boolean {
+export function unsafeSecurityDefinerSearchPath(fn: DatabaseFunction): boolean {
   const configured = configuredSearchPath(fn);
   if (!configured) return true;
   const schemas = configured
