@@ -49,7 +49,7 @@ The npm package has **not** been published. Do not assume `npx @wess2001/reaper`
 | Prisma          | Query filters checked against declared or inferred resource relationships                                                        |
 | PostgreSQL      | Read-only catalog snapshot: tables, RLS, role inheritance, table/schema/column grants and SECURITY DEFINER functions             |
 | Supabase        | Service-role exposure checks, table/RPC graph discovery and optional source-to-PostgreSQL RLS/grant correlation                  |
-| Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                               |
+| Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                              |
 | Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                         |
 | Verification    | Authorized GET/HEAD assertions with target allowlists, budgets, timeouts and bounded concurrency                                 |
 | Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                               |
@@ -83,6 +83,7 @@ export default {
     maxRequests: 20,
     concurrency: 2,
     timeoutMs: 5000,
+    rateLimitPerSecond: 5,
     assertions: [
       {
         name: "cross-tenant order must be denied",
