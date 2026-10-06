@@ -108,7 +108,12 @@ async function main(): Promise<void> {
         "verify requires --config with literal verify assertions.",
       );
     const verifyConfig = await readConfig(values.config);
-    const result = await verify(arg, verifyConfig);
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    process.once("SIGINT", cancel);
+    const result = await verify(arg, verifyConfig, {
+      signal: controller.signal,
+    }).finally(() => process.removeListener("SIGINT", cancel));
     await output(report(result, format));
     if (result.diagnostics.length) process.exitCode = 2;
     else if (values["fail-on"] && fails(result.findings, values["fail-on"]))

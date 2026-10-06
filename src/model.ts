@@ -55,6 +55,7 @@ export interface VerifyConfig {
   maxRequests?: number;
   concurrency?: number;
   timeoutMs?: number;
+  rateLimitPerSecond?: number;
   assertions: VerifyAssertion[];
 }
 export interface Config {

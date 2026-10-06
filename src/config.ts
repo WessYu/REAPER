@@ -83,6 +83,7 @@ export function validateConfig(value: unknown): Config {
       "maxRequests",
       "concurrency",
       "timeoutMs",
+      "rateLimitPerSecond",
       "assertions",
     ]);
     for (const key of Object.keys(verify))
@@ -90,7 +91,12 @@ export function validateConfig(value: unknown): Config {
         throw new Error(`Unknown verify key: ${key}`);
     if (verify.allowedTargets !== undefined && !strings(verify.allowedTargets))
       throw new Error("verify.allowedTargets must be a string array.");
-    for (const key of ["maxRequests", "concurrency", "timeoutMs"])
+    for (const key of [
+      "maxRequests",
+      "concurrency",
+      "timeoutMs",
+      "rateLimitPerSecond",
+    ])
       if (
         verify[key] !== undefined &&
         (!Number.isSafeInteger(verify[key]) || Number(verify[key]) < 1)
@@ -102,6 +108,11 @@ export function validateConfig(value: unknown): Config {
       throw new Error("verify.maxRequests cannot exceed 500.");
     if (verify.timeoutMs !== undefined && Number(verify.timeoutMs) > 30000)
       throw new Error("verify.timeoutMs cannot exceed 30000.");
+    if (
+      verify.rateLimitPerSecond !== undefined &&
+      Number(verify.rateLimitPerSecond) > 20
+    )
+      throw new Error("verify.rateLimitPerSecond cannot exceed 20.");
     if (!Array.isArray(verify.assertions) || verify.assertions.length === 0)
       throw new Error("verify.assertions must be a non-empty array.");
     for (const assertion of verify.assertions) {

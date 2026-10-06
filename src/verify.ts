@@ -63,6 +63,7 @@ function severity(assertion: VerifyAssertion): "CRITICAL" | "HIGH" {
 export async function verify(
   target: string,
   config: Config,
+  options: { signal?: AbortSignal } = {},
 ): Promise<ScanResult> {
   const start = performance.now();
   const parsed = targetUrl(target);
@@ -81,8 +82,29 @@ export async function verify(
     );
   const concurrency = Math.min(config.verify.concurrency ?? 2, 8);
   const timeoutMs = config.verify.timeoutMs ?? 5000;
+  const rateLimitPerSecond = config.verify.rateLimitPerSecond ?? 5;
+  const intervalMs = Math.ceil(1000 / rateLimitPerSecond);
   const result = runtimeResult(parsed);
   let cursor = 0;
+  let nextRequestAt = 0;
+  let pacing = Promise.resolve();
+
+  async function pace(): Promise<void> {
+    let release!: () => void;
+    const previous = pacing;
+    pacing = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const wait = Math.max(0, nextRequestAt - Date.now());
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+      nextRequestAt = Date.now() + intervalMs;
+    } finally {
+      release();
+    }
+  }
 
   async function execute(assertion: VerifyAssertion): Promise<void> {
     const requestUrl = new URL(assertion.path, parsed);
@@ -104,14 +126,18 @@ export async function verify(
       headers.set("authorization", `Bearer ${token}`);
     }
 
+    await pace();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const signal = options.signal
+      ? AbortSignal.any([controller.signal, options.signal])
+      : controller.signal;
     try {
       const response = await fetch(requestUrl, {
         method,
         headers,
         redirect: "manual",
-        signal: controller.signal,
+        signal,
       });
       await response.body?.cancel();
       result.metrics.sinks++;
@@ -154,7 +180,9 @@ export async function verify(
     } catch (error) {
       const reason =
         error instanceof Error && error.name === "AbortError"
-          ? `timed out after ${timeoutMs}ms`
+          ? options.signal?.aborted
+            ? "was cancelled"
+            : `timed out after ${timeoutMs}ms`
           : "failed before an HTTP status was received";
       result.diagnostics.push({
         message: `Verification assertion "${assertion.name}" ${reason}.`,
