@@ -27,6 +27,7 @@ interface Value {
   resource?: string;
   resourceField?: string;
   queryKey?: string;
+  operation?: string;
 }
 type Environment = Map<ts.Symbol, Value>;
 const empty = (): Value => ({ trace: [] });
@@ -35,6 +36,9 @@ const drivers = new Map([
   ["pg", "pg"],
   ["knex", "knex"],
   ["@supabase/supabase-js", "supabase"],
+  ["drizzle-orm/node-postgres", "drizzle"],
+  ["drizzle-orm/postgres-js", "drizzle"],
+  ["drizzle-orm/neon-http", "drizzle"],
 ]);
 const supabaseOperations = new Set([
   "select",
@@ -134,9 +138,25 @@ export function analyze(
   function importedName(node: ts.Expression): string | undefined {
     const raw = symbol(node);
     if (!raw) return undefined;
-    for (const declaration of raw.declarations ?? [])
+    for (const declaration of raw.declarations ?? []) {
       if (ts.isImportSpecifier(declaration))
         return (declaration.propertyName ?? declaration.name).text;
+      if (ts.isImportClause(declaration) && declaration.name)
+        return declaration.name.text;
+    }
+    return undefined;
+  }
+
+  function importedModule(node: ts.Expression): string | undefined {
+    const raw = symbol(node);
+    if (!raw) return undefined;
+    for (const declaration of raw.declarations ?? []) {
+      let current: ts.Node | undefined = declaration;
+      while (current && !ts.isImportDeclaration(current))
+        current = current.parent;
+      if (current && ts.isStringLiteral(current.moduleSpecifier))
+        return current.moduleSpecifier.text;
+    }
     return undefined;
   }
 
@@ -282,8 +302,15 @@ export function analyze(
     for (const declaration of s.declarations ?? []) {
       let node: ts.Node | undefined = declaration;
       while (node && !ts.isImportDeclaration(node)) node = node.parent;
-      if (node && ts.isStringLiteral(node.moduleSpecifier))
+      if (node && ts.isStringLiteral(node.moduleSpecifier)) {
+        if (
+          node.moduleSpecifier.text === "drizzle-orm" &&
+          ts.isImportSpecifier(declaration) &&
+          (declaration.propertyName ?? declaration.name).text === "sql"
+        )
+          return "drizzle-sql";
         return drivers.get(node.moduleSpecifier.text);
+      }
     }
     return undefined;
   }
@@ -529,6 +556,32 @@ export function analyze(
       const args = node.arguments.map((a) =>
         evaluate(a, env, route, depth + 1),
       );
+      const moduleName = importedModule(node.expression);
+      const importName = importedName(node.expression);
+      if (
+        moduleName?.startsWith("drizzle-orm/") &&
+        ["pgTable", "mysqlTable", "sqliteTable"].includes(importName ?? "") &&
+        args[0]?.text
+      )
+        return { trace: [], resource: args[0].text };
+      if (moduleName === "drizzle-orm" && importName === "eq") {
+        const left = args[0] ?? empty();
+        const right = args[1] ?? empty();
+        const field = left.resourceField ?? right.resourceField;
+        const value = left.resourceField ? right : left;
+        return field
+          ? {
+              ...combine(args),
+              fields: new Map([[field, value]]),
+            }
+          : combine(args);
+      }
+      if (moduleName === "drizzle-orm" && importName === "and") {
+        const fields = new Map<string, Value>();
+        for (const arg of args)
+          for (const [key, value] of arg.fields ?? []) fields.set(key, value);
+        return { ...combine(args), fields };
+      }
       if (ts.isPropertyAccessExpression(node.expression)) {
         const method = node.expression.name.text;
         const receiver = evaluate(
@@ -546,6 +599,12 @@ export function analyze(
         if (sinkValue) return sinkValue;
       }
       if (callee.fn) return invoke(callee.fn, args, env, route, depth + 1);
+      if (callee.driver === "knex" && args[0]?.text)
+        return {
+          trace: combine(args).trace,
+          driver: "knex",
+          resource: args[0].text,
+        };
       if (callee.driver) {
         if (
           callee.driver === "supabase" &&
@@ -570,6 +629,139 @@ export function analyze(
     const key = `${loc.file}:${node.pos}:${route ?? ""}`;
     const driver = receiver.driver;
     if (!driver) return;
+
+    if (driver === "drizzle") {
+      if (method === "select")
+        return { ...receiver, trace: combine(args).trace, operation: method };
+      if (
+        ["insert", "update", "delete"].includes(method) &&
+        args[0]?.resource
+      ) {
+        const resource = args[0].resource;
+        const queryId = `query:${loc.file}:${loc.line}:${loc.column}`;
+        sinkCounts.add(`${loc.file}:${node.pos}`);
+        if (!result.graph.nodes.some((n) => n.id === queryId))
+          result.graph.nodes.push({
+            id: queryId,
+            kind: "query",
+            label: `drizzle.${method}`,
+          });
+        const resourceId = `resource:${resource}`;
+        if (!result.graph.nodes.some((n) => n.id === resourceId))
+          result.graph.nodes.push({
+            id: resourceId,
+            kind: "resource",
+            label: resource,
+          });
+        result.graph.edges.push({
+          from: queryId,
+          to: resourceId,
+          relation: "accesses",
+        });
+        if (route)
+          result.graph.edges.push({
+            from: `route:${route}`,
+            to: queryId,
+            relation: "calls",
+          });
+        return {
+          ...receiver,
+          trace: combine([receiver, ...args]).trace,
+          resource,
+          operation: method,
+        };
+      }
+      if (
+        method === "from" &&
+        receiver.operation === "select" &&
+        args[0]?.resource
+      ) {
+        const resource = args[0].resource;
+        const queryId = `query:${loc.file}:${loc.line}:${loc.column}`;
+        sinkCounts.add(`${loc.file}:${node.pos}`);
+        if (!result.graph.nodes.some((n) => n.id === queryId))
+          result.graph.nodes.push({
+            id: queryId,
+            kind: "query",
+            label: "drizzle.select",
+          });
+        const resourceId = `resource:${resource}`;
+        if (!result.graph.nodes.some((n) => n.id === resourceId))
+          result.graph.nodes.push({
+            id: resourceId,
+            kind: "resource",
+            label: resource,
+          });
+        result.graph.edges.push({
+          from: queryId,
+          to: resourceId,
+          relation: "accesses",
+        });
+        if (route)
+          result.graph.edges.push({
+            from: `route:${route}`,
+            to: queryId,
+            relation: "calls",
+          });
+        return {
+          ...receiver,
+          trace: combine([receiver, ...args]).trace,
+          resource,
+        };
+      }
+      if (receiver.resource || receiver.operation)
+        return {
+          ...receiver,
+          trace: combine([receiver, ...args]).trace,
+          fields:
+            method === "where" && args[0]?.fields
+              ? args[0].fields
+              : receiver.fields,
+        };
+      return undefined;
+    }
+
+    if (driver === "knex" && receiver.resource && method !== "raw") {
+      if (
+        ["select", "insert", "update", "delete", "del"].includes(method)
+      ) {
+        const resource = receiver.resource;
+        const queryId = `query:${loc.file}:${loc.line}:${loc.column}`;
+        sinkCounts.add(`${loc.file}:${node.pos}`);
+        if (!result.graph.nodes.some((n) => n.id === queryId))
+          result.graph.nodes.push({
+            id: queryId,
+            kind: "query",
+            label: `knex.${method}`,
+          });
+        const resourceId = `resource:${resource}`;
+        if (!result.graph.nodes.some((n) => n.id === resourceId))
+          result.graph.nodes.push({
+            id: resourceId,
+            kind: "resource",
+            label: resource,
+          });
+        result.graph.edges.push({
+          from: queryId,
+          to: resourceId,
+          relation: "accesses",
+        });
+        if (route)
+          result.graph.edges.push({
+            from: `route:${route}`,
+            to: queryId,
+            relation: "calls",
+          });
+      }
+      return {
+        ...receiver,
+        trace: combine([receiver, ...args]).trace,
+        operation:
+          ["select", "insert", "update", "delete", "del"].includes(method)
+            ? method
+            : receiver.operation,
+      };
+    }
 
     if (driver === "supabase") {
       if (method === "from" && args[0]?.text) {
@@ -661,7 +853,8 @@ export function analyze(
           "$queryRaw",
           "$executeRaw",
         ].includes(method)) ||
-      (driver === "knex" && method === "raw");
+      (driver === "knex" && method === "raw") ||
+      (driver === "drizzle-sql" && method === "raw");
     const orm = driver === "prisma" && operations.has(method);
     if (!raw && !orm) return;
     sinkCounts.add(`${loc.file}:${node.pos}`);

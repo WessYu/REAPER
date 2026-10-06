@@ -306,3 +306,39 @@ test("Supabase table and RPC calls contribute real data-access graph edges", asy
       );
     },
   ));
+
+test("Knex query-builder operations are represented as data-access sinks", async () =>
+  source(
+    `import knex from 'knex';const factory=knex({client:'pg'});async function load(){return factory('orders').where('id','1').select('*');}`,
+    (r) => {
+      assert.equal(r.metrics.sinks, 1);
+      assert.ok(
+        r.graph.nodes.some(
+          (n) => n.kind === "resource" && n.label === "orders",
+        ),
+      );
+    },
+  ));
+
+test("Drizzle select/update operations discover declared table resources", async () =>
+  source(
+    `import {drizzle} from 'drizzle-orm/node-postgres';import {pgTable,text} from 'drizzle-orm/pg-core';import {eq} from 'drizzle-orm';const orders=pgTable('orders',{id:text('id')});const db=drizzle({});async function load(){await db.select().from(orders).where(eq(orders.id,'1'));return db.update(orders).set({id:'2'}).where(eq(orders.id,'1'));}`,
+    (r) => {
+      assert.equal(r.metrics.sinks, 2);
+      assert.ok(
+        r.graph.nodes.some(
+          (n) => n.kind === "resource" && n.label === "orders",
+        ),
+      );
+    },
+  ));
+
+test("Drizzle sql.raw preserves tainted SQL text and tagged sql values are not raw", async () =>
+  source(
+    `import express from 'express';import {sql} from 'drizzle-orm';const app=express();app.get('/a',(req)=>{sql.raw(req.query.sort);sql\`select * from users where id = ${req.query.id}\`;});`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-SQL-001").length,
+        1,
+      ),
+  ));
