@@ -34,6 +34,14 @@ const drivers = new Map([
   ["@prisma/client", "prisma"],
   ["pg", "pg"],
   ["knex", "knex"],
+  ["@supabase/supabase-js", "supabase"],
+]);
+const supabaseOperations = new Set([
+  "select",
+  "insert",
+  "update",
+  "upsert",
+  "delete",
 ]);
 const operations = new Set([
   "findUnique",
@@ -122,6 +130,150 @@ export function analyze(
     checker.getSymbolAtLocation(node);
   const canonical = (s: ts.Symbol): ts.Symbol =>
     s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s;
+
+  function importedName(node: ts.Expression): string | undefined {
+    const raw = symbol(node);
+    if (!raw) return undefined;
+    for (const declaration of raw.declarations ?? [])
+      if (ts.isImportSpecifier(declaration))
+        return (declaration.propertyName ?? declaration.name).text;
+    return undefined;
+  }
+
+  function environmentName(node: ts.Expression): string | undefined {
+    if (
+      !ts.isPropertyAccessExpression(node) ||
+      !ts.isPropertyAccessExpression(node.expression) ||
+      node.expression.name.text !== "env"
+    )
+      return undefined;
+    const root = node.expression.expression;
+    if (ts.isIdentifier(root) && root.text === "process") return node.name.text;
+    if (
+      ts.isMetaProperty(root) &&
+      root.keywordToken === ts.SyntaxKind.ImportKeyword &&
+      root.name.text === "meta"
+    )
+      return node.name.text;
+    return undefined;
+  }
+
+  interface CredentialDescriptor {
+    kind: "env" | "hardcoded-service-role";
+    name?: string;
+  }
+
+  function credentialDescriptor(
+    node: ts.Expression,
+    seen = new Set<ts.Symbol>(),
+  ): CredentialDescriptor | undefined {
+    if (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      ts.isSatisfiesExpression(node)
+    )
+      return credentialDescriptor(node.expression, seen);
+    const env = environmentName(node);
+    if (env) return { kind: "env", name: env };
+    if (ts.isStringLiteralLike(node)) {
+      if (node.text.startsWith("sb_secret_"))
+        return { kind: "hardcoded-service-role" };
+      const parts = node.text.split(".");
+      if (parts.length === 3 && parts[1]) {
+        try {
+          const payload = JSON.parse(
+            Buffer.from(parts[1], "base64url").toString("utf8"),
+          ) as { role?: unknown };
+          if (payload.role === "service_role")
+            return { kind: "hardcoded-service-role" };
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    }
+    if (ts.isIdentifier(node)) {
+      const raw = symbol(node);
+      if (!raw) return undefined;
+      const resolved = canonical(raw);
+      if (seen.has(resolved)) return undefined;
+      seen.add(resolved);
+      for (const declaration of resolved.declarations ?? [])
+        if (ts.isVariableDeclaration(declaration) && declaration.initializer)
+          return credentialDescriptor(declaration.initializer, seen);
+    }
+    return undefined;
+  }
+
+  function isClientSource(node: ts.Node): boolean {
+    for (const statement of node.getSourceFile().statements) {
+      if (
+        !ts.isExpressionStatement(statement) ||
+        !ts.isStringLiteral(statement.expression)
+      )
+        break;
+      if (statement.expression.text === "use client") return true;
+    }
+    return false;
+  }
+
+  function inspectSupabaseClient(node: ts.CallExpression, route?: string): void {
+    const credential = node.arguments[1]
+      ? credentialDescriptor(node.arguments[1])
+      : undefined;
+    if (!credential) return;
+    const envName = credential.name;
+    const serviceRoleEnv =
+      credential.kind === "env" &&
+      !!envName &&
+      /(?:^|_)SERVICE_?ROLE(?:_|$)/i.test(envName);
+    const publicEnv =
+      credential.kind === "env" &&
+      !!envName &&
+      /^(?:NEXT_PUBLIC_|VITE_|PUBLIC_)/.test(envName);
+    const hardcoded = credential.kind === "hardcoded-service-role";
+    const clientContext = isClientSource(node);
+    if (!hardcoded && !(serviceRoleEnv && (publicEnv || clientContext))) return;
+
+    const loc = location(node);
+    const visitKey = `${loc.file}:${node.pos}:REAPER-SUPA-001`;
+    if (visitedSinks.has(visitKey)) return;
+    visitedSinks.add(visitKey);
+    const sourceLabel = hardcoded
+      ? "hardcoded Supabase service-role credential"
+      : `Supabase service-role environment reference: ${envName}`;
+    result.findings.push(
+      finding(
+        {
+          ...loc,
+          ruleId: "REAPER-SUPA-001",
+          title: "Supabase service-role credential exposed to source/client context",
+          description: hardcoded
+            ? "A credential with service_role semantics is embedded directly in source."
+            : "A service-role credential is referenced from client-exposed configuration.",
+          severity: "HIGH",
+          confidence: "HIGH",
+          category: "Supabase",
+          cwe: 798,
+          route,
+          evidence: [
+            hardcoded
+              ? "Service-role semantics were identified without retaining the credential value."
+              : `Environment variable ${envName} indicates a service-role credential in a client-exposed context.`,
+          ],
+          dataFlow: [
+            evidence(node.arguments[1]!, "source", sourceLabel),
+            evidence(node, "sink", "supabase.createClient"),
+          ],
+          recommendation:
+            "Keep service-role credentials server-only, load them from non-public secret storage, and use an anon/publishable key in browser code with reviewed RLS policies.",
+        },
+        `supabase:createClient:${hardcoded ? "hardcoded-service-role" : envName}`,
+      ),
+    );
+  }
+
   function importDriver(s: ts.Symbol): string | undefined {
     for (const declaration of s.declarations ?? []) {
       let node: ts.Node | undefined = declaration;
@@ -390,7 +542,14 @@ export function analyze(
         if (sinkValue) return sinkValue;
       }
       if (callee.fn) return invoke(callee.fn, args, env, route, depth + 1);
-      if (callee.driver) return { trace: [], driver: callee.driver };
+      if (callee.driver) {
+        if (
+          callee.driver === "supabase" &&
+          importedName(node.expression) === "createClient"
+        )
+          inspectSupabaseClient(node, route);
+        return { trace: [], driver: callee.driver };
+      }
       // Unknown helpers preserve taint, but do not certify authorization or sanitization.
       return combine(args);
     }
@@ -407,6 +566,88 @@ export function analyze(
     const key = `${loc.file}:${node.pos}:${route ?? ""}`;
     const driver = receiver.driver;
     if (!driver) return;
+
+    if (driver === "supabase") {
+      if (method === "from" && args[0]?.text) {
+        return {
+          trace: combine(args).trace,
+          driver,
+          resource: args[0].text,
+        };
+      }
+      if (method === "rpc" && args[0]?.text) {
+        const resource = `rpc:${args[0].text}`;
+        const queryId = `query:${loc.file}:${loc.line}:${loc.column}`;
+        sinkCounts.add(`${loc.file}:${node.pos}`);
+        if (!result.graph.nodes.some((n) => n.id === queryId))
+          result.graph.nodes.push({
+            id: queryId,
+            kind: "query",
+            label: "supabase.rpc",
+          });
+        const resourceId = `resource:${resource}`;
+        if (!result.graph.nodes.some((n) => n.id === resourceId))
+          result.graph.nodes.push({
+            id: resourceId,
+            kind: "resource",
+            label: resource,
+          });
+        result.graph.edges.push({
+          from: queryId,
+          to: resourceId,
+          relation: "accesses",
+        });
+        if (route)
+          result.graph.edges.push({
+            from: `route:${route}`,
+            to: queryId,
+            relation: "calls",
+          });
+        return { trace: combine(args).trace, driver, resource };
+      }
+      if (receiver.resource && supabaseOperations.has(method)) {
+        const resource = receiver.resource;
+        const queryId = `query:${loc.file}:${loc.line}:${loc.column}`;
+        sinkCounts.add(`${loc.file}:${node.pos}`);
+        if (!result.graph.nodes.some((n) => n.id === queryId))
+          result.graph.nodes.push({
+            id: queryId,
+            kind: "query",
+            label: `supabase.${method}`,
+          });
+        const resourceId = `resource:${resource}`;
+        if (!result.graph.nodes.some((n) => n.id === resourceId))
+          result.graph.nodes.push({
+            id: resourceId,
+            kind: "resource",
+            label: resource,
+          });
+        result.graph.edges.push({
+          from: queryId,
+          to: resourceId,
+          relation: "accesses",
+        });
+        if (route)
+          result.graph.edges.push({
+            from: `route:${route}`,
+            to: queryId,
+            relation: "calls",
+          });
+        return {
+          ...receiver,
+          trace: combine([receiver, ...args]).trace,
+          driver,
+        };
+      }
+      if (receiver.resource)
+        return {
+          ...receiver,
+          trace: combine([receiver, ...args]).trace,
+          driver,
+        };
+      return undefined;
+    }
+
     const raw =
       (driver === "pg" && method === "query") ||
       (driver === "prisma" &&

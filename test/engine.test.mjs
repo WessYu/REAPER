@@ -257,3 +257,52 @@ test("interprocedural query result retains ownership proof context", async () =>
       ),
     { resources: { order: { ownership: ["userId"] } } },
   ));
+
+test("Supabase service-role credentials are detected without exposing their value", async () =>
+  source(
+    `"use client";import {createClient} from '@supabase/supabase-js';const client=createClient('https://example.supabase.co',process.env.SUPABASE_SERVICE_ROLE_KEY);`,
+    (r) => {
+      const finding = r.findings.find((f) => f.ruleId === "REAPER-SUPA-001");
+      assert.ok(finding);
+      assert.equal(finding.category, "Supabase");
+      assert.ok(!JSON.stringify(finding).includes("synthetic-secret-value"));
+    },
+  ));
+
+test("public anon/publishable Supabase configuration is not treated as a secret", async () =>
+  source(
+    `"use client";import {createClient} from '@supabase/supabase-js';const client=createClient('https://example.supabase.co',process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-SUPA-001").length,
+        0,
+      ),
+  ));
+
+test("hardcoded JWT service-role semantics are detected without retaining the token", async () =>
+  source(
+    `import {createClient} from '@supabase/supabase-js';const client=createClient('https://example.supabase.co','eyJhbGciOiJub25lIn0.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.synthetic');`,
+    (r) => {
+      const finding = r.findings.find((f) => f.ruleId === "REAPER-SUPA-001");
+      assert.ok(finding);
+      assert.ok(!JSON.stringify(finding).includes("eyJhbGciOiJub25lIn0"));
+    },
+  ));
+
+test("Supabase table and RPC calls contribute real data-access graph edges", async () =>
+  source(
+    `import {createClient} from '@supabase/supabase-js';const db=createClient('https://example.supabase.co',process.env.SUPABASE_ANON_KEY);async function load(){await db.from('orders').select('*').eq('id','1');return db.rpc('recalculate_totals',{});}`,
+    (r) => {
+      assert.equal(r.metrics.sinks, 2);
+      assert.ok(
+        r.graph.nodes.some(
+          (n) => n.kind === "resource" && n.label === "orders",
+        ),
+      );
+      assert.ok(
+        r.graph.nodes.some(
+          (n) => n.kind === "resource" && n.label === "rpc:recalculate_totals",
+        ),
+      );
+    },
+  ));

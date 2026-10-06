@@ -5,7 +5,8 @@ export type Category =
   | "Authorization"
   | "Tenant Isolation"
   | "RLS"
-  | "Privileges";
+  | "Privileges"
+  | "Supabase";
 export interface Location {
   file: string;
   line: number;
