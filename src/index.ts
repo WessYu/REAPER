@@ -5,6 +5,7 @@ export { calculateScore, renderScore } from "./score.js";
 export { renderGraph } from "./graph.js";
 export { renderExplanation } from "./explain.js";
 export { verify } from "./verify.js";
+export { correlateSourceDatabase } from "./correlation.js";
 export { readConfig, validateConfig } from "./config.js";
 export type * from "./model.js";
 export type * from "./postgres.js";

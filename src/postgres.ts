@@ -240,6 +240,23 @@ function broadGrant(
   return false;
 }
 
+export function effectiveTableGrants(
+  snapshot: DatabaseSnapshot,
+  schema: string,
+  table: string,
+  principals = ["PUBLIC", "anon", "authenticated"],
+): Grant[] {
+  const effective = new Set<string>(["PUBLIC"]);
+  for (const principal of principals)
+    for (const role of effectiveRoles(snapshot, principal)) effective.add(role);
+  return snapshot.grants.filter(
+    (grant) =>
+      grant.schema === schema &&
+      grant.table === table &&
+      effective.has(grant.role),
+  );
+}
+
 function configuredSearchPath(fn: DatabaseFunction): string | undefined {
   return fn.config
     ?.find((entry) => entry.startsWith("search_path="))

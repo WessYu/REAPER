@@ -3,7 +3,12 @@ import { parseArgs } from "node:util";
 import { readFile, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { scan } from "./scan.js";
-import { introspect, analyzeDatabase } from "./postgres.js";
+import {
+  introspect,
+  analyzeDatabase,
+  type DatabaseSnapshot,
+} from "./postgres.js";
+import { correlateSourceDatabase } from "./correlation.js";
 import { report, fails } from "./reporter.js";
 import { calculateScore, renderScore } from "./score.js";
 import { renderGraph } from "./graph.js";
@@ -229,6 +234,30 @@ async function main(): Promise<void> {
       configFile,
       baseline: baseline as string[] | undefined,
     });
+    if (values["db-env"]) {
+      const url = process.env[values["db-env"]];
+      if (!url)
+        throw new Error(
+          `Environment variable ${values["db-env"]} is not set.`,
+        );
+      const snapshot: DatabaseSnapshot = await introspect(url);
+      const databaseFindings = [
+        ...analyzeDatabase(snapshot),
+        ...correlateSourceDatabase(result, snapshot),
+      ];
+      const accepted = new Set(
+        Array.isArray(baseline) ? (baseline as string[]) : [],
+      );
+      for (const finding of databaseFindings)
+        if (accepted.has(finding.fingerprint)) finding.status = "baseline";
+      result.findings = [...result.findings, ...databaseFindings].sort(
+        (a, b) =>
+          a.file.localeCompare(b.file) ||
+          a.line - b.line ||
+          a.ruleId.localeCompare(b.ruleId),
+      );
+      result.coverage.database = true;
+    }
     const categories: Record<string, string> = {
       sql: "SQL Safety",
       authz: "Authorization",
