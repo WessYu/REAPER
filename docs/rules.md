@@ -15,4 +15,16 @@ All findings in 0.1.0 are static/catalog observations. None use CONFIRMED confid
 
 Source analysis recognizes direct post-query ownership or tenant comparisons against trusted principal paths when the denial branch terminates with `throw`, including results returned through supported direct helper calls. It does not treat request-supplied identities, non-terminating comparisons, arbitrary middleware or opaque helper functions as authorization proof.
 
+### REAPER-SUPA-001
+
+Reports a HIGH/HIGH finding when REAPER can establish that a Supabase service-role
+credential is hardcoded, or is referenced from client-exposed configuration.
+JWT payloads are inspected only to identify the `service_role` claim; the raw
+credential is not stored in the finding. Public anon/publishable key references
+are not findings by themselves.
+
+Supabase table operations and RPC calls are also represented as data-access
+graph sinks. This milestone does not yet correlate those calls with live RLS
+policies or PostgreSQL function privileges.
+
 Role membership is collected only as role attributes in this milestone; inheritance is not expanded. Source and catalog results are not combined into an exploitability proof. No score is computed because coverage is too incomplete to justify one.
