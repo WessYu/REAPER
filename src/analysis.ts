@@ -148,8 +148,7 @@ export function analyze(
     )
       return undefined;
     const root = node.expression.expression;
-    if (ts.isIdentifier(root) && root.text === "process")
-      return node.name.text;
+    if (ts.isIdentifier(root) && root.text === "process") return node.name.text;
     if (
       ts.isMetaProperty(root) &&
       root.keywordToken === ts.SyntaxKind.ImportKeyword &&
@@ -219,7 +218,10 @@ export function analyze(
     return false;
   }
 
-  function inspectSupabaseClient(node: ts.CallExpression, route?: string): void {
+  function inspectSupabaseClient(
+    node: ts.CallExpression,
+    route?: string,
+  ): void {
     const credential = node.arguments[1]
       ? credentialDescriptor(node.arguments[1])
       : undefined;
@@ -235,8 +237,7 @@ export function analyze(
       /^(?:NEXT_PUBLIC_|VITE_|PUBLIC_)/.test(envName);
     const hardcoded = credential.kind === "hardcoded-service-role";
     const clientContext = isClientSource(node);
-    if (!hardcoded && !(serviceRoleEnv && (publicEnv || clientContext)))
-      return;
+    if (!hardcoded && !(serviceRoleEnv && (publicEnv || clientContext))) return;
 
     const loc = location(node);
     const visitKey = `${loc.file}:${node.pos}:REAPER-SUPA-001`;
@@ -250,7 +251,8 @@ export function analyze(
         {
           ...loc,
           ruleId: "REAPER-SUPA-001",
-          title: "Supabase service-role credential exposed to source/client context",
+          title:
+            "Supabase service-role credential exposed to source/client context",
           description: hardcoded
             ? "A credential with service_role semantics is embedded directly in source."
             : "A service-role credential is referenced from client-exposed configuration.",
