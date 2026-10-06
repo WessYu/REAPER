@@ -86,7 +86,8 @@ export function validateConfig(value: unknown): Config {
       "assertions",
     ]);
     for (const key of Object.keys(verify))
-      if (!verifyAllowed.has(key)) throw new Error(`Unknown verify key: ${key}`);
+      if (!verifyAllowed.has(key))
+        throw new Error(`Unknown verify key: ${key}`);
     if (verify.allowedTargets !== undefined && !strings(verify.allowedTargets))
       throw new Error("verify.allowedTargets must be a string array.");
     for (const key of ["maxRequests", "concurrency", "timeoutMs"])
@@ -104,7 +105,11 @@ export function validateConfig(value: unknown): Config {
     if (!Array.isArray(verify.assertions) || verify.assertions.length === 0)
       throw new Error("verify.assertions must be a non-empty array.");
     for (const assertion of verify.assertions) {
-      if (!assertion || typeof assertion !== "object" || Array.isArray(assertion))
+      if (
+        !assertion ||
+        typeof assertion !== "object" ||
+        Array.isArray(assertion)
+      )
         throw new Error("Each verify assertion must be an object.");
       const item = assertion as Record<string, unknown>;
       const keys = new Set([
@@ -116,7 +121,8 @@ export function validateConfig(value: unknown): Config {
         "dimension",
       ]);
       for (const key of Object.keys(item))
-        if (!keys.has(key)) throw new Error(`Unknown verify assertion key: ${key}`);
+        if (!keys.has(key))
+          throw new Error(`Unknown verify assertion key: ${key}`);
       if (typeof item.name !== "string" || item.name.length < 1)
         throw new Error("verify assertion name must be a non-empty string.");
       if (
@@ -124,7 +130,9 @@ export function validateConfig(value: unknown): Config {
         !item.path.startsWith("/") ||
         item.path.startsWith("//")
       )
-        throw new Error("verify assertion path must be an origin-relative path.");
+        throw new Error(
+          "verify assertion path must be an origin-relative path.",
+        );
       if (
         item.method !== undefined &&
         item.method !== "GET" &&
@@ -136,13 +144,17 @@ export function validateConfig(value: unknown): Config {
         Number(item.expectStatus) < 100 ||
         Number(item.expectStatus) > 599
       )
-        throw new Error("verify assertion expectStatus must be an HTTP status.");
+        throw new Error(
+          "verify assertion expectStatus must be an HTTP status.",
+        );
       if (
         item.authEnv !== undefined &&
         (typeof item.authEnv !== "string" ||
           !/^[A-Z_][A-Z0-9_]*$/i.test(item.authEnv))
       )
-        throw new Error("verify assertion authEnv must be an environment variable name.");
+        throw new Error(
+          "verify assertion authEnv must be an environment variable name.",
+        );
       if (
         item.dimension !== undefined &&
         !["ownership", "tenant", "anonymous"].includes(String(item.dimension))

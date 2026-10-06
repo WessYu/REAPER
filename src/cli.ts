@@ -99,7 +99,9 @@ async function main(): Promise<void> {
   if (command === "verify") {
     if (!arg) throw new Error("verify requires a target URL.");
     if (!values.config)
-      throw new Error("verify requires --config with literal verify assertions.");
+      throw new Error(
+        "verify requires --config with literal verify assertions.",
+      );
     const verifyConfig = await readConfig(values.config);
     const result = await verify(arg, verifyConfig);
     await output(report(result, format));

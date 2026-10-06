@@ -60,7 +60,10 @@ function severity(assertion: VerifyAssertion): "CRITICAL" | "HIGH" {
   return assertion.dimension === "tenant" ? "CRITICAL" : "HIGH";
 }
 
-export async function verify(target: string, config: Config): Promise<ScanResult> {
+export async function verify(
+  target: string,
+  config: Config,
+): Promise<ScanResult> {
   const start = performance.now();
   const parsed = targetUrl(target);
   if (!config.verify)
@@ -126,8 +129,7 @@ export async function verify(target: string, config: Config): Promise<ScanResult
             ...loc,
             ruleId: "REAPER-VERIFY-001",
             title: "Configured authorization assertion failed",
-            description:
-              `Assertion "${assertion.name}" expected HTTP ${assertion.expectStatus} but received ${response.status}.`,
+            description: `Assertion "${assertion.name}" expected HTTP ${assertion.expectStatus} but received ${response.status}.`,
             severity: severity(assertion),
             confidence: "CONFIRMED",
             category: "Runtime Verification",
