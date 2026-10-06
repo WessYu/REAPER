@@ -23,6 +23,10 @@ const snapshot = (overrides = {}) => ({
   policies: [policy],
   grants: [],
   roles: [],
+  memberships: [],
+  schemaGrants: [],
+  columnGrants: [],
+  functions: [],
   serverVersion: "test",
   limitations: [],
   ...overrides,
@@ -101,3 +105,97 @@ test("owner privileges alone are not called excessive", () =>
     ).length,
     0,
   ));
+
+
+test("inherited broad roles are included in effective table privileges", () => {
+  const result = analyzeDatabase(
+    snapshot({
+      tables: [{ ...table, rls: false }],
+      roles: [
+        {
+          name: "anon",
+          superuser: false,
+          bypassRls: false,
+          login: true,
+          inherit: true,
+        },
+        {
+          name: "app_reader",
+          superuser: false,
+          bypassRls: false,
+          login: false,
+          inherit: true,
+        },
+      ],
+      memberships: [{ member: "anon", role: "app_reader", adminOption: false }],
+      grants: [
+        {
+          schema: "public",
+          table: "orders",
+          role: "app_reader",
+          privilege: "SELECT",
+        },
+      ],
+    }),
+  );
+  assert.ok(result.some((f) => f.ruleId === "REAPER-RLS-001"));
+});
+
+test("broad schema CREATE and role bypass privileges are explicit findings", () => {
+  const result = analyzeDatabase(
+    snapshot({
+      roles: [
+        {
+          name: "authenticated",
+          superuser: false,
+          bypassRls: true,
+          login: true,
+          inherit: true,
+        },
+      ],
+      schemaGrants: [
+        { schema: "public", role: "authenticated", privilege: "CREATE" },
+      ],
+    }),
+  );
+  assert.ok(result.some((f) => f.ruleId === "REAPER-PRIV-002"));
+  assert.ok(result.some((f) => f.ruleId === "REAPER-PRIV-003"));
+});
+
+test("SECURITY DEFINER review requires broad execute and unsafe search_path", () => {
+  const unsafe = {
+    schema: "public",
+    name: "dangerous_rpc",
+    identityArguments: "id uuid",
+    owner: "owner",
+    securityDefiner: true,
+    config: null,
+    executeRoles: ["PUBLIC"],
+  };
+  assert.ok(
+    analyzeDatabase(snapshot({ functions: [unsafe] })).some(
+      (f) => f.ruleId === "REAPER-PG-001",
+    ),
+  );
+  assert.equal(
+    analyzeDatabase(
+      snapshot({
+        functions: [
+          {
+            ...unsafe,
+            config: ["search_path=pg_catalog, app_private"],
+          },
+        ],
+      }),
+    ).filter((f) => f.ruleId === "REAPER-PG-001").length,
+    0,
+  );
+  assert.equal(
+    analyzeDatabase(
+      snapshot({
+        functions: [{ ...unsafe, executeRoles: ["internal_admin"] }],
+      }),
+    ).filter((f) => f.ruleId === "REAPER-PG-001").length,
+    0,
+  );
+});

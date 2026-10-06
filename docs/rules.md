@@ -28,3 +28,19 @@ graph sinks. This milestone does not yet correlate those calls with live RLS
 policies or PostgreSQL function privileges.
 
 Role membership is collected only as role attributes in this milestone; inheritance is not expanded. Source and catalog results are not combined into an exploitability proof. No score is computed because coverage is too incomplete to justify one.
+
+
+### PostgreSQL privilege graph and SECURITY DEFINER
+
+REAPER expands PostgreSQL role memberships for roles that inherit privileges.
+This lets table/schema grants assigned to an intermediate role contribute to the
+effective access of `anon`, `authenticated` or other broad roles.
+
+- `REAPER-PRIV-002` reports broad effective `CREATE` on application schemas.
+- `REAPER-PRIV-003` reports broad roles with SUPERUSER or BYPASSRLS.
+- `REAPER-PG-001` reports broadly executable `SECURITY DEFINER` functions
+  when no function-local `search_path` is set or it contains `$user`,
+  `public` or `pg_temp`.
+
+These remain review findings. REAPER does not claim a privilege-escalation path
+unless it can establish the relevant grants and unsafe function posture.

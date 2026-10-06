@@ -12,15 +12,19 @@ test("live PostgreSQL catalogs, policies, grants and read-only role", async () =
   await admin.connect();
   const schema = "reaper_test_" + process.pid;
   const role = "reaper_reader_" + process.pid;
+  const inheritedRole = "reaper_inherited_" + process.pid;
   try {
     await admin.query(`CREATE SCHEMA ${schema}`);
     await admin.query(
       `CREATE ROLE ${role} LOGIN PASSWORD 'synthetic-test-password'`,
     );
+    await admin.query(`CREATE ROLE ${inheritedRole}`);
+    await admin.query(`GRANT ${inheritedRole} TO ${role}`);
     await admin.query(
       `CREATE TABLE ${schema}.exposed(id integer PRIMARY KEY, owner_id text)`,
     );
     await admin.query(`GRANT SELECT, TRUNCATE ON ${schema}.exposed TO PUBLIC`);
+    await admin.query(`GRANT SELECT ON ${schema}.exposed TO ${inheritedRole}`);
     await admin.query(
       `CREATE TABLE ${schema}.scoped(id integer PRIMARY KEY, owner_id text)`,
     );
@@ -34,6 +38,10 @@ test("live PostgreSQL catalogs, policies, grants and read-only role", async () =
     );
     await admin.query(
       `CREATE POLICY all_read ON ${schema}.open_policy FOR SELECT TO PUBLIC USING (true)`,
+    );
+    await admin.query(`GRANT CREATE ON SCHEMA ${schema} TO PUBLIC`);
+    await admin.query(
+      `CREATE FUNCTION ${schema}.dangerous_rpc() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'`,
     );
     const readerUrl = new URL(connectionString);
     readerUrl.username = role;
@@ -49,10 +57,23 @@ test("live PostgreSQL catalogs, policies, grants and read-only role", async () =
       f.resource.startsWith(schema + "."),
     );
     assert.deepEqual(findings.map((f) => f.ruleId).sort(), [
+      "REAPER-PG-001",
       "REAPER-PRIV-001",
+      "REAPER-PRIV-002",
       "REAPER-RLS-001",
       "REAPER-RLS-003",
     ]);
+    assert.ok(
+      snapshot.memberships.some(
+        (membership) =>
+          membership.member === role && membership.role === inheritedRole,
+      ),
+    );
+    assert.ok(
+      snapshot.functions.some(
+        (fn) => fn.schema === schema && fn.name === "dangerous_rpc",
+      ),
+    );
     assert.ok(!findings.some((f) => f.resource === schema + ".scoped"));
     const after = await admin.query(
       `SELECT count(*)::int AS count FROM pg_catalog.pg_class WHERE relnamespace=$1::regnamespace`,
@@ -61,7 +82,9 @@ test("live PostgreSQL catalogs, policies, grants and read-only role", async () =
     assert.deepEqual(after.rows, before.rows);
   } finally {
     await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await admin.query(`REVOKE ${inheritedRole} FROM ${role}`);
     await admin.query(`DROP ROLE IF EXISTS ${role}`);
+    await admin.query(`DROP ROLE IF EXISTS ${inheritedRole}`);
     await admin.end();
   }
 });

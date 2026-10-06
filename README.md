@@ -47,7 +47,7 @@ The npm package has **not** been published. Do not assume `npx @wess2001/reaper`
 | Flow            | Assignments, destructuring, local imports, direct calls, string interpolation, early returns and conservative `if` branch merges |
 | SQL             | Tainted text passed to pg, Prisma unsafe raw calls and Knex raw; parsed constant UPDATE/DELETE without WHERE                     |
 | Prisma          | Query filters checked against declared or inferred resource relationships                                                        |
-| PostgreSQL      | Read-only catalog snapshot: tables, RLS state, policies, roles and table grants                                                  |
+| PostgreSQL      | Read-only catalog snapshot: tables, RLS, role inheritance, table/schema/column grants and SECURITY DEFINER functions             |
 | Output          | Terminal, JSON, Markdown, SARIF 2.1.0, finding explanation and route/query/resource graph in JSON                                |
 | Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                     |
 
@@ -119,7 +119,7 @@ reaper privileges --db-env DATABASE_URL
 
 Inspection uses a repeatable-read, read-only transaction with connection, query, statement and lock timeouts. It reads system catalogs; it does not fetch application rows, execute migrations or invoke application functions. TLS follows the pg connection settings; certificate checks are not disabled.
 
-A broad table grant plus missing RLS is a review candidate, not proof of public API exposure. RLS with no policies is default-deny information. Constant TRUE in a permissive policy is reported at MEDIUM severity because restrictive policies and privileges can narrow effective access. Role inheritance and effective policy composition are not solved.
+A broad table grant plus missing RLS is a review candidate, not proof of public API exposure. RLS with no policies is default-deny information. Constant TRUE in a permissive policy is reported at MEDIUM severity because restrictive policies and privileges can narrow effective access. Role membership with ROLINHERIT is expanded for effective grants. Broad schema CREATE, BYPASSRLS/SUPERUSER application roles and broadly executable SECURITY DEFINER functions with unsafe search_path are reported. Arbitrary policy-expression composition is still not symbolically solved.
 
 Only connect to databases you are authorized to inspect. Start with a dedicated low-privilege role. Catalog snapshots reveal schema and role names; handle reports as internal security material.
 
@@ -158,7 +158,7 @@ SARIF can be uploaded with GitHub's Code Scanning action in a consuming reposito
 - Next.js support is limited to exported function handlers. Direct post-query ownership/tenant deny-guards using trusted principal paths and a terminating `throw` are modeled; generic authentication adapters, middleware proofs and complex guard semantics are not.
 - Unknown helper calls preserve taint but are not certified sanitizers. Escaping, numeric conversion and allowlists may require review rather than removing a finding.
 - Prisma schema inference supports a conventional relation subset; explicit configuration is needed for custom schemas. `sensitive` metadata is reserved and does not affect severity yet.
-- Supabase JS coverage currently detects service-role exposure in hardcoded/client-public configuration and records table/RPC calls in the data graph. RLS/RPC catalog correlation and storage policies are not yet modeled. Drizzle, password/crypto checks, migrations, inherited grants, functions, views and column privileges are also not covered yet.
+- Supabase JS coverage currently detects service-role exposure in hardcoded/client-public configuration and records table/RPC calls in the data graph. RLS/RPC source-to-catalog correlation and storage policies are not yet modeled. Drizzle and Knex data-access discovery are supported, while password/crypto checks, migrations, view definitions and trigger analysis are not covered yet. PostgreSQL column grants are collected but do not yet influence findings.
 - No active `verify`, REST service, dashboard, rule SDK or numerical security score. Unimplemented commands fail explicitly.
 
 The next priority is deeper authorization/RLS correlation and additional data-access adapters while preserving conservative findings and false-positive tests. See [rules](docs/rules.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md).
