@@ -343,7 +343,6 @@ test("Drizzle sql.raw preserves tainted SQL text and tagged sql values are not r
       ),
   ));
 
-
 test("migration analyzer reports authorization regressions without flagging safe changes", async () =>
   source("", async (_r, root) => {
     await writeFile(
@@ -363,7 +362,6 @@ REVOKE ALL ON TABLE public.safe_orders FROM PUBLIC;`,
       ["REAPER-MIGRATION-001", "REAPER-MIGRATION-003", "REAPER-MIGRATION-004"],
     );
   }));
-
 
 test("security analyzer redacts hardcoded database credentials and private keys", async () =>
   source(
@@ -399,7 +397,6 @@ test("password-like input through fast crypto hashes is distinguished from bcryp
       ),
   );
 });
-
 
 test("Prisma sensitive-field inference raises authorization impact without inventing exposure", async () =>
   source("", async (_r, root) => {

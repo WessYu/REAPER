@@ -115,9 +115,14 @@ export async function analyzeMigrations(
         .map((value) => value.trim().toUpperCase());
       const role = match[4]!;
       const dangerous = privileges.some((value) =>
-        ["ALL", "CREATE", "TRUNCATE", "TRIGGER", "REFERENCES", "EXECUTE"].includes(
-          value,
-        ),
+        [
+          "ALL",
+          "CREATE",
+          "TRUNCATE",
+          "TRIGGER",
+          "REFERENCES",
+          "EXECUTE",
+        ].includes(value),
       );
       const broadDml =
         role.toUpperCase() === "PUBLIC" &&
