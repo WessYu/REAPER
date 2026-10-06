@@ -6,6 +6,8 @@ import { scan } from "./scan.js";
 import { introspect, analyzeDatabase } from "./postgres.js";
 import { report, fails } from "./reporter.js";
 import { calculateScore, renderScore } from "./score.js";
+import { renderGraph } from "./graph.js";
+import { renderExplanation } from "./explain.js";
 import type { ScanResult } from "./model.js";
 const help = `REAPER 0.1.0 — Data Access Security Engine
 
@@ -23,6 +25,7 @@ reaper baseline <json>  Export finding fingerprints from a JSON report
 reaper diff <old> <new> Compare two JSON reports by fingerprint
 reaper report <json>    Render a saved JSON report
 reaper explain <id> --input <json>
+reaper graph <json>      Render report graph as JSON or DOT
 reaper score <json>      Calculate an explainable score from a saved report
 reaper doctor           Check runtime version
 
@@ -63,7 +66,7 @@ async function main(): Promise<void> {
   }
   const [command, arg, second] = positionals;
   const format = values.format ?? "terminal";
-  if (!["terminal", "json", "sarif", "markdown"].includes(format))
+  if (!["terminal", "json", "sarif", "markdown", "dot"].includes(format))
     throw new Error("Unsupported format.");
   if (values["fail-on"]) fails([], values["fail-on"]);
   const output = async (text: string) => {
@@ -119,6 +122,13 @@ async function main(): Promise<void> {
     );
     return;
   }
+  if (command === "graph") {
+    const graphFormat = format === "dot" ? "dot" : "json";
+    if (!["json", "dot"].includes(graphFormat))
+      throw new Error("Graph format must be json or dot.");
+    await output(renderGraph((await saved(arg)).graph, graphFormat));
+    return;
+  }
   if (command === "score") {
     const scored = calculateScore(await saved(arg));
     await output(renderScore(scored, format));
@@ -127,7 +137,7 @@ async function main(): Promise<void> {
   if (command === "explain") {
     const f = (await saved(values.input)).findings.find((f) => f.id === arg);
     if (!f) throw new Error("Finding ID not found in report.");
-    await output(JSON.stringify(f, null, 2) + "\n");
+    await output(renderExplanation(f, format));
     return;
   }
   let result: ScanResult;

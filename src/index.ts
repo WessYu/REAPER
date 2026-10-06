@@ -2,6 +2,8 @@ export { scan } from "./scan.js";
 export { introspect, analyzeDatabase } from "./postgres.js";
 export { report, fails } from "./reporter.js";
 export { calculateScore, renderScore } from "./score.js";
+export { renderGraph } from "./graph.js";
+export { renderExplanation } from "./explain.js";
 export { readConfig, validateConfig } from "./config.js";
 export type * from "./model.js";
 export type * from "./postgres.js";
