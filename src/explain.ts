@@ -40,8 +40,7 @@ export function renderExplanation(finding: Finding, format: string): string {
       );
   }
   lines.push("", "REMEDIATION", finding.recommendation);
-  if (finding.suppression)
-    lines.push("", "SUPPRESSION", finding.suppression);
+  if (finding.suppression) lines.push("", "SUPPRESSION", finding.suppression);
 
   if (format === "terminal") return lines.join("\n") + "\n";
   if (format === "markdown")
@@ -52,9 +51,15 @@ export function renderExplanation(finding: Finding, format: string): string {
       lines
         .slice(2)
         .map((line) =>
-          ["WHAT", "WHERE", "ASSESSMENT", "WHY FLAGGED", "DATA FLOW", "REMEDIATION", "SUPPRESSION"].includes(
-            line,
-          )
+          [
+            "WHAT",
+            "WHERE",
+            "ASSESSMENT",
+            "WHY FLAGGED",
+            "DATA FLOW",
+            "REMEDIATION",
+            "SUPPRESSION",
+          ].includes(line)
             ? "## " + line
             : line,
         )

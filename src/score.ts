@@ -41,7 +41,9 @@ const confidenceWeight: Record<Confidence, number> = {
 };
 
 function findingPenalty(finding: Finding): number {
-  return severityPenalty[finding.severity] * confidenceWeight[finding.confidence];
+  return (
+    severityPenalty[finding.severity] * confidenceWeight[finding.confidence]
+  );
 }
 
 export function calculateScore(result: ScanResult): SecurityScore {
