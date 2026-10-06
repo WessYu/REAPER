@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/reaper-icon.png" width="180" alt="REAPER icon" />
+  <img src="./assets/reaper-icon.png" width="96" alt="REAPER icon" />
 </p>
 
 <h1 align="center">REAPER</h1>
