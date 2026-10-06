@@ -342,3 +342,24 @@ test("Drizzle sql.raw preserves tainted SQL text and tagged sql values are not r
         1,
       ),
   ));
+
+
+test("migration analyzer reports authorization regressions without flagging safe changes", async () =>
+  source("", async (_r, root) => {
+    await writeFile(
+      path.join(root, "20261006_security.sql"),
+      `ALTER TABLE public.orders DISABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS owner_read ON public.orders;
+GRANT TRUNCATE ON TABLE public.orders TO authenticated;
+ALTER TABLE public.safe_orders ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.safe_orders FROM PUBLIC;`,
+    );
+    const result = await scan({ root });
+    assert.deepEqual(
+      result.findings
+        .filter((f) => f.category === "Migrations")
+        .map((f) => f.ruleId)
+        .sort(),
+      ["REAPER-MIGRATION-001", "REAPER-MIGRATION-003", "REAPER-MIGRATION-004"],
+    );
+  }));

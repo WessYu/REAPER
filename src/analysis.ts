@@ -81,7 +81,9 @@ export function analyze(
   config: Config,
   result: ScanResult,
 ): void {
-  const scripts = files.filter((f) => !f.endsWith(".prisma"));
+  const scripts = files.filter(
+    (f) => !f.endsWith(".prisma") && !f.endsWith(".sql"),
+  );
   const allowed = new Set(scripts);
   const options: ts.CompilerOptions = {
     allowJs: true,
