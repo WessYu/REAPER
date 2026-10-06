@@ -106,7 +106,6 @@ test("owner privileges alone are not called excessive", () =>
     0,
   ));
 
-
 test("inherited broad roles are included in effective table privileges", () => {
   const result = analyzeDatabase(
     snapshot({

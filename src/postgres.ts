@@ -216,7 +216,9 @@ function effectiveRoles(snapshot: DatabaseSnapshot, role: string): Set<string> {
   const queue = [role];
   while (queue.length) {
     const member = queue.shift()!;
-    const metadata = snapshot.roles.find((candidate) => candidate.name === member);
+    const metadata = snapshot.roles.find(
+      (candidate) => candidate.name === member,
+    );
     if (metadata && !metadata.inherit) continue;
     for (const edge of snapshot.memberships)
       if (edge.member === member && !result.has(edge.role)) {
@@ -252,7 +254,8 @@ function unsafeSecurityDefinerSearchPath(fn: DatabaseFunction): boolean {
     .map((entry) => entry.trim().replace(/^"|"$/g, ""))
     .filter(Boolean);
   return schemas.some(
-    (schema) => schema === "$user" || schema === "public" || schema === "pg_temp",
+    (schema) =>
+      schema === "$user" || schema === "public" || schema === "pg_temp",
   );
 }
 
@@ -299,8 +302,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
         broadGrant(snapshot, grant.role, broad),
     );
     const policies = snapshot.policies.filter(
-      (policy) =>
-        policy.schema === table.schema && policy.table === table.name,
+      (policy) => policy.schema === table.schema && policy.table === table.name,
     );
 
     if (
@@ -339,8 +341,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
 
     for (const policy of policies) {
       const unconditional = (expression: string | null) =>
-        expression !== null &&
-        /^\(*\s*true\s*\)*$/i.test(expression.trim());
+        expression !== null && /^\(*\s*true\s*\)*$/i.test(expression.trim());
       if (
         policy.permissive === "PERMISSIVE" &&
         policy.roles.some((role) => broadGrant(snapshot, role, broad)) &&
@@ -380,10 +381,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
   }
 
   for (const grant of snapshot.schemaGrants)
-    if (
-      grant.privilege === "CREATE" &&
-      broadGrant(snapshot, grant.role, broad)
-    )
+    if (grant.privilege === "CREATE" && broadGrant(snapshot, grant.role, broad))
       add(
         grant.schema,
         "REAPER-PRIV-002",
@@ -399,10 +397,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       );
 
   for (const role of snapshot.roles)
-    if (
-      broad.has(role.name) &&
-      (role.superuser || role.bypassRls)
-    )
+    if (broad.has(role.name) && (role.superuser || role.bypassRls))
       add(
         `role.${role.name}`,
         "REAPER-PRIV-003",

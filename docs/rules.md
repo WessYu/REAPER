@@ -27,8 +27,7 @@ Supabase table operations and RPC calls are also represented as data-access
 graph sinks. This milestone does not yet correlate those calls with live RLS
 policies or PostgreSQL function privileges.
 
-Role membership is collected only as role attributes in this milestone; inheritance is not expanded. Source and catalog results are not combined into an exploitability proof. No score is computed because coverage is too incomplete to justify one.
-
+Role membership is expanded through PostgreSQL memberships when ROLINHERIT applies. Source and catalog results are still not combined into an exploitability proof. No score is computed because coverage is too incomplete to justify one.
 
 ### PostgreSQL privilege graph and SECURITY DEFINER
 
