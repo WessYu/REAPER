@@ -639,7 +639,8 @@ export function analyze(
       ts.isIdentifier(value) ||
       ts.isPropertyAccessExpression(value) ||
       ts.isElementAccessExpression(value);
-    if (!supportedOperand(node.left) || !supportedOperand(node.right)) return [];
+    if (!supportedOperand(node.left) || !supportedOperand(node.right))
+      return [];
     const left = evaluate(node.left, env, route, depth + 1);
     const right = evaluate(node.right, env, route, depth + 1);
     function match(resourceValue: Value, principalValue: Value): GuardProof[] {
