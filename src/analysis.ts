@@ -232,6 +232,8 @@ export function analyze(
         value.origin ||
         value.driver ||
         value.fields ||
+        value.resource ||
+        value.queryKey ||
         value.trace.length
         ? value
         : resolve(node.name, env, route, depth);
