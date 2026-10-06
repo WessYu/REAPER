@@ -154,7 +154,7 @@ SARIF can be uploaded with GitHub's Code Scanning action in a consuming reposito
 
 - No complete CFG, points-to analysis, async context modeling or incremental cache. Direct-call expansion is bounded and recursion is reported as incomplete.
 - Loops, try/catch and switch are reported as unsupported. Generic middleware, framework wrappers, CommonJS imports, tsconfig path aliases and dynamic imports are not resolved reliably.
-- Next.js support is limited to exported function handlers. Authentication adapters and post-query authorization proofs are not implemented.
+- Next.js support is limited to exported function handlers. Direct post-query ownership/tenant deny-guards using trusted principal paths and a terminating `throw` are modeled; generic authentication adapters, middleware proofs and complex guard semantics are not.
 - Unknown helper calls preserve taint but are not certified sanitizers. Escaping, numeric conversion and allowlists may require review rather than removing a finding.
 - Prisma schema inference supports a conventional relation subset; explicit configuration is needed for custom schemas. `sensitive` metadata is reserved and does not affect severity yet.
 - Supabase JS, Drizzle, storage policies, service-key detection, password/crypto checks, migrations, inherited grants, functions, views and column privileges are not covered by this milestone.

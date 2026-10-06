@@ -233,3 +233,27 @@ test("non-terminating ownership comparison does not certify authorization", asyn
       ),
     { resources: { order: { ownership: ["userId"] } } },
   ));
+
+test("post-query throw guard can prove tenant isolation", async () =>
+  source(
+    prefix +
+      `app.get('/a',async(req)=>{const order=await prisma.order.findUnique({where:{id:req.params.id}});if(order.organizationId!==req.user.organizationId){throw new Error('forbidden');}return order;});`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-TENANT-001").length,
+        0,
+      ),
+    { resources: { order: { tenant: ["organizationId"] } } },
+  ));
+
+test("interprocedural query result retains ownership proof context", async () =>
+  source(
+    prefix +
+      `async function load(id){return prisma.order.findUnique({where:{id}});}app.get('/a',async(req)=>{const order=await load(req.params.id);if(order.userId!==req.user.id){throw new Error('forbidden');}return order;});`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
+        0,
+      ),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
