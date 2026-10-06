@@ -1,0 +1,165 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { scan, readConfig, report, fails } from "../dist/index.js";
+const resources = {
+  order: { ownership: ["userId"], tenant: ["organizationId"] },
+};
+async function source(code, fn, config = { resources }) {
+  const root = await mkdtemp(path.join(tmpdir(), "reaper-test-"));
+  try {
+    await writeFile(path.join(root, "routes.ts"), code);
+    return await fn(await scan({ root, config }), root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+const prefix = `import express from 'express'; import {PrismaClient} from '@prisma/client'; import {Pool} from 'pg'; const app=express(); const prisma=new PrismaClient(); const pool=new Pool();\n`;
+test("cross-file vulnerable fixture preserves source, propagation and sink", async () => {
+  const r = await scan({ root: "test/fixtures/vulnerable" });
+  assert.deepEqual(r.findings.map((f) => f.ruleId).sort(), [
+    "REAPER-AUTH-001",
+    "REAPER-SQL-001",
+    "REAPER-TENANT-001",
+  ]);
+  assert.equal(r.metrics.routes, 2);
+  assert.equal(r.metrics.sinks, 2);
+  const sql = r.findings.find((f) => f.ruleId === "REAPER-SQL-001");
+  assert.equal(sql.dataFlow[0].file, "routes.ts");
+  assert.equal(sql.dataFlow.at(-1).file, "repository.ts");
+  assert.ok(sql.dataFlow.some((e) => e.kind === "propagation"));
+  assert.equal(sql.route, "GET /search");
+});
+test("secure fixture: principal scopes, bound SQL and tagged SQL", async () => {
+  const r = await scan({ root: "test/fixtures/secure" });
+  assert.deepEqual(r.findings, []);
+  assert.equal(r.metrics.routes, 3);
+  assert.equal(r.metrics.sinks, 3);
+});
+test("request-supplied owner and tenant are not trusted", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.query.user,organizationId:req.query.org}}));`,
+    (r) => assert.equal(r.findings.length, 2),
+  ));
+test("unknown model names do not establish ownership", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>prisma.unknown.findUnique({where:{id:req.params.id}}));`,
+    (r) => assert.equal(r.findings.length, 0),
+  ));
+test("lookalike unrelated query method is not treated as a DB driver", async () =>
+  source(
+    `import express from 'express';const app=express(); const search={query: x=>x};app.get('/a', req=>search.query(req.query.q));`,
+    (r) => assert.equal(r.findings.length, 0),
+  ));
+test("OR needs all alternatives constrained; AND needs one", async () => {
+  await source(
+    prefix +
+      `app.get('/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,OR:[{userId:req.user.id},{id:req.params.id}]}}));`,
+    (r) => assert.ok(r.findings.some((f) => f.category === "Authorization")),
+  );
+  await source(
+    prefix +
+      `app.get('/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,AND:[{userId:req.user.id},{organizationId:req.user.organizationId}]}}));`,
+    (r) => assert.equal(r.findings.length, 0),
+  );
+});
+test("branch reassignment preserves potential taint", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{let q='SELECT 1';if(req.query.mode){q=req.query.q;}return pool.query(q);});`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.category === "SQL Safety").length,
+        1,
+      ),
+  ));
+test("shadowed symbols do not taint outer values", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{const q='SELECT 1'; {const q=req.query.q;} return pool.query(q);});`,
+    (r) => assert.equal(r.findings.length, 0),
+  ));
+test("dead statements after unconditional return are not analyzed", async () =>
+  source(
+    prefix + `app.get('/a',(req)=>{return 1; pool.query(req.query.q);});`,
+    (r) => assert.equal(r.findings.length, 0),
+  ));
+test("unsupported control flow produces incomplete diagnostics", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{while(req.query.q){pool.query(req.query.q);}});`,
+    (r) => assert.ok(r.diagnostics.length),
+  ));
+test("fingerprints survive blank line changes and baseline gates only new findings", async () => {
+  const code = prefix + `app.get('/a',(req)=>pool.query(req.query.q));`;
+  await source(code, async (first, root) => {
+    await writeFile(path.join(root, "routes.ts"), "\n\n" + code);
+    const second = await scan({
+      root,
+      baseline: first.findings.map((f) => f.fingerprint),
+    });
+    assert.equal(first.findings[0].fingerprint, second.findings[0].fingerprint);
+    assert.equal(fails(second.findings, "high"), false);
+  });
+});
+test("suppression requires a rule and meaningful reason", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{\n// reaper-ignore REAPER-SQL-001 -- reason: reviewed fixture for integration tests\nreturn pool.query(req.query.q);\n});`,
+    (r) => assert.equal(r.findings[0].status, "suppressed"),
+  ));
+test("config is literal data and cannot execute code", async () =>
+  source("", async (_r, root) => {
+    const file = path.join(root, "reaper.config.ts");
+    await writeFile(
+      file,
+      `export default (()=>{throw new Error('executed')})()`,
+    );
+    await assert.rejects(() => readConfig(file), /literal data/);
+    await writeFile(
+      file,
+      `export default {resources:{order:{ownership:['userId']}}} as const`,
+    );
+    assert.deepEqual((await readConfig(file)).resources.order.ownership, [
+      "userId",
+    ]);
+    await writeFile(file, `export default {typo:123}`);
+    await assert.rejects(() => readConfig(file), /Unknown config/);
+  }));
+test("reports contain evidence without raw source snippets or request secrets", async () =>
+  source(
+    prefix + `app.get('/a',(req)=>pool.query('secret-literal-'+req.query.q));`,
+    (r) => {
+      assert.ok(!report(r, "json").includes("secret-literal"));
+      assert.equal(JSON.parse(report(r, "sarif")).version, "2.1.0");
+      assert.ok(report(r, "markdown").startsWith("# REAPER"));
+      assert.throws(() => report(r, "xml"));
+    },
+  ));
+test("parsed UPDATE and DELETE without WHERE are review candidates", async () => {
+  await source(
+    prefix + `app.get('/a',()=>pool.query('DELETE FROM orders'));`,
+    (r) => assert.equal(r.findings[0].ruleId, "REAPER-SQL-002"),
+  );
+  await source(
+    prefix +
+      `app.get('/a',(req)=>pool.query('DELETE FROM orders WHERE id=$1',[req.params.id]));`,
+    (r) => assert.equal(r.findings.length, 0),
+  );
+});
+test("pg query config object binds values separately from text", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>pool.query({text:'SELECT * FROM orders WHERE id=$1',values:[req.params.id]}));`,
+    (r) => assert.equal(r.findings.length, 0),
+  ));
+test("principal from wrong domain does not establish tenant isolation", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>prisma.order.findMany({where:{organizationId:req.user.id}}));`,
+    (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-TENANT-001")),
+  ));

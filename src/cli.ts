@@ -1,0 +1,205 @@
+#!/usr/bin/env node
+import { parseArgs } from "node:util";
+import { readFile, writeFile, access } from "node:fs/promises";
+import path from "node:path";
+import { scan } from "./scan.js";
+import { introspect, analyzeDatabase } from "./postgres.js";
+import { report, fails } from "./reporter.js";
+import type { ScanResult } from "./model.js";
+const help = `REAPER 0.1.0 — Data Access Security Engine
+
+reaper scan [path]       Analyze supported JS/TS handlers and data access
+reaper sql [path]        Show SQL findings
+reaper authz [path]      Show ownership findings
+reaper tenants [path]    Show tenant findings
+reaper rls              Inspect PostgreSQL catalogs and RLS
+reaper privileges       Inspect PostgreSQL table grants
+reaper schema           Export read-only PostgreSQL catalog snapshot
+reaper baseline <json>  Export finding fingerprints from a JSON report
+reaper diff <old> <new> Compare two JSON reports by fingerprint
+reaper report <json>    Render a saved JSON report
+reaper explain <id> --input <json>
+reaper doctor           Check runtime version
+
+--config <file>          Literal reaper.config.ts (never executed)
+--format <format>        terminal | json | sarif | markdown
+--output <file>          Write output instead of stdout
+--fail-on <severity>     Exit 1 on new findings at/above threshold
+--baseline <file>        JSON array of accepted fingerprints
+--db-env <name>          Environment variable holding database URL
+--help | --version
+
+Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
+Runtime verification and dashboard are not implemented in 0.1.0.
+`;
+async function main(): Promise<void> {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    strict: true,
+    options: {
+      help: { type: "boolean" },
+      version: { type: "boolean" },
+      config: { type: "string" },
+      format: { type: "string" },
+      output: { type: "string" },
+      "fail-on": { type: "string" },
+      baseline: { type: "string" },
+      "db-env": { type: "string" },
+      input: { type: "string" },
+    },
+  });
+  if (values.help || (positionals.length === 0 && !values.version)) {
+    process.stdout.write(help);
+    return;
+  }
+  if (values.version) {
+    process.stdout.write("0.1.0\n");
+    return;
+  }
+  const [command, arg, second] = positionals;
+  const format = values.format ?? "terminal";
+  if (!["terminal", "json", "sarif", "markdown"].includes(format))
+    throw new Error("Unsupported format.");
+  if (values["fail-on"]) fails([], values["fail-on"]);
+  const output = async (text: string) => {
+    if (values.output) await writeFile(values.output, text, { mode: 0o600 });
+    else process.stdout.write(text);
+  };
+  const json = async (file: string) =>
+    JSON.parse(await readFile(file, "utf8")) as unknown;
+  const saved = async (file: string | undefined): Promise<ScanResult> => {
+    if (!file) throw new Error("A JSON report path is required.");
+    const data = (await json(file)) as ScanResult;
+    if (
+      data?.version !== "0.1.0" ||
+      !Array.isArray(data.findings) ||
+      !data.metrics ||
+      !Array.isArray(data.diagnostics)
+    )
+      throw new Error("Invalid REAPER report.");
+    return data;
+  };
+  if (command === "doctor") {
+    await output(
+      `Node ${process.versions.node}; supported: ${Number(process.versions.node.split(".")[0]) >= 22}\n`,
+    );
+    return;
+  }
+  if (command === "baseline") {
+    await output(
+      JSON.stringify(
+        (await saved(arg)).findings
+          .filter((f) => f.status !== "suppressed")
+          .map((f) => f.fingerprint),
+        null,
+        2,
+      ) + "\n",
+    );
+    return;
+  }
+  if (command === "diff") {
+    const old = await saved(arg),
+      current = await saved(second),
+      before = new Set(old.findings.map((f) => f.fingerprint)),
+      after = new Set(current.findings.map((f) => f.fingerprint));
+    await output(
+      JSON.stringify(
+        {
+          added: current.findings.filter((f) => !before.has(f.fingerprint)),
+          resolved: old.findings.filter((f) => !after.has(f.fingerprint)),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    return;
+  }
+  if (command === "explain") {
+    const f = (await saved(values.input)).findings.find((f) => f.id === arg);
+    if (!f) throw new Error("Finding ID not found in report.");
+    await output(JSON.stringify(f, null, 2) + "\n");
+    return;
+  }
+  let result: ScanResult;
+  if (command === "report") result = await saved(arg);
+  else if (["rls", "privileges", "schema"].includes(command!)) {
+    const env = values["db-env"] ?? "DATABASE_URL";
+    const url = process.env[env];
+    if (!url) throw new Error(`Environment variable ${env} is not set.`);
+    const snapshot = await introspect(url);
+    if (command === "schema") {
+      await output(JSON.stringify(snapshot, null, 2) + "\n");
+      return;
+    }
+    result = {
+      version: "0.1.0",
+      root: "database",
+      findings: analyzeDatabase(snapshot).filter((f) =>
+        command === "rls" ? f.category === "RLS" : f.category === "Privileges",
+      ),
+      diagnostics: [],
+      graph: { nodes: [], edges: [] },
+      metrics: {
+        files: 0,
+        routes: 0,
+        sinks: 0,
+        durationMs: 0,
+        memoryBytes: process.memoryUsage().rss,
+      },
+      coverage: { source: false, database: true, runtime: false },
+    };
+  } else if (["scan", "sql", "authz", "tenants"].includes(command!)) {
+    const root = path.resolve(arg ?? ".");
+    let configFile = values.config;
+    if (!configFile) {
+      const candidate = path.join(root, "reaper.config.ts");
+      try {
+        await access(candidate);
+        configFile = candidate;
+      } catch (error) {
+        if (
+          !(
+            error &&
+            typeof error === "object" &&
+            "code" in error &&
+            error.code === "ENOENT"
+          )
+        )
+          throw error;
+      }
+    }
+    const baseline = values.baseline ? await json(values.baseline) : undefined;
+    if (
+      baseline !== undefined &&
+      (!Array.isArray(baseline) ||
+        !baseline.every(
+          (f) => typeof f === "string" && /^[a-f0-9]{64}$/.test(f),
+        ))
+    )
+      throw new Error("Invalid baseline fingerprint array.");
+    result = await scan({
+      root,
+      configFile,
+      baseline: baseline as string[] | undefined,
+    });
+    const categories: Record<string, string> = {
+      sql: "SQL Safety",
+      authz: "Authorization",
+      tenants: "Tenant Isolation",
+    };
+    if (categories[command!])
+      result.findings = result.findings.filter(
+        (f) => f.category === categories[command!],
+      );
+  } else throw new Error(`Unknown command: ${command}. Run reaper --help.`);
+  await output(report(result, format));
+  if (result.diagnostics.length) process.exitCode = 2;
+  else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
+    process.exitCode = 1;
+}
+main().catch((error) => {
+  process.stderr.write(
+    `REAPER: ${error instanceof Error ? error.message : "Unexpected error"}\n`,
+  );
+  process.exitCode = 2;
+});
