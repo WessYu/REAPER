@@ -722,9 +722,7 @@ export function analyze(
     }
 
     if (driver === "knex" && receiver.resource && method !== "raw") {
-      if (
-        ["select", "insert", "update", "delete", "del"].includes(method)
-      ) {
+      if (["select", "insert", "update", "delete", "del"].includes(method)) {
         const resource = receiver.resource;
         const queryId = `query:${loc.file}:${loc.line}:${loc.column}`;
         sinkCounts.add(`${loc.file}:${node.pos}`);
@@ -756,10 +754,11 @@ export function analyze(
       return {
         ...receiver,
         trace: combine([receiver, ...args]).trace,
-        operation:
-          ["select", "insert", "update", "delete", "del"].includes(method)
-            ? method
-            : receiver.operation,
+        operation: ["select", "insert", "update", "delete", "del"].includes(
+          method,
+        )
+          ? method
+          : receiver.operation,
       };
     }
 
