@@ -1,6 +1,6 @@
 # Implemented rules
 
-All findings in 0.1.0 are static/catalog observations. None use CONFIRMED confidence.
+Most 0.1.0 findings are static/catalog observations. `REAPER-VERIFY-001` uses CONFIRMED confidence only when an explicitly configured runtime authorization assertion receives an unexpected HTTP status.
 
 | Rule              | Evidence                                                                                    | Severity / confidence | Important boundary                                                            |
 | ----------------- | ------------------------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
@@ -24,8 +24,26 @@ credential is not stored in the finding. Public anon/publishable key references
 are not findings by themselves.
 
 Supabase table operations and RPC calls are also represented as data-access
-graph sinks. This milestone does not yet correlate those calls with live RLS
-policies or PostgreSQL function privileges.
+graph sinks.
+
+### REAPER-SUPA-002
+
+When a source scan is combined with `--db-env`, REAPER correlates supported
+Supabase table operations with the PostgreSQL snapshot. A HIGH/HIGH finding is
+created only when the same table is observed in source, the required operation
+is effectively granted to a broad client role (including inherited grants) and
+RLS is disabled.
+
+This is stronger evidence than either observation alone, but it still does not
+prove that a public HTTP path exposes the table.
+
+### Runtime verification
+
+`REAPER-VERIFY-001` is HIGH/CONFIRMED for configured ownership/anonymous
+assertions and CRITICAL/CONFIRMED for configured tenant-isolation assertions
+when the observed status differs from the expected status. REAPER does not
+invent the expectation: the operator supplies the exact path, expected status
+and optional token environment variable.
 
 Role membership is expanded through PostgreSQL memberships when ROLINHERIT applies. Source and catalog results are still not combined into an exploitability proof. No score is computed because coverage is too incomplete to justify one.
 

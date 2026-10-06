@@ -9,9 +9,9 @@
 
 [![CI](https://github.com/WessYu/REAPER/actions/workflows/ci.yml/badge.svg)](https://github.com/WessYu/REAPER/actions/workflows/ci.yml)
 
-REAPER traces request input into supported database calls and reports queries whose ownership or tenant constraints cannot be established. It also inspects PostgreSQL catalogs for selected RLS and privilege risks.
+REAPER traces request input into supported database calls and reports authorization, tenant-isolation, SQL, migration, secret and database-posture risks. It can combine source analysis with read-only PostgreSQL evidence and can run explicitly configured, bounded authorization assertions against authorized targets.
 
-Version **0.1.0 is experimental**. Findings identify patterns worth investigating, not proof that an application is exploitable. A clean report does not establish security. There is no AI dependency, telemetry, active HTTP scanner or automatic database repair.
+Version **0.1.0 is experimental**. Static/catalog findings identify patterns worth investigating, not proof that an application is exploitable. Runtime findings are only marked CONFIRMED when a configured authorization assertion observes a status different from its declared security expectation. A clean report does not establish security. There is no AI dependency, telemetry or automatic database repair.
 
 ## Run locally
 
@@ -48,7 +48,11 @@ The npm package has **not** been published. Do not assume `npx @wess2001/reaper`
 | SQL             | Tainted text passed to pg, Prisma unsafe raw calls and Knex raw; parsed constant UPDATE/DELETE without WHERE                     |
 | Prisma          | Query filters checked against declared or inferred resource relationships                                                        |
 | PostgreSQL      | Read-only catalog snapshot: tables, RLS, role inheritance, table/schema/column grants and SECURITY DEFINER functions             |
-| Output          | Terminal, JSON, Markdown, SARIF 2.1.0, finding explanation and route/query/resource graph in JSON                                |
+| Supabase        | Service-role exposure checks, table/RPC graph discovery and optional source-to-PostgreSQL RLS/grant correlation                  |
+| Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                               |
+| Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                         |
+| Verification    | Authorized GET/HEAD assertions with target allowlists, budgets, timeouts and bounded concurrency                                 |
+| Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                               |
 | Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                     |
 
 Local import resolution follows standard TypeScript module resolution within discovered files. The scanner does not load the target's compiler plugins, execute its configuration or import its dependencies.
@@ -74,6 +78,21 @@ export default {
   exclude: ["fixtures"],
   maxFiles: 10000,
   maxFileBytes: 1000000,
+  verify: {
+    allowedTargets: ["https://preview.example.com"],
+    maxRequests: 20,
+    concurrency: 2,
+    timeoutMs: 5000,
+    assertions: [
+      {
+        name: "cross-tenant order must be denied",
+        path: "/api/orders/synthetic-tenant-b-order",
+        expectStatus: 403,
+        authEnv: "REAPER_TEST_USER_A_TOKEN",
+        dimension: "tenant",
+      },
+    ],
+  },
 };
 ```
 
@@ -87,6 +106,12 @@ reaper sql ./application
 reaper authz ./application
 reaper tenants ./application
 reaper supabase ./application
+reaper migrations ./application
+reaper crypto ./application
+reaper scan ./application --db-env DATABASE_URL --format json --output combined.json
+reaper graph combined.json --format dot --output graph.dot
+reaper score combined.json
+reaper verify http://localhost:3000 --config reaper.config.ts --fail-on high
 reaper baseline scan.json --output baseline.json
 reaper scan ./application --baseline baseline.json --fail-on high
 reaper report scan.json --format sarif --output reaper.sarif
@@ -119,9 +144,19 @@ reaper privileges --db-env DATABASE_URL
 
 Inspection uses a repeatable-read, read-only transaction with connection, query, statement and lock timeouts. It reads system catalogs; it does not fetch application rows, execute migrations or invoke application functions. TLS follows the pg connection settings; certificate checks are not disabled.
 
+Passing `--db-env` to a source command explicitly combines source findings with a database snapshot. For supported Supabase table operations, REAPER can correlate a source data-access path with an effective broad PostgreSQL grant and missing RLS. This raises confidence because both sides of the path were observed, but it still does not prove internet exposure or exploitability.
+
 A broad table grant plus missing RLS is a review candidate, not proof of public API exposure. RLS with no policies is default-deny information. Constant TRUE in a permissive policy is reported at MEDIUM severity because restrictive policies and privileges can narrow effective access. Role membership with ROLINHERIT is expanded for effective grants. Broad schema CREATE, BYPASSRLS/SUPERUSER application roles and broadly executable SECURITY DEFINER functions with unsafe search_path are reported. Arbitrary policy-expression composition is still not symbolically solved.
 
 Only connect to databases you are authorized to inspect. Start with a dedicated low-privilege role. Catalog snapshots reveal schema and role names; handle reports as internal security material.
+
+## Authorized runtime verification
+
+`reaper verify` is deliberately assertion-driven rather than an open-ended web scanner. Localhost targets are permitted automatically. Remote origins are blocked unless their exact origin is listed in `verify.allowedTargets`.
+
+Only configured GET/HEAD requests are supported in this milestone. Tokens are read from named environment variables, never from the config file, and their values are not copied into findings. Redirect following is disabled, concurrency is capped at 8, request budgets are capped at 500 and per-request timeouts are capped at 30 seconds. Missing token variables and request failures are reported as incomplete analysis rather than vulnerability findings.
+
+A runtime finding means a security property that **you explicitly declared** did not produce the expected HTTP status. It is not a generic exploit engine and does not perform discovery, brute force, destructive methods or credential acquisition.
 
 ## TypeScript API
 
@@ -157,8 +192,11 @@ SARIF can be uploaded with GitHub's Code Scanning action in a consuming reposito
 - Loops, try/catch and switch are reported as unsupported. Generic middleware, framework wrappers, CommonJS imports, tsconfig path aliases and dynamic imports are not resolved reliably.
 - Next.js support is limited to exported function handlers. Direct post-query ownership/tenant deny-guards using trusted principal paths and a terminating `throw` are modeled; generic authentication adapters, middleware proofs and complex guard semantics are not.
 - Unknown helper calls preserve taint but are not certified sanitizers. Escaping, numeric conversion and allowlists may require review rather than removing a finding.
-- Prisma schema inference supports a conventional relation subset; explicit configuration is needed for custom schemas. `sensitive` metadata is reserved and does not affect severity yet.
-- Supabase JS coverage currently detects service-role exposure in hardcoded/client-public configuration and records table/RPC calls in the data graph. RLS/RPC source-to-catalog correlation and storage policies are not yet modeled. Drizzle and Knex data-access discovery are supported, while password/crypto checks, migrations, view definitions and trigger analysis are not covered yet. PostgreSQL column grants are collected but do not yet influence findings.
-- No active `verify`, REST service, dashboard, rule SDK or numerical security score. Unimplemented commands fail explicitly.
+- Prisma schema inference supports a conventional relation subset; explicit configuration is needed for custom schemas. Configured `sensitive` fields increase the severity of unresolved ownership/tenant findings, but REAPER does not yet prove which selected columns reach an HTTP response.
+- Supabase JS coverage detects service-role exposure, table/RPC access and table-level source-to-catalog correlation. RPC-to-function correlation, storage policies and arbitrary RLS expression reasoning are not yet modeled. Drizzle and Knex data-access discovery are supported; their authorization semantics are less complete than Prisma's.
+- Password/crypto checks intentionally cover a small high-confidence subset. Migration analysis is SQL-oriented and does not yet reconstruct full before/after schemas from every ORM migration format.
+- PostgreSQL column grants are collected but do not yet influence findings. View definitions, trigger bodies and extension-specific privilege models are not yet analyzed.
+- Runtime verification is assertion-driven GET/HEAD only. It does not discover endpoints, create users/resources, mutate targets or infer expected authorization behavior.
+- No REST service, dashboard or rule SDK. The numerical score is a triage aid and is provisional whenever coverage is incomplete.
 
-The next priority is deeper authorization/RLS correlation and additional data-access adapters while preserving conservative findings and false-positive tests. See [rules](docs/rules.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md).
+The next priority is deeper authorization/RLS/RPC correlation and broader high-confidence framework adapters while preserving false-positive resistance. See [rules](docs/rules.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md).
