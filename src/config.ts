@@ -17,6 +17,9 @@ export async function readConfig(file: string): Promise<Config> {
       return literal(node.expression);
     if (ts.isStringLiteral(node)) return node.text;
     if (ts.isNumericLiteral(node)) return Number(node.text);
+    if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (node.kind === ts.SyntaxKind.NullKeyword) return null;
     if (ts.isArrayLiteralExpression(node))
       return node.elements.map((e) => literal(e));
     if (ts.isObjectLiteralExpression(node)) {
@@ -52,6 +55,7 @@ export function validateConfig(value: unknown): Config {
     "exclude",
     "maxFiles",
     "maxFileBytes",
+    "verify",
   ]);
   for (const key of Object.keys(config))
     if (!allowed.has(key)) throw new Error(`Unknown config key: ${key}`);
@@ -66,6 +70,86 @@ export function validateConfig(value: unknown): Config {
       (!Number.isSafeInteger(config[key]) || Number(config[key]) < 1)
     )
       throw new Error(`${key} must be a positive integer.`);
+  if (config.verify !== undefined) {
+    if (
+      !config.verify ||
+      typeof config.verify !== "object" ||
+      Array.isArray(config.verify)
+    )
+      throw new Error("verify must be an object.");
+    const verify = config.verify as Record<string, unknown>;
+    const verifyAllowed = new Set([
+      "allowedTargets",
+      "maxRequests",
+      "concurrency",
+      "timeoutMs",
+      "assertions",
+    ]);
+    for (const key of Object.keys(verify))
+      if (!verifyAllowed.has(key)) throw new Error(`Unknown verify key: ${key}`);
+    if (verify.allowedTargets !== undefined && !strings(verify.allowedTargets))
+      throw new Error("verify.allowedTargets must be a string array.");
+    for (const key of ["maxRequests", "concurrency", "timeoutMs"])
+      if (
+        verify[key] !== undefined &&
+        (!Number.isSafeInteger(verify[key]) || Number(verify[key]) < 1)
+      )
+        throw new Error(`verify.${key} must be a positive integer.`);
+    if (verify.concurrency !== undefined && Number(verify.concurrency) > 8)
+      throw new Error("verify.concurrency cannot exceed 8.");
+    if (verify.maxRequests !== undefined && Number(verify.maxRequests) > 500)
+      throw new Error("verify.maxRequests cannot exceed 500.");
+    if (verify.timeoutMs !== undefined && Number(verify.timeoutMs) > 30000)
+      throw new Error("verify.timeoutMs cannot exceed 30000.");
+    if (!Array.isArray(verify.assertions) || verify.assertions.length === 0)
+      throw new Error("verify.assertions must be a non-empty array.");
+    for (const assertion of verify.assertions) {
+      if (!assertion || typeof assertion !== "object" || Array.isArray(assertion))
+        throw new Error("Each verify assertion must be an object.");
+      const item = assertion as Record<string, unknown>;
+      const keys = new Set([
+        "name",
+        "path",
+        "method",
+        "expectStatus",
+        "authEnv",
+        "dimension",
+      ]);
+      for (const key of Object.keys(item))
+        if (!keys.has(key)) throw new Error(`Unknown verify assertion key: ${key}`);
+      if (typeof item.name !== "string" || item.name.length < 1)
+        throw new Error("verify assertion name must be a non-empty string.");
+      if (
+        typeof item.path !== "string" ||
+        !item.path.startsWith("/") ||
+        item.path.startsWith("//")
+      )
+        throw new Error("verify assertion path must be an origin-relative path.");
+      if (
+        item.method !== undefined &&
+        item.method !== "GET" &&
+        item.method !== "HEAD"
+      )
+        throw new Error("verify assertion method must be GET or HEAD.");
+      if (
+        !Number.isSafeInteger(item.expectStatus) ||
+        Number(item.expectStatus) < 100 ||
+        Number(item.expectStatus) > 599
+      )
+        throw new Error("verify assertion expectStatus must be an HTTP status.");
+      if (
+        item.authEnv !== undefined &&
+        (typeof item.authEnv !== "string" ||
+          !/^[A-Z_][A-Z0-9_]*$/i.test(item.authEnv))
+      )
+        throw new Error("verify assertion authEnv must be an environment variable name.");
+      if (
+        item.dimension !== undefined &&
+        !["ownership", "tenant", "anonymous"].includes(String(item.dimension))
+      )
+        throw new Error("verify assertion dimension is invalid.");
+    }
+  }
   if (config.resources !== undefined) {
     if (
       !config.resources ||

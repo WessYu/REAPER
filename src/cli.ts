@@ -8,6 +8,8 @@ import { report, fails } from "./reporter.js";
 import { calculateScore, renderScore } from "./score.js";
 import { renderGraph } from "./graph.js";
 import { renderExplanation } from "./explain.js";
+import { verify } from "./verify.js";
+import { readConfig } from "./config.js";
 import type { ScanResult } from "./model.js";
 const help = `REAPER 0.1.0 — Data Access Security Engine
 
@@ -27,6 +29,7 @@ reaper report <json>    Render a saved JSON report
 reaper explain <id> --input <json>
 reaper graph <json>      Render report graph as JSON or DOT
 reaper score <json>      Calculate an explainable score from a saved report
+reaper verify <target>    Run configured safe authorization assertions
 reaper doctor           Check runtime version
 
 --config <file>          Literal reaper.config.ts (never executed)
@@ -38,7 +41,7 @@ reaper doctor           Check runtime version
 --help | --version
 
 Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
-Runtime verification and dashboard are not implemented in 0.1.0.
+Runtime verification is limited to configured GET/HEAD authorization assertions. Dashboard is not implemented in 0.1.0.
 `;
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -91,6 +94,18 @@ async function main(): Promise<void> {
     await output(
       `Node ${process.versions.node}; supported: ${Number(process.versions.node.split(".")[0]) >= 22}\n`,
     );
+    return;
+  }
+  if (command === "verify") {
+    if (!arg) throw new Error("verify requires a target URL.");
+    if (!values.config)
+      throw new Error("verify requires --config with literal verify assertions.");
+    const verifyConfig = await readConfig(values.config);
+    const result = await verify(arg, verifyConfig);
+    await output(report(result, format));
+    if (result.diagnostics.length) process.exitCode = 2;
+    else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
+      process.exitCode = 1;
     return;
   }
   if (command === "baseline") {

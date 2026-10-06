@@ -23,6 +23,7 @@ const categories: Category[] = [
   "Supabase",
   "Migrations",
   "Secrets & Crypto",
+  "Runtime Verification",
 ];
 
 const severityPenalty: Record<Severity, number> = {

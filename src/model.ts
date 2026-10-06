@@ -8,7 +8,8 @@ export type Category =
   | "Privileges"
   | "Supabase"
   | "Migrations"
-  | "Secrets & Crypto";
+  | "Secrets & Crypto"
+  | "Runtime Verification";
 export interface Location {
   file: string;
   line: number;
@@ -41,12 +42,28 @@ export interface Resource {
   tenant?: string[];
   sensitive?: string[];
 }
+export interface VerifyAssertion {
+  name: string;
+  path: string;
+  method?: "GET" | "HEAD";
+  expectStatus: number;
+  authEnv?: string;
+  dimension?: "ownership" | "tenant" | "anonymous";
+}
+export interface VerifyConfig {
+  allowedTargets?: string[];
+  maxRequests?: number;
+  concurrency?: number;
+  timeoutMs?: number;
+  assertions: VerifyAssertion[];
+}
 export interface Config {
   resources?: Record<string, Resource>;
   principalPaths?: string[];
   exclude?: string[];
   maxFiles?: number;
   maxFileBytes?: number;
+  verify?: VerifyConfig;
 }
 export interface Diagnostic extends Partial<Location> {
   message: string;
@@ -74,7 +91,7 @@ export interface ScanResult {
     durationMs: number;
     memoryBytes: number;
   };
-  coverage: { source: boolean; database: boolean; runtime: false };
+  coverage: { source: boolean; database: boolean; runtime: boolean };
 }
 export const severities: Severity[] = [
   "CRITICAL",
