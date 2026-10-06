@@ -60,7 +60,8 @@ export async function inferResources(
       const name = model[1]!;
       const body = model[2]!;
       const ownership: string[] = [],
-        tenant: string[] = [];
+        tenant: string[] = [],
+        sensitive: string[] = [];
       // Field names alone are insufficient: require an explicit Prisma relation.
       for (const relation of body.matchAll(
         /\b(\w+)\s+(\w+)\??\s+@relation\s*\(\s*(?:"[^"]*"\s*,\s*)?fields\s*:\s*\[([^\]]+)\]/g,
@@ -71,7 +72,31 @@ export async function inferResources(
         if (["tenant", "organization", "workspace", "account"].includes(target))
           tenant.push(...fields);
       }
-      result[name[0]!.toLowerCase() + name.slice(1)] = { ownership, tenant };
+      const sensitiveNames = new Set([
+        "password",
+        "passwordhash",
+        "passwd",
+        "refreshtoken",
+        "resettoken",
+        "apikey",
+        "secret",
+        "clientsecret",
+        "privatekey",
+        "cpf",
+        "ssn",
+        "cardtoken",
+        "bankaccount",
+      ]);
+      for (const field of body.matchAll(/^\s*(\w+)\s+[\w\[\]?]+/gm)) {
+        const fieldName = field[1]!;
+        if (sensitiveNames.has(fieldName.replaceAll("_", "").toLowerCase()))
+          sensitive.push(fieldName);
+      }
+      result[name[0]!.toLowerCase() + name.slice(1)] = {
+        ownership,
+        tenant,
+        sensitive,
+      };
     }
   }
   return result;

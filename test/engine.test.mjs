@@ -399,3 +399,27 @@ test("password-like input through fast crypto hashes is distinguished from bcryp
       ),
   );
 });
+
+
+test("Prisma sensitive-field inference raises authorization impact without inventing exposure", async () =>
+  source("", async (_r, root) => {
+    await writeFile(
+      path.join(root, "schema.prisma"),
+      `model User { id String @id orders Order[] }
+model Order {
+  id String @id
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  resetToken String?
+}`,
+    );
+    await writeFile(
+      path.join(root, "route.ts"),
+      `import {PrismaClient} from '@prisma/client';const prisma=new PrismaClient();export async function GET(request,{params}){return prisma.order.findUnique({where:{id:params.id}});}`,
+    );
+    const result = await scan({ root });
+    const auth = result.findings.find((f) => f.ruleId === "REAPER-AUTH-001");
+    assert.ok(auth);
+    assert.equal(auth.severity, "HIGH");
+    assert.ok(auth.evidence.some((value) => value.includes("resetToken")));
+  }));

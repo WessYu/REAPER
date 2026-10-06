@@ -963,7 +963,7 @@ export function analyze(
         const candidate = emit(
           "REAPER-AUTH-001",
           "Ownership constraint not established",
-          "MEDIUM",
+          metadata.sensitive?.length ? "HIGH" : "MEDIUM",
           "Authorization",
           639,
           where,
@@ -971,6 +971,11 @@ export function analyze(
           resource,
           [
             `Ownership relationship: ${metadata.ownership.join(", ")}`,
+            ...(metadata.sensitive?.length
+              ? [
+                  `Sensitive fields on resource: ${metadata.sensitive.join(", ")}`,
+                ]
+              : []),
             "No supported principal constraint was found in this query. External authorization may exist.",
           ],
         );
@@ -988,7 +993,7 @@ export function analyze(
         const candidate = emit(
           "REAPER-TENANT-001",
           "Tenant constraint not established",
-          "MEDIUM",
+          metadata.sensitive?.length ? "HIGH" : "MEDIUM",
           "Tenant Isolation",
           862,
           where,
@@ -996,6 +1001,11 @@ export function analyze(
           resource,
           [
             `Tenant relationship: ${metadata.tenant.join(", ")}`,
+            ...(metadata.sensitive?.length
+              ? [
+                  `Sensitive fields on resource: ${metadata.sensitive.join(", ")}`,
+                ]
+              : []),
             "No supported tenant constraint was found in this query. Database RLS is not inferred by source analysis.",
           ],
         );
