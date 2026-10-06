@@ -37,6 +37,15 @@ RLS is disabled.
 This is stronger evidence than either observation alone, but it still does not
 prove that a public HTTP path exposes the table.
 
+### REAPER-SUPA-003
+
+When a supported Supabase `rpc()` call is combined with a PostgreSQL snapshot,
+REAPER correlates the RPC name with functions in the `public` schema.
+A HIGH/HIGH finding requires all of the following: the function is
+`SECURITY DEFINER`, a broad client role has effective `EXECUTE`, and the
+function-local `search_path` is missing or contains an untrusted schema such
+as `public`, `pg_temp` or `$user`.
+
 ### Runtime verification
 
 `REAPER-VERIFY-001` is HIGH/CONFIRMED for configured ownership/anonymous

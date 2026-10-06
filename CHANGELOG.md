@@ -5,7 +5,7 @@
 - Added bounded TypeScript AST analysis, inter-file direct-call expansion and request-to-query evidence.
 - Added SQL text, unrestricted mutation, ownership and tenant-isolation review rules with direct post-query deny-guard proofs.
 - Added Prisma analysis plus data-access discovery for Supabase JS, Drizzle, Knex and node-postgres.
-- Added Supabase service-role exposure detection and optional source-to-PostgreSQL table/RLS/grant correlation.
+- Added Supabase service-role exposure detection plus optional source-to-PostgreSQL table/RLS/grant and RPC/SECURITY DEFINER correlation.
 - Added PostgreSQL read-only catalog introspection for RLS, inherited roles, table/schema/column grants and SECURITY DEFINER posture.
 - Added SQL migration checks for RLS removal, policy drops and broad grants.
 - Added focused secret/password-crypto checks without retaining secret values in findings.
