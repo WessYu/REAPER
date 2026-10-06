@@ -89,7 +89,7 @@ export async function verify(
   let nextRequestAt = 0;
   let pacing = Promise.resolve();
 
-  async function pace(): Promise<void> {
+  async function pace(): Promise<boolean> {
     let release!: () => void;
     const previous = pacing;
     pacing = new Promise<void>((resolve) => {
@@ -97,10 +97,12 @@ export async function verify(
     });
     await previous;
     try {
-      if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      if (options.signal?.aborted) return false;
       const wait = Math.max(0, nextRequestAt - Date.now());
       if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+      if (options.signal?.aborted) return false;
       nextRequestAt = Date.now() + intervalMs;
+      return true;
     } finally {
       release();
     }
@@ -126,7 +128,7 @@ export async function verify(
       headers.set("authorization", `Bearer ${token}`);
     }
 
-    await pace();
+    if (!(await pace())) return;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const signal = options.signal
@@ -194,6 +196,7 @@ export async function verify(
 
   async function worker(): Promise<void> {
     for (;;) {
+      if (options.signal?.aborted) return;
       const index = cursor++;
       const assertion = assertions[index];
       if (!assertion) return;
