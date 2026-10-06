@@ -76,9 +76,9 @@ export function correlateSourceDatabase(
         {
           ...loc,
           ruleId: "REAPER-SUPA-002",
-          title: "Supabase client path reaches broadly granted table without RLS",
-          description:
-            `Observed ${query.label} access to ${resource}; the database snapshot shows effective ${privilege} access for a broad client role while RLS is disabled.`,
+          title:
+            "Supabase client path reaches broadly granted table without RLS",
+          description: `Observed ${query.label} access to ${resource}; the database snapshot shows effective ${privilege} access for a broad client role while RLS is disabled.`,
           severity: "HIGH",
           confidence: "HIGH",
           category: "Supabase",

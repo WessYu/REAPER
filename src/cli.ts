@@ -237,9 +237,7 @@ async function main(): Promise<void> {
     if (values["db-env"]) {
       const url = process.env[values["db-env"]];
       if (!url)
-        throw new Error(
-          `Environment variable ${values["db-env"]} is not set.`,
-        );
+        throw new Error(`Environment variable ${values["db-env"]} is not set.`);
       const snapshot: DatabaseSnapshot = await introspect(url);
       const databaseFindings = [
         ...analyzeDatabase(snapshot),
