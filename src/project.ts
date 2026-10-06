@@ -29,7 +29,7 @@ export async function discover(
         continue;
       }
       if (
-        !/\.(?:[cm]?[jt]sx?|prisma)$/.test(entry.name) ||
+        !/\.(?:[cm]?[jt]sx?|prisma|sql)$/.test(entry.name) ||
         /(?:\.d\.ts|\.generated\.[jt]s)$/.test(entry.name)
       )
         continue;
