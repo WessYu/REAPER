@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 336 336" role="img" aria-labelledby="title desc">
+  <title id="title">REAPER icon</title>
+  <desc id="desc">Minimal hooded reaper and scythe in the same monochrome visual language as SPECTER.</desc>
+  <rect x="8" y="8" width="320" height="320" rx="52" fill="#111111" stroke="#303030" stroke-width="2"/>
+
+  <!-- scythe -->
+  <path d="M236 74c22 7 41 20 55 38-29-4-54 2-74 18l-7-12c13-17 22-31 26-44Z" fill="#ededed"/>
+  <path d="M226 108c13 31 18 69 13 111-3 26-9 49-18 68" fill="none" stroke="#9a9a9a" stroke-width="12" stroke-linecap="round"/>
+  <path d="M229 109c10 30 13 64 9 102" fill="none" stroke="#4b4b4b" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- outer cloak -->
+  <path d="M167 76c-35 7-63 30-78 63-10 22-14 48-11 75l-20 45c-5 12 3 26 16 28 61 11 122 11 183 0 13-2 21-16 16-28l-20-45c3-27-1-53-11-75-15-33-43-56-75-63Z" fill="#4b4b4b"/>
+
+  <!-- hood -->
+  <path d="M167 85c-28 6-51 24-64 50-11 23-14 51-8 79l19 47h105l19-47c6-28 3-56-8-79-13-26-36-44-63-50Z" fill="#9a9a9a"/>
+
+  <!-- hood highlight -->
+  <path d="M167 94c-20 5-38 18-49 37-10 18-14 39-11 61l15 45h90l15-45c3-22-1-43-11-61-11-19-29-32-49-37Z" fill="#ededed"/>
+
+  <!-- face void -->
+  <path d="M167 123c-27 0-47 19-51 48-3 22 6 46 24 61 8 7 17 10 27 10s19-3 27-10c18-15 27-39 24-61-4-29-24-48-51-48Z" fill="#111111"/>
+
+  <!-- eyes -->
+  <path d="M132 171c10-6 21-8 31-5-4 10-12 16-23 17-5 0-8-4-8-12Zm70 0c-10-6-21-8-31-5 4 10 12 16 23 17 5 0 8-4 8-12Z" fill="#9a9a9a"/>
+
+  <!-- cloak split -->
+  <path d="M125 238h84l25 37c-46 7-88 7-134 0l25-37Z" fill="#9a9a9a"/>
+  <path d="M167 240v43" stroke="#4b4b4b" stroke-width="6" stroke-linecap="round"/>
+</svg>
