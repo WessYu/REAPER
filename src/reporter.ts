@@ -118,7 +118,9 @@ export function report(result: ScanResult, format: string): string {
   for (const d of result.diagnostics)
     lines.push(`INCOMPLETE: ${d.file ?? ""} ${d.message}`);
   lines.push(
-    "Static findings are candidates, not proof of exploitability. No runtime verification performed.",
+    result.coverage.runtime
+      ? "Runtime findings reflect configured assertions; static/catalog findings remain review candidates, not proof of exploitability."
+      : "Static/catalog findings are review candidates, not proof of exploitability. Runtime verification was not part of this report.",
   );
   if (format === "terminal") return lines.join("\n") + "\n";
   if (format === "markdown")
