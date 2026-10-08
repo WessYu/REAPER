@@ -130,11 +130,7 @@ export function validateConfig(value: unknown): Config {
       throw new Error("verify.allowedTargets must be a string array.");
     if (verify.openApiPaths !== undefined && !strings(verify.openApiPaths))
       throw new Error("verify.openApiPaths must be a string array.");
-    for (const key of [
-      "discoverOpenApi",
-      "probeDiscovered",
-      "allowMutations",
-    ])
+    for (const key of ["discoverOpenApi", "probeDiscovered", "allowMutations"])
       if (verify[key] !== undefined && typeof verify[key] !== "boolean")
         throw new Error(`verify.${key} must be boolean.`);
     if (
@@ -300,18 +296,14 @@ export function validateConfig(value: unknown): Config {
         synthetic.method !== "POST" &&
         synthetic.method !== "PUT"
       )
-        throw new Error(
-          "verify.syntheticUsers.method must be POST or PUT.",
-        );
+        throw new Error("verify.syntheticUsers.method must be POST or PUT.");
       if (!jsonLiteral(synthetic.body))
         throw new Error("verify.syntheticUsers.body must be literal JSON.");
       if (
         typeof synthetic.tokenPath !== "string" ||
         synthetic.tokenPath.length < 1
       )
-        throw new Error(
-          "verify.syntheticUsers.tokenPath must be a JSON path.",
-        );
+        throw new Error("verify.syntheticUsers.tokenPath must be a JSON path.");
       if (
         synthetic.idPath !== undefined &&
         (typeof synthetic.idPath !== "string" || synthetic.idPath.length < 1)
@@ -332,9 +324,7 @@ export function validateConfig(value: unknown): Config {
           typeof synthetic.cleanup !== "object" ||
           Array.isArray(synthetic.cleanup)
         )
-          throw new Error(
-            "verify.syntheticUsers.cleanup must be an object.",
-          );
+          throw new Error("verify.syntheticUsers.cleanup must be an object.");
         const cleanup = synthetic.cleanup as Record<string, unknown>;
         for (const key of Object.keys(cleanup))
           if (!["path", "method", "expectStatus"].includes(key))
