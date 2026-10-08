@@ -176,8 +176,7 @@ test("property mutation updates aliased authorization state", async () =>
   source(
     prefix +
       `app.get('/a',(req)=>{const where={organizationId:req.user.organizationId};const alias=where;alias.organizationId=req.query.org;return prisma.order.findMany({where});});`,
-    (r) =>
-      assert.ok(r.findings.some((f) => f.ruleId === "REAPER-TENANT-001")),
+    (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-TENANT-001")),
   ));
 test("Fastify request aliases and Knex raw preserve input provenance", async () =>
   source(
@@ -425,7 +424,6 @@ model Order {
     assert.ok(auth.evidence.some((value) => value.includes("resetToken")));
   }));
 
-
 test("resolved route middleware can establish a principal through object mutation", async () =>
   source(
     prefix +
@@ -452,8 +450,7 @@ test("Supabase Storage operations contribute bucket-scoped graph sinks", async (
       assert.ok(
         r.graph.nodes.some(
           (node) =>
-            node.kind === "query" &&
-            node.label === "supabase.storage.download",
+            node.kind === "query" && node.label === "supabase.storage.download",
         ),
       );
     },
