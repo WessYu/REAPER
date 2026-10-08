@@ -201,7 +201,6 @@ test("SECURITY DEFINER review requires broad execute and unsafe search_path", ()
   );
 });
 
-
 test("symbolic RLS classification distinguishes identity, tenant and role-only policies", async () => {
   const { classifyPolicyExpression } = await import("../dist/index.js");
   assert.equal(classifyPolicyExpression("user_id = auth.uid()"), "identity");
@@ -275,9 +274,7 @@ test("unsafe SECURITY DEFINER trigger is correlated with broad table DML", () =>
       ],
     }),
   );
-  assert.ok(
-    result.some((finding) => finding.ruleId === "REAPER-TRIGGER-001"),
-  );
+  assert.ok(result.some((finding) => finding.ruleId === "REAPER-TRIGGER-001"));
 });
 
 test("Supabase Storage posture is represented explicitly", () => {
@@ -296,7 +293,5 @@ test("Supabase Storage posture is represented explicitly", () => {
       policies: [policy],
     }),
   );
-  assert.ok(
-    result.some((finding) => finding.ruleId === "REAPER-STORAGE-001"),
-  );
+  assert.ok(result.some((finding) => finding.ruleId === "REAPER-STORAGE-001"));
 });
