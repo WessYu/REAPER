@@ -493,7 +493,8 @@ export function policyGuarantees(
     (policy) => policy.permissive === "PERMISSIVE",
   );
   return (
-    permissive.length > 0 && permissive.every((policy) => expressionGuarantees(policy))
+    permissive.length > 0 &&
+    permissive.every((policy) => expressionGuarantees(policy))
   );
 }
 
@@ -693,7 +694,8 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       const rlsDependencies = (view.dependencies ?? []).filter((dependency) => {
         const [schema, name] = dependency.split(".", 2);
         return snapshot.tables.some(
-          (table) => table.schema === schema && table.name === name && table.rls,
+          (table) =>
+            table.schema === schema && table.name === name && table.rls,
         );
       });
       add(
@@ -839,20 +841,20 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
     if (unsafeSecurityDefinerSearchPath(fn))
       add(
         resource,
-      "REAPER-PG-001",
-      "Broadly executable SECURITY DEFINER function has unsafe search_path",
-      "HIGH",
-      "Privileges",
-      [
-        `SECURITY DEFINER owner: ${fn.owner}`,
-        `Effective broad EXECUTE through: ${broadExecute.join(", ")}`,
-        searchPath
-          ? `Configured search_path: ${searchPath}`
-          : "No function-local search_path is configured.",
-      ],
-      `security-definer:${resource}`,
-      "Restrict EXECUTE and set a function-local search_path containing only trusted schemas, typically pg_catalog plus explicitly trusted application schemas.",
-    );
+        "REAPER-PG-001",
+        "Broadly executable SECURITY DEFINER function has unsafe search_path",
+        "HIGH",
+        "Privileges",
+        [
+          `SECURITY DEFINER owner: ${fn.owner}`,
+          `Effective broad EXECUTE through: ${broadExecute.join(", ")}`,
+          searchPath
+            ? `Configured search_path: ${searchPath}`
+            : "No function-local search_path is configured.",
+        ],
+        `security-definer:${resource}`,
+        "Restrict EXECUTE and set a function-local search_path containing only trusted schemas, typically pg_catalog plus explicitly trusted application schemas.",
+      );
 
     const dynamicSql =
       fn.definition &&
