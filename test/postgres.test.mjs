@@ -406,4 +406,3 @@ test("broad SECURITY DEFINER dynamic SQL receives a dedicated review finding", (
   );
   assert.ok(result.some((item) => item.ruleId === "REAPER-PG-002"));
 });
-
