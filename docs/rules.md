@@ -1,72 +1,132 @@
 # Implemented rules
 
-Most 0.1.0 findings are static/catalog observations. `REAPER-VERIFY-001` uses CONFIRMED confidence only when an explicitly configured runtime authorization assertion receives an unexpected HTTP status.
+REAPER 0.2.0 combines static source observations, PostgreSQL catalog posture and
+explicit runtime assertions. Static/catalog findings are review evidence.
+`REAPER-VERIFY-001` uses CONFIRMED confidence only when a configured runtime
+security expectation receives an unexpected HTTP status.
 
-| Rule              | Evidence                                                                                    | Severity / confidence | Important boundary                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
-| REAPER-SQL-001    | HTTP input flows into a supported SQL text argument                                         | HIGH / HIGH           | Bound value arrays and Prisma tagged templates are not SQL text interpolation |
-| REAPER-SQL-002    | Parsed constant UPDATE/DELETE has no WHERE                                                  | MEDIUM / HIGH         | Whole-table maintenance can be intentional                                    |
-| REAPER-AUTH-001   | Request-dependent Prisma filter on a related resource has no supported principal constraint | MEDIUM / MEDIUM       | Middleware and post-query guards may authorize access                         |
-| REAPER-TENANT-001 | Route reaches a related tenant resource without supported tenant constraint                 | MEDIUM / MEDIUM       | Source analysis does not prove database RLS                                   |
-| REAPER-RLS-001    | PUBLIC/anon/authenticated table grant and RLS disabled                                      | HIGH / MEDIUM         | Schema exposure and application paths need independent verification           |
-| REAPER-RLS-002    | RLS enabled and no policies                                                                 | INFO / MEDIUM         | Default deny, not default allow; bypass roles remain relevant                 |
-| REAPER-RLS-003    | Broad-role permissive policy has constant TRUE USING or CHECK                               | MEDIUM / MEDIUM       | Restrictive policies, commands and grants affect effective access             |
-| REAPER-PRIV-001   | Broad role has TRUNCATE, TRIGGER or REFERENCES                                              | HIGH / MEDIUM         | Review intended privilege; owner privileges alone are not flagged             |
+## Source and authorization
 
-Source analysis recognizes direct post-query ownership or tenant comparisons against trusted principal paths when the denial branch terminates with `throw`, including results returned through supported direct helper calls. It does not treat request-supplied identities, non-terminating comparisons, arbitrary middleware or opaque helper functions as authorization proof.
+| Rule | Evidence | Severity / confidence | Boundary |
+| --- | --- | --- | --- |
+| REAPER-SQL-001 | HTTP-controlled data reaches a supported raw SQL text argument | HIGH / HIGH | Bound value arrays and tagged parameterization are not SQL text interpolation |
+| REAPER-SQL-002 | Parsed constant UPDATE/DELETE has no WHERE | MEDIUM / HIGH | Whole-table maintenance can be intentional |
+| REAPER-AUTH-001 | Request-dependent Prisma access lacks a supported ownership constraint | MEDIUM / MEDIUM, raised for configured sensitive data | Middleware, post-query guards or DB policy may still authorize |
+| REAPER-TENANT-001 | Route reaches a tenant-scoped Prisma resource without a supported tenant constraint | MEDIUM / MEDIUM, raised for configured sensitive data | Database RLS is independent evidence |
+| REAPER-SUPA-001 | Supabase service-role credential is hardcoded or referenced from client-exposed configuration | HIGH / HIGH | Public anon/publishable keys are not findings by themselves |
 
-### REAPER-SUPA-001
+Source analysis recognizes supported direct post-query ownership/tenant deny
+guards, direct helper returns and sequentially resolved Express/Fastify route
+middleware that mutates the shared request object. Request-supplied identities,
+non-terminating comparisons and opaque/dynamic middleware are not treated as
+authorization proof.
 
-Reports a HIGH/HIGH finding when REAPER can establish that a Supabase service-role
-credential is hardcoded, or is referenced from client-exposed configuration.
-JWT payloads are inspected only to identify the `service_role` claim; the raw
-credential is not stored in the finding. Public anon/publishable key references
-are not findings by themselves.
+## PostgreSQL, RLS and privilege posture
 
-Supabase table operations and RPC calls are also represented as data-access
-graph sinks.
+| Rule | Evidence | Severity / confidence |
+| --- | --- | --- |
+| REAPER-RLS-001 | Broad table grant with RLS disabled | HIGH / MEDIUM |
+| REAPER-RLS-002 | RLS enabled with no policies | INFO / MEDIUM |
+| REAPER-RLS-003 | Broad permissive policy has constant TRUE USING/CHECK | MEDIUM / MEDIUM |
+| REAPER-RLS-004 | Broad permissive policy is recognized as role-only without row identity | MEDIUM / MEDIUM |
+| REAPER-PRIV-001 | Broad role has TRUNCATE, TRIGGER or REFERENCES | HIGH / MEDIUM |
+| REAPER-PRIV-002 | Broad role has effective CREATE on an application schema | HIGH / MEDIUM |
+| REAPER-PRIV-003 | Broad application role is SUPERUSER or BYPASSRLS | CRITICAL / MEDIUM |
+| REAPER-PG-001 | Broadly executable SECURITY DEFINER function has unsafe function-local search_path | HIGH / MEDIUM |
+| REAPER-VIEW-001 | Broadly readable view does not use security_invoker | HIGH / MEDIUM |
+| REAPER-TRIGGER-001 | Broad table DML can invoke a SECURITY DEFINER trigger function with unsafe search_path | HIGH / MEDIUM |
+
+Role membership is expanded through PostgreSQL memberships when ROLINHERIT
+applies. RLS expressions are classified for common identity
+(`auth.uid()`), tenant/JWT, role-only and constant predicates. REAPER does not
+theorem-prove arbitrary SQL functions, subqueries or every composition of
+permissive/restrictive policies.
+
+View findings review caller-versus-owner privilege posture; they do not parse all
+view dependencies into a proof. Trigger findings correlate the table grant,
+trigger function and SECURITY DEFINER/search_path posture; trigger body semantics
+remain a review boundary.
+
+## Supabase source-to-database correlation
 
 ### REAPER-SUPA-002
 
-When a source scan is combined with `--db-env`, REAPER correlates supported
-Supabase table operations with the PostgreSQL snapshot. A HIGH/HIGH finding is
-created only when the same table is observed in source, the required operation
-is effectively granted to a broad client role (including inherited grants) and
+When a source scan is combined with `--db-env`, REAPER correlates a supported
+Supabase table operation with the same PostgreSQL table. A HIGH/HIGH finding
+requires the operation to be effectively granted to a broad client role while
 RLS is disabled.
-
-This is stronger evidence than either observation alone, but it still does not
-prove that a public HTTP path exposes the table.
 
 ### REAPER-SUPA-003
 
-When a supported Supabase `rpc()` call is combined with a PostgreSQL snapshot,
-REAPER correlates the RPC name with functions in the `public` schema.
-A HIGH/HIGH finding requires all of the following: the function is
-`SECURITY DEFINER`, a broad client role has effective `EXECUTE`, and the
-function-local `search_path` is missing or contains an untrusted schema such
-as `public`, `pg_temp` or `$user`.
+A supported Supabase `rpc()` call is correlated with functions in the
+`public` schema. A HIGH/HIGH finding requires a SECURITY DEFINER function,
+effective broad EXECUTE and an unsafe/missing function-local `search_path`.
 
-### Runtime verification
+### Supabase Storage
 
-`REAPER-VERIFY-001` is HIGH/CONFIRMED for configured ownership/anonymous
-assertions and CRITICAL/CONFIRMED for configured tenant-isolation assertions
-when the observed status differs from the expected status. REAPER does not
-invent the expectation: the operator supplies the exact path, expected status
-and optional token environment variable.
+| Rule | Evidence | Severity / confidence |
+| --- | --- | --- |
+| REAPER-STORAGE-001 | `storage.objects` exists with RLS disabled | HIGH / MEDIUM |
+| REAPER-STORAGE-002 | Broad permissive `storage.objects` policy has a constant-open predicate | HIGH / MEDIUM |
+| REAPER-STORAGE-003 | Observed Supabase Storage source path reaches broadly granted `storage.objects` with RLS disabled | HIGH / HIGH |
+| REAPER-STORAGE-004 | Observed Supabase Storage source path is covered by a broad constant-open policy | HIGH / HIGH |
 
-Role membership is expanded through PostgreSQL memberships when ROLINHERIT applies. Source and catalog results are still not combined into an exploitability proof. No score is computed because coverage is too incomplete to justify one.
+Storage source graph support recognizes bucket-scoped operations such as
+download, upload, update, remove, list, move, copy and signed-URL creation.
+Storage policy correlation currently reasons at the `storage.objects` policy
+level; it does not fully solve arbitrary bucket/path expressions.
 
-### PostgreSQL privilege graph and SECURITY DEFINER
+## Migrations
 
-REAPER expands PostgreSQL role memberships for roles that inherit privileges.
-This lets table/schema grants assigned to an intermediate role contribute to the
-effective access of `anon`, `authenticated` or other broad roles.
+| Rule | Evidence | Severity / confidence |
+| --- | --- | --- |
+| REAPER-MIGRATION-001 | Migration disables RLS | HIGH / HIGH |
+| REAPER-MIGRATION-002 | Migration removes FORCE ROW LEVEL SECURITY | MEDIUM / HIGH |
+| REAPER-MIGRATION-003 | Migration drops an RLS policy | MEDIUM / HIGH |
+| REAPER-MIGRATION-004 | Migration grants broad/dangerous database privileges | MEDIUM or HIGH / HIGH |
 
-- `REAPER-PRIV-002` reports broad effective `CREATE` on application schemas.
-- `REAPER-PRIV-003` reports broad roles with SUPERUSER or BYPASSRLS.
-- `REAPER-PG-001` reports broadly executable `SECURITY DEFINER` functions
-  when no function-local `search_path` is set or it contains `$user`,
-  `public` or `pg_temp`.
+Migration analysis is statement-oriented. It does not reconstruct a complete
+before/after schema across every ORM migration representation.
 
-These remain review findings. REAPER does not claim a privilege-escalation path
-unless it can establish the relevant grants and unsafe function posture.
+## Secrets and password crypto
+
+| Rule | Evidence | Severity / confidence |
+| --- | --- | --- |
+| REAPER-CRYPTO-001 | Database URL with embedded credentials in source | HIGH / HIGH |
+| REAPER-CRYPTO-002 | Private-key PEM material embedded in source | CRITICAL / HIGH |
+| REAPER-CRYPTO-003 | Fast general-purpose hash is applied to password-like input | MEDIUM or HIGH / HIGH |
+
+Credential/key values are intentionally omitted from findings.
+
+## Runtime verification
+
+`REAPER-VERIFY-001` is HIGH/CONFIRMED for configured
+ownership/anonymous assertions and CRITICAL/CONFIRMED for configured
+tenant-isolation assertions when the observed status differs from the expected
+status.
+
+REAPER does not invent the security expectation. The operator supplies the
+assertion. Optional setup/teardown requests are explicitly configured and
+require `allowMutations: true`. Captured IDs/tokens stay in memory and can be
+used by later assertions/cleanup without copying token values into findings.
+
+OpenAPI discovery is limited to GET/HEAD operations from configured/default
+documentation paths on localhost or an exact allowlisted origin.
+
+## Rule SDK
+
+The programmatic API can pass `rules` to `scan()`. A custom rule receives a
+normalized `ScanResult`, validated config and a deterministic `context.add()`
+finding helper. Custom rule IDs must use the `REAPER-...` namespace and are
+checked for duplicates.
+
+Custom rules run inside the caller's Node.js process. They are code supplied by
+the API consumer, unlike `reaper.config.ts`, which remains literal data and is
+never executed.
+
+## Score boundary
+
+The numerical score is an explainable triage aid. Severity and confidence
+produce category penalties, and critical/high findings cap the overall score.
+It does not convert incomplete analysis into proof that an application is
+secure.
