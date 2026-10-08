@@ -4,7 +4,10 @@ import type { Config, Finding, ScanResult } from "./model.js";
 export interface RuleContext {
   result: ScanResult;
   config: Config;
-  add(input: Omit<Finding, "id" | "fingerprint" | "status">, identity: string): Finding;
+  add(
+    input: Omit<Finding, "id" | "fingerprint" | "status">,
+    identity: string,
+  ): Finding;
 }
 
 export interface ReaperRule {
@@ -21,7 +24,8 @@ export async function runRules(
   for (const rule of rules) {
     if (!/^REAPER-[A-Z0-9-]+$/.test(rule.id))
       throw new Error(`Invalid custom rule id: ${rule.id}`);
-    if (seen.has(rule.id)) throw new Error(`Duplicate custom rule id: ${rule.id}`);
+    if (seen.has(rule.id))
+      throw new Error(`Duplicate custom rule id: ${rule.id}`);
     seen.add(rule.id);
     const context: RuleContext = {
       result,
