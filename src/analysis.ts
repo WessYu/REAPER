@@ -695,10 +695,7 @@ export function analyze(
         if (method === "bind" && receiver.fn)
           return {
             ...receiver,
-            boundArgs: [
-              ...(receiver.boundArgs ?? []),
-              ...args.slice(1),
-            ],
+            boundArgs: [...(receiver.boundArgs ?? []), ...args.slice(1)],
           };
         if (method === "call" && receiver.fn)
           return invoke(
@@ -1571,9 +1568,7 @@ export function analyze(
     const leaf = parts.at(-1);
     if (!leaf) return;
     const normalized =
-      parts[0] === "request"
-        ? principal
-        : `req.${parts.slice(1).join(".")}`;
+      parts[0] === "request" ? principal : `req.${parts.slice(1).join(".")}`;
     current.fields ??= new Map<string, Value>();
     current.fields.set(leaf, {
       trace: [],
@@ -1591,7 +1586,8 @@ export function analyze(
       invoke(step.fn, [request, empty(), empty()], env, route, 0);
       return;
     }
-    for (const principal of config.middleware?.[step.contract]?.establishes ?? [])
+    for (const principal of config.middleware?.[step.contract]?.establishes ??
+      [])
       establishPrincipal(request, principal);
   }
   function addRoute(fn: Fn, route: string, next: boolean): void {
@@ -1692,8 +1688,7 @@ export function analyze(
             : undefined;
           const contract = hook ? middlewareContract(hook) : undefined;
           if (fn) inheritedMiddleware.push({ step: { fn } });
-          else if (contract)
-            inheritedMiddleware.push({ step: { contract } });
+          else if (contract) inheritedMiddleware.push({ step: { contract } });
         }
       }
       if (
