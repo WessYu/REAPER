@@ -52,7 +52,10 @@ function nodeId(file: string, node: ts.Node, suffix = ""): string {
   return `cfg:${file}:${node.pos}:${node.end}${suffix}`;
 }
 
-function location(source: ts.SourceFile, node: ts.Node): {
+function location(
+  source: ts.SourceFile,
+  node: ts.Node,
+): {
   line: number;
   column: number;
 } {
@@ -151,12 +154,11 @@ function buildStatement(
     ts.isForInStatement(statement) ||
     ts.isForOfStatement(statement)
   ) {
-    const condition =
-      ts.isForStatement(statement)
-        ? statement.condition
-        : ts.isForInStatement(statement) || ts.isForOfStatement(statement)
-          ? statement.expression
-          : statement.expression;
+    const condition = ts.isForStatement(statement)
+      ? statement.condition
+      : ts.isForInStatement(statement) || ts.isForOfStatement(statement)
+        ? statement.expression
+        : statement.expression;
     const label = ts.isForStatement(statement)
       ? `for (${statement.initializer?.getText(context.source) ?? ""}; ${statement.condition?.getText(context.source) ?? ""}; ${statement.incrementor?.getText(context.source) ?? ""})`
       : ts.isForInStatement(statement) || ts.isForOfStatement(statement)
@@ -206,7 +208,11 @@ function buildStatement(
     const finalEntry = statement.finallyBlock
       ? buildBlock(statement.finallyBlock.statements, next, context)
       : next;
-    const tryEntry = buildBlock(statement.tryBlock.statements, finalEntry, context);
+    const tryEntry = buildBlock(
+      statement.tryBlock.statements,
+      finalEntry,
+      context,
+    );
     edge(context, id, tryEntry, "try");
     if (statement.catchClause) {
       const catchEntry = buildBlock(
@@ -216,7 +222,8 @@ function buildStatement(
       );
       edge(context, id, catchEntry, "catch");
     }
-    if (statement.finallyBlock && finalEntry) edge(context, id, finalEntry, "finally");
+    if (statement.finallyBlock && finalEntry)
+      edge(context, id, finalEntry, "finally");
     return id;
   }
 
@@ -241,7 +248,10 @@ function buildStatement(
   return id;
 }
 
-function functionName(node: ts.FunctionLikeDeclaration, source: ts.SourceFile): string {
+function functionName(
+  node: ts.FunctionLikeDeclaration,
+  source: ts.SourceFile,
+): string {
   const named = "name" in node ? node.name : undefined;
   if (named && ts.isIdentifier(named)) return named.text;
   if (
@@ -254,7 +264,10 @@ function functionName(node: ts.FunctionLikeDeclaration, source: ts.SourceFile): 
   return `anonymous@${location(source, node).line}`;
 }
 
-function buildSourceFile(file: string, source: ts.SourceFile): ControlFlowGraph {
+function buildSourceFile(
+  file: string,
+  source: ts.SourceFile,
+): ControlFlowGraph {
   const nodes: ControlFlowNode[] = [];
   const edges: ControlFlowEdge[] = [];
   const context: BuildContext = { source, file, nodes, edges };
