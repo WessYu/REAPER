@@ -33,14 +33,18 @@ automatically. Remote origins are blocked unless the exact origin is listed in
 `verify.allowedTargets`. Redirect following is disabled.
 
 OpenAPI discovery checks only configured/default documentation paths and returns
-GET/HEAD operations. It does not crawl arbitrary links or enumerate the public
-internet.
+GET/HEAD operations. Optional active probing is limited to non-templated
+discovered GET/HEAD paths and inherits the same exact-origin authorization,
+request budget, rate limit, timeout and cancellation controls. It does not crawl
+arbitrary links or enumerate the public internet.
 
 Assertions use GET/HEAD. Synthetic setup and teardown may use POST, PUT, PATCH
 or DELETE only when the operator explicitly sets `verify.allowMutations: true`
-and provides the exact paths and bodies. REAPER does not invent signup flows,
-destructive requests or credentials. Use synthetic accounts/resources and
-local/preview environments whenever possible.
+and provides the exact paths and bodies. The optional `syntheticUsers`
+provisioner is also mutation-gated and requires an explicit signup template,
+token capture path and optional cleanup template; it never guesses account
+creation, MFA/CAPTCHA behavior, destructive requests or credentials. Use
+synthetic accounts/resources and local/preview environments whenever possible.
 
 Runtime work is bounded by request budgets, rate limits, concurrency caps,
 response-capture limits, timeouts and cancellation. Authentication tokens are
