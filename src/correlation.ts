@@ -94,9 +94,7 @@ export function correlateSourceDatabase(
                 `Source operation: ${query.label}`,
                 `Effective broad grants: ${[
                   ...new Set(
-                    grants.map(
-                      (grant) => `${grant.role}:${grant.privilege}`,
-                    ),
+                    grants.map((grant) => `${grant.role}:${grant.privilege}`),
                   ),
                 ].join(", ")}`,
                 "storage.objects row-level security is disabled.",
