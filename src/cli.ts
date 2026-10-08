@@ -36,7 +36,8 @@ reaper report <json>    Render a saved JSON report
 reaper explain <id> --input <json>
 reaper graph <json>      Render report graph as JSON or DOT
 reaper score <json>      Calculate an explainable score from a saved report
-reaper verify <target>    Run configured safe authorization assertions
+reaper verify <target>    Run configured authorization scenarios
+reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
 reaper serve [path]       Start a localhost-only REST service and dashboard
 reaper doctor           Check runtime version
@@ -130,6 +131,16 @@ async function main(): Promise<void> {
     await output(
       `Node ${process.versions.node}; supported: ${Number(process.versions.node.split(".")[0]) >= 22}\n`,
     );
+    return;
+  }
+  if (command === "discover") {
+    if (!arg) throw new Error("discover requires a target URL.");
+    if (!values.config)
+      throw new Error("discover requires --config.");
+    const verifyConfig = await readConfig(values.config);
+    const { discoverEndpoints } = await import("./verify.js");
+    const endpoints = await discoverEndpoints(arg, verifyConfig);
+    await output(JSON.stringify(endpoints, null, 2) + "\n");
     return;
   }
   if (command === "verify") {

@@ -42,13 +42,31 @@ export interface Resource {
   tenant?: string[];
   sensitive?: string[];
 }
+export type VerifyJson =
+  | string
+  | number
+  | boolean
+  | null
+  | VerifyJson[]
+  | { [key: string]: VerifyJson };
 export interface VerifyAssertion {
   name: string;
   path: string;
   method?: "GET" | "HEAD";
   expectStatus: number;
   authEnv?: string;
+  authVar?: string;
   dimension?: "ownership" | "tenant" | "anonymous";
+}
+export interface VerifyLifecycleRequest {
+  name: string;
+  path: string;
+  method: "POST" | "PUT" | "PATCH" | "DELETE";
+  expectStatus?: number;
+  authEnv?: string;
+  authVar?: string;
+  body?: VerifyJson;
+  capture?: Record<string, string>;
 }
 export interface VerifyConfig {
   allowedTargets?: string[];
@@ -56,6 +74,11 @@ export interface VerifyConfig {
   concurrency?: number;
   timeoutMs?: number;
   rateLimitPerSecond?: number;
+  discoverOpenApi?: boolean;
+  openApiPaths?: string[];
+  allowMutations?: boolean;
+  setup?: VerifyLifecycleRequest[];
+  teardown?: VerifyLifecycleRequest[];
   assertions: VerifyAssertion[];
 }
 export interface Config {

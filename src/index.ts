@@ -4,7 +4,7 @@ export { report, fails } from "./reporter.js";
 export { calculateScore, renderScore } from "./score.js";
 export { renderGraph } from "./graph.js";
 export { renderExplanation } from "./explain.js";
-export { verify } from "./verify.js";
+export { verify, discoverEndpoints } from "./verify.js";
 export { correlateSourceDatabase } from "./correlation.js";
 export { readConfig, validateConfig } from "./config.js";
 export type * from "./model.js";
