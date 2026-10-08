@@ -12,11 +12,12 @@ export async function createReaperServer(options: {
   let running: Promise<ScanResult> | undefined;
   const execute = async () => {
     if (!running)
-      running = scan({ root: options.root, configFile: options.configFile }).finally(
-        () => {
-          running = undefined;
-        },
-      );
+      running = scan({
+        root: options.root,
+        configFile: options.configFile,
+      }).finally(() => {
+        running = undefined;
+      });
     latest = await running;
     return latest;
   };
@@ -41,7 +42,10 @@ export async function createReaperServer(options: {
         res.end(JSON.stringify(result, null, 2) + "\n");
         return;
       }
-      if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
+      if (
+        req.method === "GET" &&
+        (req.url === "/" || req.url === "/index.html")
+      ) {
         res.setHeader("content-type", "text/html; charset=utf-8");
         res.end(renderDashboard(latest!));
         return;
@@ -60,6 +64,7 @@ export async function createReaperServer(options: {
     server.listen(port, "127.0.0.1", () => resolve());
   });
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Local service did not bind.");
+  if (!address || typeof address === "string")
+    throw new Error("Local service did not bind.");
   return { server, port: address.port };
 }
