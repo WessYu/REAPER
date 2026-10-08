@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { scan, readConfig, report, fails } from "../dist/index.js";
+import {
+  scan,
+  readConfig,
+  validateConfig,
+  report,
+  fails,
+} from "../dist/index.js";
 const resources = {
   order: { ownership: ["userId"], tenant: ["organizationId"] },
 };
@@ -471,7 +477,7 @@ test("Express app.use middleware can establish a shared principal before a route
 test("path-scoped Express middleware only applies under its mount prefix", async () =>
   source(
     prefix +
-      `function auth(req,res,next){req.user={id:req.auth.userId};next();}app.use('/private',auth);app.get('/public/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
+      `function auth(req,res,next){req.subject=req.auth.userId;next();}app.use('/private',auth);app.get('/public/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.subject}}));`,
     (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-AUTH-001")),
     { resources: { order: { ownership: ["userId"] } } },
   ));
