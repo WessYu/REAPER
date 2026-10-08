@@ -24,6 +24,7 @@ interface Value {
   fields?: Map<string, Value>;
   items?: Value[];
   fn?: Fn;
+  boundArgs?: Value[];
   resource?: string;
   resourceField?: string;
   queryKey?: string;
@@ -604,6 +605,54 @@ export function analyze(
       );
       const moduleName = importedModule(node.expression);
       const importName = importedName(node.expression);
+
+      if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression)
+      ) {
+        const owner = node.expression.expression.text;
+        const method = node.expression.name.text;
+        if (owner === "Object" && method === "assign" && args[0]) {
+          const target = args[0];
+          target.fields ??= new Map<string, Value>();
+          for (const source of args.slice(1))
+            for (const [key, value] of source.fields ?? [])
+              target.fields.set(key, value);
+          target.trace = combine(args).trace;
+          return target;
+        }
+        if (
+          owner === "Object" &&
+          method === "defineProperty" &&
+          args[0] &&
+          args[1]?.text !== undefined
+        ) {
+          const descriptor = args[2]?.fields?.get("value");
+          if (descriptor) {
+            args[0].fields ??= new Map<string, Value>();
+            args[0].fields.set(args[1].text, descriptor);
+          }
+          return args[0];
+        }
+        if (
+          owner === "Reflect" &&
+          method === "get" &&
+          args[0] &&
+          args[1]?.text !== undefined
+        )
+          return member(args[0], args[1].text, node);
+        if (
+          owner === "Reflect" &&
+          method === "set" &&
+          args[0] &&
+          args[1]?.text !== undefined &&
+          args[2]
+        ) {
+          args[0].fields ??= new Map<string, Value>();
+          args[0].fields.set(args[1].text, args[2]);
+          return args[2];
+        }
+      }
       if (
         moduleName?.startsWith("drizzle-orm/") &&
         ["pgTable", "mysqlTable", "sqliteTable"].includes(importName ?? "") &&
@@ -643,12 +692,26 @@ export function analyze(
         )
           return { trace: [evidence(node, "source", `request.${method}()`)] };
         if (sinkValue) return sinkValue;
+        if (method === "bind" && receiver.fn)
+          return {
+            ...receiver,
+            boundArgs: [
+              ...(receiver.boundArgs ?? []),
+              ...args.slice(1),
+            ],
+          };
         if (method === "call" && receiver.fn)
-          return invoke(receiver.fn, args.slice(1), env, route, depth + 1);
+          return invoke(
+            receiver.fn,
+            [...(receiver.boundArgs ?? []), ...args.slice(1)],
+            env,
+            route,
+            depth + 1,
+          );
         if (method === "apply" && receiver.fn)
           return invoke(
             receiver.fn,
-            args[1]?.items ?? [],
+            [...(receiver.boundArgs ?? []), ...(args[1]?.items ?? [])],
             env,
             route,
             depth + 1,
@@ -658,7 +721,14 @@ export function analyze(
           return receiver;
         }
       }
-      if (callee.fn) return invoke(callee.fn, args, env, route, depth + 1);
+      if (callee.fn)
+        return invoke(
+          callee.fn,
+          [...(callee.boundArgs ?? []), ...args],
+          env,
+          route,
+          depth + 1,
+        );
       if (callee.driver === "knex" && args[0]?.text)
         return {
           trace: combine(args).trace,

@@ -526,3 +526,26 @@ test("invalid middleware contracts are rejected as config", () => {
   );
 });
 
+test("Object.assign preserves shared alias authorization state", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{const where={userId:req.user.id};const alias=where;Object.assign(alias,{userId:req.query.user});return prisma.order.findUnique({where});});`,
+    (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-AUTH-001")),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
+
+test("Reflect.get and Reflect.set preserve computed property provenance", async () =>
+  source(
+    prefix +
+      `app.get('/a',(req)=>{const where={userId:req.user.id};Reflect.set(where,'userId',req.query.user);const value=Reflect.get(where,'userId');return prisma.order.findUnique({where:{id:req.params.id,userId:value}});});`,
+    (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-AUTH-001")),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
+
+test("bound helper arguments retain taint across indirect calls", async () =>
+  source(
+    prefix +
+      `function run(prefix,q){return pool.query(prefix+q);}const bound=run.bind(null,'SELECT ');app.get('/a',(req)=>bound(req.query.q));`,
+    (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-SQL-001")),
+  ));
+
