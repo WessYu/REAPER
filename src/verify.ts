@@ -78,21 +78,27 @@ function severity(assertion: VerifyAssertion): "CRITICAL" | "HIGH" {
 }
 
 function interpolate(value: string, variables: Map<string, string>): string {
-  return value.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (_, name: string) => {
-    const replacement = variables.get(name);
-    if (replacement === undefined)
-      throw new Error(`Missing captured variable ${name}.`);
-    return replacement;
-  });
+  return value.replace(
+    /\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g,
+    (_, name: string) => {
+      const replacement = variables.get(name);
+      if (replacement === undefined)
+        throw new Error(`Missing captured variable ${name}.`);
+      return replacement;
+    },
+  );
 }
 
 function requestPath(path: string, variables: Map<string, string>): string {
-  return path.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (_, name: string) => {
-    const replacement = variables.get(name);
-    if (replacement === undefined)
-      throw new Error(`Missing captured variable ${name}.`);
-    return encodeURIComponent(replacement);
-  });
+  return path.replace(
+    /\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g,
+    (_, name: string) => {
+      const replacement = variables.get(name);
+      if (replacement === undefined)
+        throw new Error(`Missing captured variable ${name}.`);
+      return encodeURIComponent(replacement);
+    },
+  );
 }
 
 function bodyValue(
@@ -331,10 +337,9 @@ function openApiEndpoints(document: unknown): string[] {
 
 async function discoverWithContext(context: RuntimeContext): Promise<string[]> {
   if (context.config.discoverOpenApi !== true) return [];
-  const paths =
-    context.config.openApiPaths?.length
-      ? context.config.openApiPaths
-      : ["/openapi.json", "/swagger.json", "/api-docs", "/api/openapi.json"];
+  const paths = context.config.openApiPaths?.length
+    ? context.config.openApiPaths
+    : ["/openapi.json", "/swagger.json", "/api-docs", "/api/openapi.json"];
   for (const path of paths) {
     try {
       const response = await request(context, { path, method: "GET" });
@@ -410,10 +415,9 @@ async function executeAssertion(
     if (response.status === assertion.expectStatus) return;
 
     const resolvedPath = requestPath(assertion.path, context.variables);
-    const route = `${assertion.method ?? "GET"} ${new URL(
-      resolvedPath,
-      context.target,
-    ).pathname}`;
+    const route = `${assertion.method ?? "GET"} ${
+      new URL(resolvedPath, context.target).pathname
+    }`;
     const loc = {
       file: `runtime/${context.target.hostname}`,
       line: 1,
