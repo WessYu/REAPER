@@ -80,7 +80,7 @@ export interface GraphEdge {
   relation: "calls" | "accesses";
 }
 export interface ScanResult {
-  version: "0.1.0";
+  version: "0.2.0";
   root: string;
   findings: Finding[];
   diagnostics: Diagnostic[];

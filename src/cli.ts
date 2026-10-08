@@ -15,8 +15,10 @@ import { renderGraph } from "./graph.js";
 import { renderExplanation } from "./explain.js";
 import { verify } from "./verify.js";
 import { readConfig } from "./config.js";
+import { renderDashboard } from "./dashboard.js";
+import { createReaperServer } from "./server.js";
 import type { ScanResult } from "./model.js";
-const help = `REAPER 0.1.0 — Data Access Security Engine
+const help = `REAPER 0.2.0 — Data Access Security Engine
 
 reaper scan [path]       Analyze supported JS/TS handlers and data access
 reaper sql [path]        Show SQL findings
@@ -35,6 +37,8 @@ reaper explain <id> --input <json>
 reaper graph <json>      Render report graph as JSON or DOT
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured safe authorization assertions
+reaper dashboard <json>  Render a self-contained HTML security dashboard
+reaper serve [path]       Start a localhost-only REST service and dashboard
 reaper doctor           Check runtime version
 
 --config <file>          Literal reaper.config.ts (never executed)
@@ -62,6 +66,7 @@ async function main(): Promise<void> {
       baseline: { type: "string" },
       "db-env": { type: "string" },
       input: { type: "string" },
+      port: { type: "string" },
     },
   });
   if (values.help || (positionals.length === 0 && !values.version)) {
@@ -69,7 +74,7 @@ async function main(): Promise<void> {
     return;
   }
   if (values.version) {
-    process.stdout.write("0.1.0\n");
+    process.stdout.write("0.2.0\n");
     return;
   }
   const [command, arg, second] = positionals;
@@ -87,7 +92,7 @@ async function main(): Promise<void> {
     if (!file) throw new Error("A JSON report path is required.");
     const data = (await json(file)) as ScanResult;
     if (
-      data?.version !== "0.1.0" ||
+      !["0.1.0", "0.2.0"].includes(data?.version) ||
       !Array.isArray(data.findings) ||
       !data.metrics ||
       !Array.isArray(data.diagnostics)
@@ -95,6 +100,32 @@ async function main(): Promise<void> {
       throw new Error("Invalid REAPER report.");
     return data;
   };
+  if (command === "dashboard") {
+    const rendered = renderDashboard(await saved(arg));
+    await output(rendered);
+    return;
+  }
+  if (command === "serve") {
+    const root = path.resolve(arg ?? ".");
+    const port = values.port ? Number(values.port) : 7337;
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535)
+      throw new Error("--port must be a valid TCP port.");
+    const server = await createReaperServer({
+      root,
+      configFile: values.config,
+      port,
+    });
+    process.stdout.write(
+      `REAPER local service: http://127.0.0.1:${server.port}\nPress Ctrl+C to stop.\n`,
+    );
+    const close = () => {
+      server.server.close();
+    };
+    process.once("SIGINT", close);
+    process.once("SIGTERM", close);
+    await new Promise<void>((resolve) => server.server.once("close", resolve));
+    return;
+  }
   if (command === "doctor") {
     await output(
       `Node ${process.versions.node}; supported: ${Number(process.versions.node.split(".")[0]) >= 22}\n`,
@@ -179,7 +210,7 @@ async function main(): Promise<void> {
       return;
     }
     result = {
-      version: "0.1.0",
+      version: "0.2.0",
       root: "database",
       findings: analyzeDatabase(snapshot).filter((f) =>
         command === "rls" ? f.category === "RLS" : f.category === "Privileges",

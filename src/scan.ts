@@ -7,11 +7,13 @@ import { analyzeSecurity } from "./security.js";
 import { discover, inferResources } from "./project.js";
 import { readConfig, validateConfig } from "./config.js";
 import type { Config, ScanResult } from "./model.js";
+import { runRules, type ReaperRule } from "./rules.js";
 export async function scan(options: {
   root: string;
   config?: Config;
   configFile?: string;
   baseline?: string[];
+  rules?: ReaperRule[];
 }): Promise<ScanResult> {
   const start = performance.now();
   const root = await realpath(options.root);
@@ -19,7 +21,7 @@ export async function scan(options: {
     ? await readConfig(options.configFile)
     : validateConfig(options.config ?? {});
   const result: ScanResult = {
-    version: "0.1.0",
+    version: "0.2.0",
     root,
     findings: [],
     diagnostics: [],
@@ -32,6 +34,7 @@ export async function scan(options: {
   analyze(root, files, { ...config, resources }, result);
   await analyzeMigrations(root, files, result);
   await analyzeSecurity(root, files, result);
+  await runRules(result, config, options.rules ?? []);
   const baseline = new Set(options.baseline ?? []);
   const contents = new Map<string, string[]>();
   for (const f of result.findings) {
