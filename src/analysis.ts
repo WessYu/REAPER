@@ -548,12 +548,7 @@ export function analyze(
         const base = evaluate(node.left.expression, env, route, depth + 1);
         const key = ts.isPropertyAccessExpression(node.left)
           ? node.left.name.text
-          : evaluate(
-              node.left.argumentExpression,
-              env,
-              route,
-              depth + 1,
-            ).text;
+          : evaluate(node.left.argumentExpression, env, route, depth + 1).text;
         if (key !== undefined) {
           base.fields ??= new Map<string, Value>();
           base.fields.set(key, right);
@@ -1344,7 +1339,7 @@ export function analyze(
                 evaluate(declaration.initializer, loop, route, depth + 1),
                 loop,
               );
-        else evaluate(node.initializer, loop, route, depth + 1);
+            else evaluate(node.initializer, loop, route, depth + 1);
       }
       if (node.condition) evaluate(node.condition, loop, route, depth + 1);
       statement(node.statement, loop, route, depth + 1);
