@@ -81,9 +81,13 @@ export interface VerifyConfig {
   teardown?: VerifyLifecycleRequest[];
   assertions: VerifyAssertion[];
 }
+export interface MiddlewareContract {
+  establishes: string[];
+}
 export interface Config {
   resources?: Record<string, Resource>;
   principalPaths?: string[];
+  middleware?: Record<string, MiddlewareContract>;
   exclude?: string[];
   maxFiles?: number;
   maxFileBytes?: number;

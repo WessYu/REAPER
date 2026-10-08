@@ -494,3 +494,35 @@ test("Fastify preHandler hooks can establish request principals", async () =>
     { resources: { order: { ownership: ["userId"] } } },
   ));
 
+test(
+  "configured opaque middleware contracts can establish trusted principals",
+  async () =>
+    source(
+      prefix +
+        `const requireAuth=externalAuth();app.get('/a',requireAuth,(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
+      (r) =>
+        assert.equal(
+          r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
+          0,
+        ),
+      {
+        resources: { order: { ownership: ["userId"] } },
+        middleware: {
+          requireAuth: { establishes: ["req.user.id"] },
+        },
+      },
+    ),
+);
+
+test("invalid middleware contracts are rejected as config", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        middleware: {
+          requireAuth: { establishes: ["user.id"] },
+        },
+      }),
+    /invalid request path/,
+  );
+});
+

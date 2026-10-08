@@ -52,6 +52,7 @@ export function validateConfig(value: unknown): Config {
   const allowed = new Set([
     "resources",
     "principalPaths",
+    "middleware",
     "exclude",
     "maxFiles",
     "maxFileBytes",
@@ -64,6 +65,34 @@ export function validateConfig(value: unknown): Config {
   for (const key of ["principalPaths", "exclude"])
     if (config[key] !== undefined && !strings(config[key]))
       throw new Error(`${key} must be a string array.`);
+  if (config.middleware !== undefined) {
+    if (
+      !config.middleware ||
+      typeof config.middleware !== "object" ||
+      Array.isArray(config.middleware)
+    )
+      throw new Error("middleware must be an object.");
+    for (const [name, raw] of Object.entries(
+      config.middleware as Record<string, unknown>,
+    )) {
+      if (!name.trim()) throw new Error("middleware contract name is empty.");
+      if (!raw || typeof raw !== "object" || Array.isArray(raw))
+        throw new Error(`middleware.${name} must be an object.`);
+      const contract = raw as Record<string, unknown>;
+      for (const key of Object.keys(contract))
+        if (key !== "establishes")
+          throw new Error(`Unknown middleware.${name} key: ${key}`);
+      if (!strings(contract.establishes))
+        throw new Error(
+          `middleware.${name}.establishes must be a string array.`,
+        );
+      for (const principal of contract.establishes)
+        if (!/^(?:req|request)(?:\.[A-Za-z_$][\w$]*)+$/.test(principal))
+          throw new Error(
+            `middleware.${name}.establishes contains an invalid request path.`,
+          );
+    }
+  }
   for (const key of ["maxFiles", "maxFileBytes"])
     if (
       config[key] !== undefined &&

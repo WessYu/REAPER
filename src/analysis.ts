@@ -1455,12 +1455,74 @@ export function analyze(
     }
   }
   const routes = new Set<Fn>();
-  const routeMiddleware = new Map<string, Fn[]>();
-  const inheritedMiddleware: Array<{ prefix?: string; fn: Fn }> = [];
-  function addMiddleware(fn: Fn, route: string): void {
+  type MiddlewareStep = { fn: Fn } | { contract: string };
+  const routeMiddleware = new Map<string, MiddlewareStep[]>();
+  const inheritedMiddleware: Array<{
+    prefix?: string;
+    step: MiddlewareStep;
+  }> = [];
+  function middlewareContract(node: ts.Expression): string | undefined {
+    const candidates = new Set<string>([node.getText()]);
+    if (ts.isIdentifier(node)) candidates.add(node.text);
+    if (ts.isPropertyAccessExpression(node)) candidates.add(node.name.text);
+    const imported = importedName(node);
+    if (imported) candidates.add(imported);
+    return [...candidates].find((name) => config.middleware?.[name]);
+  }
+  function addMiddleware(step: MiddlewareStep, route: string): void {
     const list = routeMiddleware.get(route) ?? [];
-    if (!list.includes(fn)) list.push(fn);
+    if (
+      !list.some((candidate) =>
+        "fn" in step && "fn" in candidate
+          ? candidate.fn === step.fn
+          : "contract" in step &&
+            "contract" in candidate &&
+            candidate.contract === step.contract,
+      )
+    )
+      list.push(step);
     routeMiddleware.set(route, list);
+  }
+  function establishPrincipal(request: Value, principal: string): void {
+    const parts = principal.split(".");
+    if (!["req", "request"].includes(parts[0] ?? "")) return;
+    let current = request;
+    let origin = parts[0] === "request" ? "request" : "req";
+    for (const part of parts.slice(1, -1)) {
+      origin += `.${part}`;
+      current.fields ??= new Map<string, Value>();
+      let next = current.fields.get(part);
+      if (!next) {
+        next = { trace: [], origin, fields: new Map<string, Value>() };
+        current.fields.set(part, next);
+      }
+      current = next;
+    }
+    const leaf = parts.at(-1);
+    if (!leaf) return;
+    const normalized =
+      parts[0] === "request"
+        ? principal
+        : `req.${parts.slice(1).join(".")}`;
+    current.fields ??= new Map<string, Value>();
+    current.fields.set(leaf, {
+      trace: [],
+      origin: normalized,
+      principal: normalized,
+    });
+  }
+  function runMiddleware(
+    step: MiddlewareStep,
+    request: Value,
+    env: Environment,
+    route: string,
+  ): void {
+    if ("fn" in step) {
+      invoke(step.fn, [request, empty(), empty()], env, route, 0);
+      return;
+    }
+    for (const principal of config.middleware?.[step.contract]?.establishes ?? [])
+      establishPrincipal(request, principal);
   }
   function addRoute(fn: Fn, route: string, next: boolean): void {
     routes.add(fn);
@@ -1505,9 +1567,9 @@ export function analyze(
             : middleware.prefix + "/",
         )
       )
-        invoke(middleware.fn, [request, empty(), empty()], env, route, 0);
+        runMiddleware(middleware.step, request, env, route);
     for (const middleware of routeMiddleware.get(route) ?? [])
-      invoke(middleware, [request, empty(), empty()], env, route, 0);
+      runMiddleware(middleware, request, env, route);
     invoke(fn, [request, context], env, route, 0);
   }
   for (const sf of program.getSourceFiles()) {
@@ -1536,7 +1598,13 @@ export function analyze(
           const start = prefix === undefined ? 0 : 1;
           for (const argument of node.arguments.slice(start)) {
             const fn = evaluate(argument, new Map(), undefined, 0).fn;
-            if (fn) inheritedMiddleware.push({ prefix, fn });
+            const contract = middlewareContract(argument);
+            if (fn) inheritedMiddleware.push({ prefix, step: { fn } });
+            else if (contract)
+              inheritedMiddleware.push({
+                prefix,
+                step: { contract },
+              });
           }
         }
         if (
@@ -1548,10 +1616,14 @@ export function analyze(
             node.arguments[0].text,
           )
         ) {
-          const fn = node.arguments[1]
-            ? evaluate(node.arguments[1], new Map(), undefined, 0).fn
+          const hook = node.arguments[1];
+          const fn = hook
+            ? evaluate(hook, new Map(), undefined, 0).fn
             : undefined;
-          if (fn) inheritedMiddleware.push({ fn });
+          const contract = hook ? middlewareContract(hook) : undefined;
+          if (fn) inheritedMiddleware.push({ step: { fn } });
+          else if (contract)
+            inheritedMiddleware.push({ step: { contract } });
         }
       }
       if (
@@ -1568,15 +1640,19 @@ export function analyze(
         const routeLibrary = library(receiver, new Set());
         if (routeLibrary === "express" || routeLibrary === "fastify") {
           const route = `${node.expression.name.text.toUpperCase()} ${node.arguments[0].text}`;
-          const handlers = node.arguments
-            .slice(1)
-            .map((argument) => evaluate(argument, new Map(), route, 0).fn)
-            .filter((fn): fn is Fn => !!fn);
-          const fn = handlers.at(-1);
-          if (fn) {
-            for (const middleware of handlers.slice(0, -1))
-              addMiddleware(middleware, route);
-            addRoute(fn, route, false);
+          const handlerArguments = node.arguments.slice(1);
+          const handlerValues = handlerArguments.map((argument) => ({
+            fn: evaluate(argument, new Map(), route, 0).fn,
+            contract: middlewareContract(argument),
+          }));
+          const final = handlerValues.at(-1)?.fn;
+          if (final) {
+            for (const middleware of handlerValues.slice(0, -1)) {
+              if (middleware.fn) addMiddleware({ fn: middleware.fn }, route);
+              else if (middleware.contract)
+                addMiddleware({ contract: middleware.contract }, route);
+            }
+            addRoute(final, route, false);
           }
         }
       }
