@@ -456,10 +456,8 @@ test("Supabase Storage operations contribute bucket-scoped graph sinks", async (
     },
   ));
 
-test(
-  "Express app.use middleware can establish a shared principal before a route",
-  async () =>
-    source(
+test("Express app.use middleware can establish a shared principal before a route", async () =>
+  source(
     prefix +
       `function auth(req,res,next){req.user={id:req.auth.userId};next();}app.use(auth);app.get('/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
     (r) =>
@@ -467,21 +465,16 @@ test(
         r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
         0,
       ),
-      { resources: { order: { ownership: ["userId"] } } },
-    ),
-);
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
 
-test(
-  "path-scoped Express middleware only applies under its mount prefix",
-  async () =>
-    source(
+test("path-scoped Express middleware only applies under its mount prefix", async () =>
+  source(
     prefix +
       `function auth(req,res,next){req.user={id:req.auth.userId};next();}app.use('/private',auth);app.get('/public/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
-    (r) =>
-      assert.ok(r.findings.some((f) => f.ruleId === "REAPER-AUTH-001")),
-      { resources: { order: { ownership: ["userId"] } } },
-    ),
-);
+    (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-AUTH-001")),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
 
 test("Fastify preHandler hooks can establish request principals", async () =>
   source(
@@ -494,25 +487,22 @@ test("Fastify preHandler hooks can establish request principals", async () =>
     { resources: { order: { ownership: ["userId"] } } },
   ));
 
-test(
-  "configured opaque middleware contracts can establish trusted principals",
-  async () =>
-    source(
-      prefix +
-        `const requireAuth=externalAuth();app.get('/a',requireAuth,(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
-      (r) =>
-        assert.equal(
-          r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
-          0,
-        ),
-      {
-        resources: { order: { ownership: ["userId"] } },
-        middleware: {
-          requireAuth: { establishes: ["req.user.id"] },
-        },
+test("configured opaque middleware contracts can establish trusted principals", async () =>
+  source(
+    prefix +
+      `const requireAuth=externalAuth();app.get('/a',requireAuth,(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
+        0,
+      ),
+    {
+      resources: { order: { ownership: ["userId"] } },
+      middleware: {
+        requireAuth: { establishes: ["req.user.id"] },
       },
-    ),
-);
+    },
+  ));
 
 test("invalid middleware contracts are rejected as config", () => {
   assert.throws(
@@ -548,4 +538,3 @@ test("bound helper arguments retain taint across indirect calls", async () =>
       `function run(prefix,q){return pool.query(prefix+q);}const bound=run.bind(null,'SELECT ');app.get('/a',(req)=>bound(req.query.q));`,
     (r) => assert.ok(r.findings.some((f) => f.ruleId === "REAPER-SQL-001")),
   ));
-
