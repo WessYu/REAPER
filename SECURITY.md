@@ -1,21 +1,65 @@
 # Security policy
 
-REAPER 0.1.x is experimental. Do not use a clean scan as authorization assurance.
+REAPER 0.2.x is experimental. Do not use a clean scan, a high score or a
+successful runtime scenario as authorization assurance.
 
-Report a suspected vulnerability through GitHub private vulnerability reporting if enabled. Otherwise request a private contact channel in an issue without including secrets, customer data, targets or exploit details. Do not assume an issue is private.
+Report a suspected vulnerability through GitHub private vulnerability reporting
+if enabled. Otherwise request a private contact channel in an issue without
+including secrets, customer data, targets or exploit details. Do not assume an
+issue is private.
 
 ## Execution boundaries
 
-Source scanning reads files locally, never executes project code, and makes no network requests. Configuration is parsed as literal data. Dependency install/build are development operations, separate from scanning. Symlink entries and common generated directories are excluded.
+Source scanning reads files locally, never executes project code, and makes no
+network requests. Configuration is parsed as literal data. Dependency
+installation/build are development operations, separate from scanning. Symlink
+entries and common generated directories are excluded.
 
-Database introspection makes an explicit connection using an environment-provided credential, starts a read-only transaction and queries catalogs. REAPER does not request application rows or run project SQL. Use least-privilege credentials and appropriate TLS. Schema metadata remains sensitive.
+Database introspection makes an explicit connection using an
+environment-provided credential, starts a read-only transaction and queries
+catalogs. REAPER does not request application rows, run migrations or invoke
+application functions during catalog inspection. Use least-privilege credentials
+and appropriate TLS. Schema metadata remains sensitive.
 
-Reports include paths, route names, role names and schema metadata. Store them with suitable access controls. File output is created with mode 0600 where supported; existing file permissions are not replaced. Baselines and suppressions are review decisions, not fixes.
+Reports include paths, route names, role names and schema metadata. Store them
+with suitable access controls. File output is created with mode 0600 where
+supported; existing file permissions are not replaced. Baselines and
+suppressions are review decisions, not fixes.
 
-Runtime HTTP verification is opt-in and assertion-driven. Localhost is allowed automatically; remote origins are blocked unless the exact origin is listed in `verify.allowedTargets`. Verification is limited to configured GET/HEAD requests, bounded concurrency, explicit request-rate limits, request budgets and per-request timeouts. Redirect following is disabled.
+## Runtime verification
 
-Authentication tokens are loaded from explicitly named environment variables and are not stored in configuration or copied into findings. REAPER does not discover credentials, brute-force accounts, enumerate the internet, submit destructive methods or create persistence. A CONFIRMED runtime finding means a configured security assertion observed an unexpected HTTP status; it does not by itself prove data exfiltration.
+Runtime verification is opt-in and authorization-scoped. Localhost is allowed
+automatically. Remote origins are blocked unless the exact origin is listed in
+`verify.allowedTargets`. Redirect following is disabled.
 
-Only run verification against systems you own or are explicitly authorized to test. Use synthetic accounts/resources and a local or preview environment whenever possible.
+OpenAPI discovery checks only configured/default documentation paths and returns
+GET/HEAD operations. It does not crawl arbitrary links or enumerate the public
+internet.
 
-The database integration tests deliberately mutate a disposable database. Their environment variable is separate from production DATABASE_URL. Never point REAPER_TEST_DATABASE_URL at a live application database.
+Assertions use GET/HEAD. Synthetic setup and teardown may use POST, PUT, PATCH
+or DELETE only when the operator explicitly sets `verify.allowMutations: true`
+and provides the exact paths and bodies. REAPER does not invent signup flows,
+destructive requests or credentials. Use synthetic accounts/resources and
+local/preview environments whenever possible.
+
+Runtime work is bounded by request budgets, rate limits, concurrency caps,
+response-capture limits, timeouts and cancellation. Authentication tokens are
+loaded from named environment variables or captured in memory from explicitly
+configured setup responses. Token values are not copied into findings.
+
+A CONFIRMED runtime finding means a configured security assertion observed an
+unexpected HTTP status. It does not by itself prove data disclosure or general
+exploitability.
+
+Only run verification against systems you own or are explicitly authorized to
+test.
+
+## Local service
+
+`reaper serve` binds to `127.0.0.1` only. It is intentionally a local review
+service, not a hardened multi-user hosted API. Do not expose it through a public
+reverse proxy without adding an appropriate authentication and isolation layer.
+
+The database integration tests deliberately mutate a disposable database. Their
+environment variable is separate from production `DATABASE_URL`. Never point
+`REAPER_TEST_DATABASE_URL` at a live application database.
