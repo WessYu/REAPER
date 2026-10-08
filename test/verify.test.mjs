@@ -282,3 +282,127 @@ test("synthetic setup can capture credentials for assertions and teardown", asyn
     await once(instance, "close");
   }
 });
+
+test("OpenAPI discovery can actively probe bounded safe routes", async () => {
+  let probes = 0;
+  const { instance, origin } = await server((req, res) => {
+    if (req.url === "/openapi.json") {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          paths: {
+            "/health": { get: { responses: { 200: {} } } },
+            "/users/{id}": { get: { responses: { 200: {} } } },
+          },
+        }),
+      );
+      return;
+    }
+    if (req.url === "/health") {
+      probes++;
+      res.statusCode = 200;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  try {
+    const { discoverRoutes } = await import("../dist/index.js");
+    const endpoints = await discoverRoutes(origin, {
+      verify: {
+        discoverOpenApi: true,
+        probeDiscovered: true,
+        maxRequests: 5,
+        assertions: [],
+      },
+    });
+    assert.equal(endpoints.length, 2);
+    assert.equal(
+      endpoints.find((item) => item.path === "/health")?.status,
+      200,
+    );
+    assert.equal(
+      endpoints.find((item) => item.path === "/users/{id}")?.status,
+      undefined,
+    );
+    assert.equal(probes, 1);
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("synthetic user scenarios create principals and clean them up", async () => {
+  let sequence = 0;
+  const deleted = [];
+  const { instance, origin } = await server((req, res) => {
+    if (req.method === "POST" && req.url === "/test/signup") {
+      sequence++;
+      res.setHeader("content-type", "application/json");
+      res.statusCode = 201;
+      res.end(
+        JSON.stringify({
+          token: `token-${sequence}`,
+          user: { id: `user-${sequence}` },
+        }),
+      );
+      return;
+    }
+    if (req.method === "DELETE" && req.url?.startsWith("/test/users/")) {
+      deleted.push(req.url);
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    if (req.url === "/private") {
+      res.statusCode =
+        req.headers.authorization === "Bearer token-1" ? 403 : 401;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  try {
+    const result = await verify(origin, {
+      verify: {
+        allowMutations: true,
+        maxRequests: 10,
+        syntheticUsers: {
+          count: 2,
+          path: "/test/signup",
+          body: {
+            email:
+              "reaper-{{SYNTHETIC_RUN}}-{{SYNTHETIC_INDEX}}@example.test",
+          },
+          expectStatus: 201,
+          tokenPath: "token",
+          idPath: "user.id",
+          cleanup: {
+            path: "/test/users/{{USER_ID}}",
+            expectStatus: 204,
+          },
+        },
+        assertions: [
+          {
+            name: "user one denied",
+            path: "/private",
+            expectStatus: 403,
+            authVar: "USER_1_TOKEN",
+            dimension: "ownership",
+          },
+        ],
+      },
+    });
+    assert.equal(result.findings.length, 0);
+    assert.deepEqual(deleted.sort(), [
+      "/test/users/user-1",
+      "/test/users/user-2",
+    ]);
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
