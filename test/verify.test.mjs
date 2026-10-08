@@ -373,8 +373,7 @@ test("synthetic user scenarios create principals and clean them up", async () =>
           count: 2,
           path: "/test/signup",
           body: {
-            email:
-              "reaper-{{SYNTHETIC_RUN}}-{{SYNTHETIC_INDEX}}@example.test",
+            email: "reaper-{{SYNTHETIC_RUN}}-{{SYNTHETIC_INDEX}}@example.test",
           },
           expectStatus: 201,
           tokenPath: "token",
@@ -405,4 +404,3 @@ test("synthetic user scenarios create principals and clean them up", async () =>
     await once(instance, "close");
   }
 });
-
