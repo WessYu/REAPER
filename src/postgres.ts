@@ -57,6 +57,8 @@ export interface DatabaseFunction {
   securityDefiner: boolean;
   config: string[] | null;
   executeRoles: string[];
+  language?: string;
+  definition?: string;
 }
 export interface DatabaseView {
   schema: string;
@@ -65,6 +67,7 @@ export interface DatabaseView {
   materialized: boolean;
   securityInvoker: boolean;
   definition: string;
+  dependencies?: string[];
 }
 export interface DatabaseTrigger {
   schema: string;
@@ -73,6 +76,7 @@ export interface DatabaseTrigger {
   functionSchema: string;
   functionName: string;
   enabled: string;
+  definition?: string;
 }
 export interface DatabaseSnapshot {
   tables: Table[];
@@ -177,6 +181,8 @@ export async function introspect(
               pg_catalog.pg_get_userbyid(p.proowner) AS owner,
               p.prosecdef AS "securityDefiner",
               p.proconfig AS config,
+              l.lanname AS language,
+              pg_catalog.pg_get_functiondef(p.oid) AS definition,
               ARRAY(
                 SELECT CASE
                          WHEN x.grantee=0 THEN 'PUBLIC'
@@ -190,6 +196,7 @@ export async function introspect(
               )::text[] AS "executeRoles"
          FROM pg_catalog.pg_proc p
          JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+         JOIN pg_catalog.pg_language l ON l.oid=p.prolang
         WHERE ${catalogFilter}
         ORDER BY 1,2,3`,
     );
@@ -200,7 +207,21 @@ export async function introspect(
               pg_catalog.pg_get_userbyid(c.relowner) AS owner,
               (c.relkind='m') AS materialized,
               COALESCE('security_invoker=true'=ANY(c.reloptions),false) AS "securityInvoker",
-              pg_catalog.pg_get_viewdef(c.oid,true) AS definition
+              pg_catalog.pg_get_viewdef(c.oid,true) AS definition,
+              ARRAY(
+                SELECT DISTINCT dn.nspname || '.' || dc.relname
+                  FROM pg_catalog.pg_rewrite rw
+                  JOIN pg_catalog.pg_depend d
+                    ON d.classid='pg_rewrite'::regclass
+                   AND d.objid=rw.oid
+                   AND d.deptype='n'
+                  JOIN pg_catalog.pg_class dc ON dc.oid=d.refobjid
+                  JOIN pg_catalog.pg_namespace dn ON dn.oid=dc.relnamespace
+                 WHERE rw.ev_class=c.oid
+                   AND dc.oid<>c.oid
+                   AND dc.relkind IN ('r','p','v','m')
+                 ORDER BY 1
+              )::text[] AS dependencies
          FROM pg_catalog.pg_class c
          JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
         WHERE c.relkind IN ('v','m') AND ${catalogFilter}
@@ -213,7 +234,8 @@ export async function introspect(
               t.tgname AS name,
               pn.nspname AS "functionSchema",
               p.proname AS "functionName",
-              t.tgenabled::text AS enabled
+              t.tgenabled::text AS enabled,
+              pg_catalog.pg_get_triggerdef(t.oid,true) AS definition
          FROM pg_catalog.pg_trigger t
          JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
          JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
@@ -667,7 +689,13 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       view.schema,
       view.name,
     ).filter((grant) => grant.privilege === "SELECT");
-    if (grants.length && !view.securityInvoker)
+    if (grants.length && !view.securityInvoker) {
+      const rlsDependencies = (view.dependencies ?? []).filter((dependency) => {
+        const [schema, name] = dependency.split(".", 2);
+        return snapshot.tables.some(
+          (table) => table.schema === schema && table.name === name && table.rls,
+        );
+      });
       add(
         `${view.schema}.${view.name}`,
         "REAPER-VIEW-001",
@@ -678,12 +706,20 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
           `Effective broad SELECT through: ${[
             ...new Set(grants.map((grant) => grant.role)),
           ].join(", ")}`,
+          ...(view.dependencies?.length
+            ? [`Referenced relations: ${view.dependencies.join(", ")}`]
+            : []),
+          ...(rlsDependencies.length
+            ? [
+                `RLS-protected dependencies reached with owner-rights view semantics: ${rlsDependencies.join(", ")}`,
+              ]
+            : []),
           "The view executes with owner privileges unless security_invoker is enabled; review RLS behavior on referenced relations.",
         ],
         `view-security:${view.schema}:${view.name}`,
         "Prefer security_invoker=true for client-facing views when caller RLS/privileges should apply, and review the view definition and grants.",
       );
-  }
+    }
 
   for (const trigger of snapshot.triggers ?? []) {
     const fn = snapshot.functions.find(
@@ -795,11 +831,12 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
     const broadExecute = fn.executeRoles.filter((role) =>
       broadGrant(snapshot, role, broad),
     );
-    if (!broadExecute.length || !unsafeSecurityDefinerSearchPath(fn)) continue;
+    if (!broadExecute.length) continue;
 
     const resource = `${fn.schema}.${fn.name}(${fn.identityArguments})`;
     const searchPath = configuredSearchPath(fn);
-    add(
+    if (unsafeSecurityDefinerSearchPath(fn))
+      add(
       resource,
       "REAPER-PG-001",
       "Broadly executable SECURITY DEFINER function has unsafe search_path",
@@ -815,6 +852,28 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       `security-definer:${resource}`,
       "Restrict EXECUTE and set a function-local search_path containing only trusted schemas, typically pg_catalog plus explicitly trusted application schemas.",
     );
+
+    const dynamicSql =
+      fn.definition &&
+      /\bEXECUTE\b|\bformat\s*\(|\bquote_(?:ident|literal)\s*\(/i.test(
+        fn.definition,
+      );
+    if (dynamicSql)
+      add(
+        resource,
+        "REAPER-PG-002",
+        "Broadly executable SECURITY DEFINER function builds dynamic SQL",
+        "MEDIUM",
+        "Privileges",
+        [
+          `SECURITY DEFINER owner: ${fn.owner}`,
+          `Language: ${fn.language ?? "unknown"}`,
+          `Effective broad EXECUTE through: ${broadExecute.join(", ")}`,
+          "The function definition contains dynamic-SQL construction or execution primitives.",
+        ],
+        `security-definer-dynamic-sql:${resource}`,
+        "Review all dynamic SQL for identifier/value allowlisting and parameterization, minimize EXECUTE grants, and keep a trusted function-local search_path.",
+      );
   }
 
   return findings;

@@ -355,3 +355,55 @@ test("policyGuarantees respects PostgreSQL permissive OR composition", () => {
   assert.equal(policyGuarantees(base, "public", "orders", "ownership"), true);
 });
 
+test("view findings include dependency-level RLS evidence when available", () => {
+  const result = analyzeDatabase(
+    snapshot({
+      tables: [table],
+      views: [
+        {
+          schema: "public",
+          name: "order_summary",
+          owner: "owner",
+          materialized: false,
+          securityInvoker: false,
+          definition: "SELECT * FROM public.orders",
+          dependencies: ["public.orders"],
+        },
+      ],
+      grants: [
+        {
+          schema: "public",
+          table: "order_summary",
+          role: "authenticated",
+          privilege: "SELECT",
+        },
+      ],
+    }),
+  );
+  const finding = result.find((item) => item.ruleId === "REAPER-VIEW-001");
+  assert.ok(finding);
+  assert.ok(finding.evidence.some((value) => /RLS-protected/.test(value)));
+});
+
+test("broad SECURITY DEFINER dynamic SQL receives a dedicated review finding", () => {
+  const result = analyzeDatabase(
+    snapshot({
+      functions: [
+        {
+          schema: "public",
+          name: "lookup_anything",
+          identityArguments: "table_name text",
+          owner: "owner",
+          securityDefiner: true,
+          config: ["search_path=pg_catalog, app_private"],
+          executeRoles: ["authenticated"],
+          language: "plpgsql",
+          definition:
+            "CREATE FUNCTION lookup_anything(table_name text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN EXECUTE format('SELECT * FROM %I', table_name); END $$",
+        },
+      ],
+    }),
+  );
+  assert.ok(result.some((item) => item.ruleId === "REAPER-PG-002"));
+});
+
