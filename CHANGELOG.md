@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — unreleased
+
+- Fixed npm executable packaging by shipping a stable `bin/reaper.js` wrapper, so the `reaper` command is created even when `dist/` does not exist before `prepack` runs.
+- Kept `prepack` building the TypeScript output before the package tarball is finalized.
+
 ## 0.1.0 — unreleased
 
 - Added bounded TypeScript AST analysis, inter-file direct-call expansion and request-to-query evidence.

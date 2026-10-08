@@ -1,10 +1,10 @@
 {
   "name": "@wess2001/reaper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Deterministic data access security analysis for TypeScript and PostgreSQL",
   "type": "module",
   "bin": {
-    "reaper": "dist/cli.js"
+    "reaper": "bin/reaper.js"
   },
   "exports": {
     ".": {
@@ -13,6 +13,7 @@
     }
   },
   "files": [
+    "bin",
     "dist",
     "README.md",
     "LICENSE"

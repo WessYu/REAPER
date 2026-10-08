@@ -37,6 +37,6 @@ jobs:
       - run: npm pack
       - name: Verify installed CLI
         run: |
-          npm install --prefix /tmp/reaper-install ./wess2001-reaper-0.1.0.tgz --ignore-scripts
+          npm install --prefix /tmp/reaper-install ./wess2001-reaper-*.tgz --ignore-scripts
           /tmp/reaper-install/node_modules/.bin/reaper --version
           /tmp/reaper-install/node_modules/.bin/reaper scan test/fixtures/secure --fail-on medium
