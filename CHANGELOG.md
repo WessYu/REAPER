@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 — unreleased
+
+- Expanded bounded control-flow analysis across loops, try/catch/finally and switch with conservative environment merges.
+- Added shared-object/property mutation tracking, deeper alias propagation, direct `.call`/`.apply` support and array mutation tracking for supported values.
+- Added sequentially resolved Express/Fastify route middleware analysis before handler evaluation.
+- Added Supabase Storage bucket/operation graph discovery and source-to-PostgreSQL Storage/RLS correlation.
+- Added PostgreSQL view/materialized-view and trigger introspection plus client-facing view and SECURITY DEFINER trigger posture findings.
+- Added common symbolic RLS expression classification for identity, tenant/JWT, role-only and constant predicates.
+- Added bounded OpenAPI GET/HEAD discovery for localhost/exact-allowlisted targets.
+- Added explicit synthetic setup/teardown scenarios with mutation opt-in, bounded JSON capture, in-memory token/ID variables and cleanup.
+- Added a self-contained HTML dashboard and localhost-only REST review service.
+- Added a programmatic Rule SDK with deterministic finding emission.
+- Expanded tests for middleware, alias/property mutation, Storage, RLS classification, views, triggers, discovery, synthetic lifecycle, dashboard, REST service and custom rules.
+- Kept runtime and database boundaries conservative: no arbitrary internet crawling, credential brute force, automatic destructive requests or project-code execution during static scanning.
+
 ## 0.1.1 — 2026-10-08
 
 - Fixed npm executable packaging by shipping a stable `bin/reaper.js` wrapper, so the `reaper` command is created even when `dist/` does not exist before `prepack` runs.
