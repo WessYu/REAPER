@@ -7,13 +7,13 @@ security expectation receives an unexpected HTTP status.
 
 ## Source and authorization
 
-| Rule | Evidence | Severity / confidence | Boundary |
-| --- | --- | --- | --- |
-| REAPER-SQL-001 | HTTP-controlled data reaches a supported raw SQL text argument | HIGH / HIGH | Bound value arrays and tagged parameterization are not SQL text interpolation |
-| REAPER-SQL-002 | Parsed constant UPDATE/DELETE has no WHERE | MEDIUM / HIGH | Whole-table maintenance can be intentional |
-| REAPER-AUTH-001 | Request-dependent Prisma access lacks a supported ownership constraint | MEDIUM / MEDIUM, raised for configured sensitive data | Middleware, post-query guards or DB policy may still authorize |
-| REAPER-TENANT-001 | Route reaches a tenant-scoped Prisma resource without a supported tenant constraint | MEDIUM / MEDIUM, raised for configured sensitive data | Database RLS is independent evidence |
-| REAPER-SUPA-001 | Supabase service-role credential is hardcoded or referenced from client-exposed configuration | HIGH / HIGH | Public anon/publishable keys are not findings by themselves |
+| Rule              | Evidence                                                                                      | Severity / confidence                                 | Boundary                                                                      |
+| ----------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------- |
+| REAPER-SQL-001    | HTTP-controlled data reaches a supported raw SQL text argument                                | HIGH / HIGH                                           | Bound value arrays and tagged parameterization are not SQL text interpolation |
+| REAPER-SQL-002    | Parsed constant UPDATE/DELETE has no WHERE                                                    | MEDIUM / HIGH                                         | Whole-table maintenance can be intentional                                    |
+| REAPER-AUTH-001   | Request-dependent Prisma access lacks a supported ownership constraint                        | MEDIUM / MEDIUM, raised for configured sensitive data | Middleware, post-query guards or DB policy may still authorize                |
+| REAPER-TENANT-001 | Route reaches a tenant-scoped Prisma resource without a supported tenant constraint           | MEDIUM / MEDIUM, raised for configured sensitive data | Database RLS is independent evidence                                          |
+| REAPER-SUPA-001   | Supabase service-role credential is hardcoded or referenced from client-exposed configuration | HIGH / HIGH                                           | Public anon/publishable keys are not findings by themselves                   |
 
 Source analysis recognizes supported direct post-query ownership/tenant deny
 guards, direct helper returns and sequentially resolved Express/Fastify route
@@ -23,18 +23,18 @@ authorization proof.
 
 ## PostgreSQL, RLS and privilege posture
 
-| Rule | Evidence | Severity / confidence |
-| --- | --- | --- |
-| REAPER-RLS-001 | Broad table grant with RLS disabled | HIGH / MEDIUM |
-| REAPER-RLS-002 | RLS enabled with no policies | INFO / MEDIUM |
-| REAPER-RLS-003 | Broad permissive policy has constant TRUE USING/CHECK | MEDIUM / MEDIUM |
-| REAPER-RLS-004 | Broad permissive policy is recognized as role-only without row identity | MEDIUM / MEDIUM |
-| REAPER-PRIV-001 | Broad role has TRUNCATE, TRIGGER or REFERENCES | HIGH / MEDIUM |
-| REAPER-PRIV-002 | Broad role has effective CREATE on an application schema | HIGH / MEDIUM |
-| REAPER-PRIV-003 | Broad application role is SUPERUSER or BYPASSRLS | CRITICAL / MEDIUM |
-| REAPER-PG-001 | Broadly executable SECURITY DEFINER function has unsafe function-local search_path | HIGH / MEDIUM |
-| REAPER-VIEW-001 | Broadly readable view does not use security_invoker | HIGH / MEDIUM |
-| REAPER-TRIGGER-001 | Broad table DML can invoke a SECURITY DEFINER trigger function with unsafe search_path | HIGH / MEDIUM |
+| Rule               | Evidence                                                                               | Severity / confidence |
+| ------------------ | -------------------------------------------------------------------------------------- | --------------------- |
+| REAPER-RLS-001     | Broad table grant with RLS disabled                                                    | HIGH / MEDIUM         |
+| REAPER-RLS-002     | RLS enabled with no policies                                                           | INFO / MEDIUM         |
+| REAPER-RLS-003     | Broad permissive policy has constant TRUE USING/CHECK                                  | MEDIUM / MEDIUM       |
+| REAPER-RLS-004     | Broad permissive policy is recognized as role-only without row identity                | MEDIUM / MEDIUM       |
+| REAPER-PRIV-001    | Broad role has TRUNCATE, TRIGGER or REFERENCES                                         | HIGH / MEDIUM         |
+| REAPER-PRIV-002    | Broad role has effective CREATE on an application schema                               | HIGH / MEDIUM         |
+| REAPER-PRIV-003    | Broad application role is SUPERUSER or BYPASSRLS                                       | CRITICAL / MEDIUM     |
+| REAPER-PG-001      | Broadly executable SECURITY DEFINER function has unsafe function-local search_path     | HIGH / MEDIUM         |
+| REAPER-VIEW-001    | Broadly readable view does not use security_invoker                                    | HIGH / MEDIUM         |
+| REAPER-TRIGGER-001 | Broad table DML can invoke a SECURITY DEFINER trigger function with unsafe search_path | HIGH / MEDIUM         |
 
 Role membership is expanded through PostgreSQL memberships when ROLINHERIT
 applies. RLS expressions are classified for common identity
@@ -64,12 +64,12 @@ effective broad EXECUTE and an unsafe/missing function-local `search_path`.
 
 ### Supabase Storage
 
-| Rule | Evidence | Severity / confidence |
-| --- | --- | --- |
-| REAPER-STORAGE-001 | `storage.objects` exists with RLS disabled | HIGH / MEDIUM |
-| REAPER-STORAGE-002 | Broad permissive `storage.objects` policy has a constant-open predicate | HIGH / MEDIUM |
-| REAPER-STORAGE-003 | Observed Supabase Storage source path reaches broadly granted `storage.objects` with RLS disabled | HIGH / HIGH |
-| REAPER-STORAGE-004 | Observed Supabase Storage source path is covered by a broad constant-open policy | HIGH / HIGH |
+| Rule               | Evidence                                                                                          | Severity / confidence |
+| ------------------ | ------------------------------------------------------------------------------------------------- | --------------------- |
+| REAPER-STORAGE-001 | `storage.objects` exists with RLS disabled                                                        | HIGH / MEDIUM         |
+| REAPER-STORAGE-002 | Broad permissive `storage.objects` policy has a constant-open predicate                           | HIGH / MEDIUM         |
+| REAPER-STORAGE-003 | Observed Supabase Storage source path reaches broadly granted `storage.objects` with RLS disabled | HIGH / HIGH           |
+| REAPER-STORAGE-004 | Observed Supabase Storage source path is covered by a broad constant-open policy                  | HIGH / HIGH           |
 
 Storage source graph support recognizes bucket-scoped operations such as
 download, upload, update, remove, list, move, copy and signed-URL creation.
@@ -78,11 +78,11 @@ level; it does not fully solve arbitrary bucket/path expressions.
 
 ## Migrations
 
-| Rule | Evidence | Severity / confidence |
-| --- | --- | --- |
-| REAPER-MIGRATION-001 | Migration disables RLS | HIGH / HIGH |
-| REAPER-MIGRATION-002 | Migration removes FORCE ROW LEVEL SECURITY | MEDIUM / HIGH |
-| REAPER-MIGRATION-003 | Migration drops an RLS policy | MEDIUM / HIGH |
+| Rule                 | Evidence                                             | Severity / confidence |
+| -------------------- | ---------------------------------------------------- | --------------------- |
+| REAPER-MIGRATION-001 | Migration disables RLS                               | HIGH / HIGH           |
+| REAPER-MIGRATION-002 | Migration removes FORCE ROW LEVEL SECURITY           | MEDIUM / HIGH         |
+| REAPER-MIGRATION-003 | Migration drops an RLS policy                        | MEDIUM / HIGH         |
 | REAPER-MIGRATION-004 | Migration grants broad/dangerous database privileges | MEDIUM or HIGH / HIGH |
 
 Migration analysis is statement-oriented. It does not reconstruct a complete
@@ -90,10 +90,10 @@ before/after schema across every ORM migration representation.
 
 ## Secrets and password crypto
 
-| Rule | Evidence | Severity / confidence |
-| --- | --- | --- |
-| REAPER-CRYPTO-001 | Database URL with embedded credentials in source | HIGH / HIGH |
-| REAPER-CRYPTO-002 | Private-key PEM material embedded in source | CRITICAL / HIGH |
+| Rule              | Evidence                                                    | Severity / confidence |
+| ----------------- | ----------------------------------------------------------- | --------------------- |
+| REAPER-CRYPTO-001 | Database URL with embedded credentials in source            | HIGH / HIGH           |
+| REAPER-CRYPTO-002 | Private-key PEM material embedded in source                 | CRITICAL / HIGH       |
 | REAPER-CRYPTO-003 | Fast general-purpose hash is applied to password-like input | MEDIUM or HIGH / HIGH |
 
 Credential/key values are intentionally omitted from findings.
