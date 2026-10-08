@@ -133,7 +133,9 @@ export function validateConfig(value: unknown): Config {
         return true;
       if (Array.isArray(input)) return input.every(jsonLiteral);
       if (typeof input === "object")
-        return Object.values(input as Record<string, unknown>).every(jsonLiteral);
+        return Object.values(input as Record<string, unknown>).every(
+          jsonLiteral,
+        );
       return false;
     };
     const lifecycle = (value: unknown, label: string): void => {
@@ -177,7 +179,9 @@ export function validateConfig(value: unknown): Config {
             Number(item.expectStatus) < 100 ||
             Number(item.expectStatus) > 599)
         )
-          throw new Error(`verify.${label} expectStatus must be an HTTP status.`);
+          throw new Error(
+            `verify.${label} expectStatus must be an HTTP status.`,
+          );
         for (const key of ["authEnv", "authVar"])
           if (
             item[key] !== undefined &&
