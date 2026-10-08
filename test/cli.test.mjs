@@ -7,7 +7,7 @@ import path from "node:path";
 const run = (...args) =>
   spawnSync(process.execPath, ["dist/cli.js", ...args], { encoding: "utf8" });
 test("version, help, invalid commands and flags", () => {
-  assert.equal(run("--version").stdout, "0.1.0\n");
+  assert.equal(run("--version").stdout, "0.2.0\n");
   assert.match(run("--help").stdout, /reaper scan/);
   assert.equal(run("verify").status, 2);
   assert.equal(run("scan", "--unknown").status, 2);
