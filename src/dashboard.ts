@@ -53,7 +53,7 @@ code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}section{margin-t
 <h1>REAPER</h1>
 <p>Data Access Security Engine · report ${escapeHtml(result.version)}</p>
 <div class="grid">
-<div class="card"><div class="muted">Security score</div><div class="value">${escapeHtml(score.score)}</div></div>
+<div class="card"><div class="muted">Security score</div><div class="value">${escapeHtml(score.overall)}</div></div>
 <div class="card"><div class="muted">Findings</div><div class="value">${result.findings.length}</div></div>
 <div class="card"><div class="muted">Critical</div><div class="value">${counts.get("CRITICAL") ?? 0}</div></div>
 <div class="card"><div class="muted">High</div><div class="value">${counts.get("HIGH") ?? 0}</div></div>
