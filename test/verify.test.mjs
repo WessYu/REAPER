@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
-import { verify, validateConfig } from "../dist/index.js";
+import {
+  verify,
+  validateConfig,
+  discoverEndpoints,
+} from "../dist/index.js";
 
 async function server(handler) {
   const instance = http.createServer(handler);
@@ -26,6 +30,7 @@ test("verify confirms configured authorization failures on localhost", async () 
     res.statusCode = 200;
     res.end("unexpected access");
   });
+  process.env.REAPER_SYNTH_EMAIL = "synthetic@example.test";
   try {
     const result = await verify(origin, {
       verify: {
@@ -175,4 +180,110 @@ test("verify config caps active request rate", () => {
       }),
     /rateLimitPerSecond/,
   );
+});
+
+
+test("OpenAPI discovery only returns GET and HEAD operations", async () => {
+  const { instance, origin } = await server((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/openapi.json") {
+      res.end(
+        JSON.stringify({
+          openapi: "3.1.0",
+          paths: {
+            "/orders": { get: {}, post: {} },
+            "/health": { head: {} },
+          },
+        }),
+      );
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  try {
+    const endpoints = await discoverEndpoints(origin, {
+      verify: {
+        discoverOpenApi: true,
+        assertions: [],
+      },
+    });
+    assert.deepEqual(endpoints, ["GET /orders", "HEAD /health"]);
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("synthetic setup can capture credentials for assertions and teardown", async () => {
+  let teardown = false;
+  const { instance, origin } = await server((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.method === "POST" && req.url === "/test-users") {
+      res.statusCode = 201;
+      res.end(JSON.stringify({ token: "captured-synthetic-token", id: "u1" }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/orders/u1") {
+      assert.equal(
+        req.headers.authorization,
+        "Bearer captured-synthetic-token",
+      );
+      res.statusCode = 200;
+      res.end("{}");
+      return;
+    }
+    if (req.method === "DELETE" && req.url === "/test-users/u1") {
+      teardown = true;
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end("{}");
+  });
+  try {
+    const result = await verify(origin, {
+      verify: {
+        allowMutations: true,
+        rateLimitPerSecond: 20,
+        maxRequests: 6,
+        setup: [
+          {
+            name: "create synthetic user",
+            path: "/test-users",
+            method: "POST",
+            expectStatus: 201,
+            body: { email: "$env:REAPER_SYNTH_EMAIL" },
+            capture: { USER_TOKEN: "token", USER_ID: "id" },
+          },
+        ],
+        assertions: [
+          {
+            name: "cross-user object must be denied",
+            path: "/orders/{{USER_ID}}",
+            expectStatus: 403,
+            authVar: "USER_TOKEN",
+            dimension: "ownership",
+          },
+        ],
+        teardown: [
+          {
+            name: "delete synthetic user",
+            path: "/test-users/{{USER_ID}}",
+            method: "DELETE",
+            expectStatus: 204,
+          },
+        ],
+      },
+    });
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].confidence, "CONFIRMED");
+    assert.ok(!JSON.stringify(result).includes("captured-synthetic-token"));
+    assert.equal(teardown, true);
+  } finally {
+    delete process.env.REAPER_SYNTH_EMAIL;
+    instance.close();
+    await once(instance, "close");
+  }
 });

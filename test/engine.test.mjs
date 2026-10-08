@@ -88,11 +88,14 @@ test("dead statements after unconditional return are not analyzed", async () =>
     prefix + `app.get('/a',(req)=>{return 1; pool.query(req.query.q);});`,
     (r) => assert.equal(r.findings.length, 0),
   ));
-test("unsupported control flow produces incomplete diagnostics", async () =>
+test("bounded loop control flow preserves security sinks", async () =>
   source(
     prefix +
       `app.get('/a',(req)=>{while(req.query.q){pool.query(req.query.q);}});`,
-    (r) => assert.ok(r.diagnostics.length),
+    (r) => {
+      assert.equal(r.diagnostics.length, 0);
+      assert.ok(r.findings.some((f) => f.ruleId === "REAPER-SQL-001"));
+    },
   ));
 test("fingerprints survive blank line changes and baseline gates only new findings", async () => {
   const code = prefix + `app.get('/a',(req)=>pool.query(req.query.q));`;
@@ -169,11 +172,12 @@ test("compound string assignment preserves source provenance", async () =>
       `app.get('/a',(req)=>{let q='SELECT ';q+=req.query.q;return pool.query(q);});`,
     (r) => assert.equal(r.findings[0].ruleId, "REAPER-SQL-001"),
   ));
-test("property mutations cannot silently certify downstream constraints", async () =>
+test("property mutation updates aliased authorization state", async () =>
   source(
     prefix +
-      `app.get('/a',(req)=>{const where={organizationId:req.user.organizationId};where.organizationId=req.query.org;return prisma.order.findMany({where});});`,
-    (r) => assert.ok(r.diagnostics.some((d) => d.message.includes("mutation"))),
+      `app.get('/a',(req)=>{const where={organizationId:req.user.organizationId};const alias=where;alias.organizationId=req.query.org;return prisma.order.findMany({where});});`,
+    (r) =>
+      assert.ok(r.findings.some((f) => f.ruleId === "REAPER-TENANT-001")),
   ));
 test("Fastify request aliases and Knex raw preserve input provenance", async () =>
   source(
@@ -420,3 +424,37 @@ model Order {
     assert.equal(auth.severity, "HIGH");
     assert.ok(auth.evidence.some((value) => value.includes("resetToken")));
   }));
+
+
+test("resolved route middleware can establish a principal through object mutation", async () =>
+  source(
+    prefix +
+      `function auth(req,res,next){req.user={id:req.auth.userId};next();}app.get('/a',auth,(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
+    (r) =>
+      assert.equal(
+        r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
+        0,
+      ),
+    { resources: { order: { ownership: ["userId"] } } },
+  ));
+
+test("Supabase Storage operations contribute bucket-scoped graph sinks", async () =>
+  source(
+    `import {createClient} from '@supabase/supabase-js';const db=createClient('https://example.supabase.co',process.env.SUPABASE_ANON_KEY);async function load(){return db.storage.from('avatars').download('me.png');}`,
+    (r) => {
+      assert.equal(r.metrics.sinks, 1);
+      assert.ok(
+        r.graph.nodes.some(
+          (node) =>
+            node.kind === "resource" && node.label === "storage:avatars",
+        ),
+      );
+      assert.ok(
+        r.graph.nodes.some(
+          (node) =>
+            node.kind === "query" &&
+            node.label === "supabase.storage.download",
+        ),
+      );
+    },
+  ));

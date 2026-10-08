@@ -1,5 +1,10 @@
 export { scan } from "./scan.js";
-export { introspect, analyzeDatabase } from "./postgres.js";
+export {
+  introspect,
+  analyzeDatabase,
+  classifyPolicyExpression,
+  policyGuarantees,
+} from "./postgres.js";
 export { report, fails } from "./reporter.js";
 export { calculateScore, renderScore } from "./score.js";
 export { renderGraph } from "./graph.js";

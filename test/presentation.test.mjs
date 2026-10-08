@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderGraph, renderExplanation } from "../dist/index.js";
+import {
+  renderGraph,
+  renderExplanation,
+  renderDashboard,
+  scan,
+} from "../dist/index.js";
 
 test("graph renderer produces deterministic JSON and DOT", () => {
   const graph = {
@@ -54,4 +59,13 @@ test("finding explanation keeps evidence and remediation visible", () => {
   assert.match(output, /WHY FLAGGED/);
   assert.match(output, /DATA FLOW/);
   assert.match(output, /Scope the query/);
+});
+
+
+test("dashboard renderer creates a self-contained review artifact", async () => {
+  const result = await scan({ root: "test/fixtures/vulnerable" });
+  const html = renderDashboard(result);
+  assert.match(html, /<!doctype html>/);
+  assert.match(html, /Security score/);
+  assert.match(html, /REAPER-SQL-001/);
 });

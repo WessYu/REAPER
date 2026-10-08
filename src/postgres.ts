@@ -530,7 +530,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       );
   }
 
-  for (const view of snapshot.views) {
+  for (const view of snapshot.views ?? []) {
     const grants = effectiveTableGrants(snapshot, view.schema, view.name).filter(
       (grant) => grant.privilege === "SELECT",
     );
@@ -552,7 +552,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       );
   }
 
-  for (const trigger of snapshot.triggers) {
+  for (const trigger of snapshot.triggers ?? []) {
     const fn = snapshot.functions.find(
       (candidate) =>
         candidate.schema === trigger.functionSchema &&

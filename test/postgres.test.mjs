@@ -27,6 +27,8 @@ const snapshot = (overrides = {}) => ({
   schemaGrants: [],
   columnGrants: [],
   functions: [],
+  views: [],
+  triggers: [],
   serverVersion: "test",
   limitations: [],
   ...overrides,
@@ -196,5 +198,105 @@ test("SECURITY DEFINER review requires broad execute and unsafe search_path", ()
       }),
     ).filter((f) => f.ruleId === "REAPER-PG-001").length,
     0,
+  );
+});
+
+
+test("symbolic RLS classification distinguishes identity, tenant and role-only policies", async () => {
+  const { classifyPolicyExpression } = await import("../dist/index.js");
+  assert.equal(classifyPolicyExpression("user_id = auth.uid()"), "identity");
+  assert.equal(
+    classifyPolicyExpression("(auth.jwt() ->> 'tenant_id') = tenant_id"),
+    "tenant",
+  );
+  assert.equal(
+    classifyPolicyExpression("auth.role() = 'authenticated'"),
+    "role-only",
+  );
+});
+
+test("broad client-facing owner-rights views are review findings", () => {
+  const result = analyzeDatabase(
+    snapshot({
+      views: [
+        {
+          schema: "public",
+          name: "order_summary",
+          owner: "owner",
+          materialized: false,
+          securityInvoker: false,
+          definition: "SELECT * FROM orders",
+        },
+      ],
+      grants: [
+        {
+          schema: "public",
+          table: "order_summary",
+          role: "authenticated",
+          privilege: "SELECT",
+        },
+      ],
+    }),
+  );
+  assert.ok(result.some((finding) => finding.ruleId === "REAPER-VIEW-001"));
+});
+
+test("unsafe SECURITY DEFINER trigger is correlated with broad table DML", () => {
+  const result = analyzeDatabase(
+    snapshot({
+      functions: [
+        {
+          schema: "public",
+          name: "audit_order",
+          identityArguments: "",
+          owner: "owner",
+          securityDefiner: true,
+          config: null,
+          executeRoles: ["owner"],
+        },
+      ],
+      triggers: [
+        {
+          schema: "public",
+          table: "orders",
+          name: "orders_audit",
+          functionSchema: "public",
+          functionName: "audit_order",
+          enabled: "O",
+        },
+      ],
+      grants: [
+        {
+          schema: "public",
+          table: "orders",
+          role: "authenticated",
+          privilege: "UPDATE",
+        },
+      ],
+    }),
+  );
+  assert.ok(
+    result.some((finding) => finding.ruleId === "REAPER-TRIGGER-001"),
+  );
+});
+
+test("Supabase Storage posture is represented explicitly", () => {
+  const result = analyzeDatabase(
+    snapshot({
+      tables: [
+        table,
+        {
+          schema: "storage",
+          name: "objects",
+          owner: "owner",
+          rls: false,
+          force: false,
+        },
+      ],
+      policies: [policy],
+    }),
+  );
+  assert.ok(
+    result.some((finding) => finding.ruleId === "REAPER-STORAGE-001"),
   );
 });
