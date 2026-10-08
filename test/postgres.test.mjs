@@ -295,3 +295,59 @@ test("Supabase Storage posture is represented explicitly", () => {
   );
   assert.ok(result.some((finding) => finding.ruleId === "REAPER-STORAGE-001"));
 });
+
+test("policy expression composition requires every OR branch to preserve isolation", () => {
+  assert.equal(
+    policyExpressionGuarantees(
+      "(user_id = auth.uid()) OR (owner_id = auth.uid())",
+      "ownership",
+    ),
+    true,
+  );
+  assert.equal(
+    policyExpressionGuarantees(
+      "(user_id = auth.uid()) OR (published = true)",
+      "ownership",
+    ),
+    false,
+  );
+  assert.equal(
+    policyExpressionGuarantees(
+      "(organization_id = (auth.jwt()->>'organization_id')) AND active = true",
+      "tenant",
+    ),
+    true,
+  );
+});
+
+test("policyGuarantees respects PostgreSQL permissive OR composition", () => {
+  const base = snapshot({
+    policies: [
+      {
+        schema: "public",
+        table: "orders",
+        name: "owner",
+        roles: ["authenticated"],
+        command: "SELECT",
+        permissive: "PERMISSIVE",
+        using: "user_id = auth.uid()",
+        check: null,
+      },
+      {
+        schema: "public",
+        table: "orders",
+        name: "published",
+        roles: ["authenticated"],
+        command: "SELECT",
+        permissive: "PERMISSIVE",
+        using: "published = true",
+        check: null,
+      },
+    ],
+  });
+  assert.equal(policyGuarantees(base, "public", "orders", "ownership"), false);
+  base.policies[1].permissive = "RESTRICTIVE";
+  base.policies[1].using = "user_id = auth.uid()";
+  assert.equal(policyGuarantees(base, "public", "orders", "ownership"), true);
+});
+

@@ -363,23 +363,115 @@ export function classifyPolicyExpression(
   return "unknown";
 }
 
+function trimOuterParentheses(expression: string): string {
+  let value = expression.trim();
+  for (;;) {
+    if (!value.startsWith("(") || !value.endsWith(")")) return value;
+    let depth = 0;
+    let quote: "'" | '"' | undefined;
+    let wraps = true;
+    for (let index = 0; index < value.length; index++) {
+      const char = value[index]!;
+      if (quote) {
+        if (char === quote && value[index - 1] !== "\\") quote = undefined;
+        continue;
+      }
+      if (char === "'" || char === '"') {
+        quote = char;
+        continue;
+      }
+      if (char === "(") depth++;
+      else if (char === ")") depth--;
+      if (depth === 0 && index < value.length - 1) {
+        wraps = false;
+        break;
+      }
+    }
+    if (!wraps) return value;
+    value = value.slice(1, -1).trim();
+  }
+}
+
+function splitBoolean(expression: string, operator: "and" | "or"): string[] {
+  const value = trimOuterParentheses(expression);
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: "'" | '"' | undefined;
+  let start = 0;
+  for (let index = 0; index < value.length; index++) {
+    const char = value[index]!;
+    if (quote) {
+      if (char === quote && value[index - 1] !== "\\") quote = undefined;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "(") {
+      depth++;
+      continue;
+    }
+    if (char === ")") {
+      depth--;
+      continue;
+    }
+    if (depth !== 0) continue;
+    const rest = value.slice(index);
+    const match = rest.match(new RegExp(`^\\s+${operator}\\s+`, "i"));
+    if (!match) continue;
+    parts.push(value.slice(start, index).trim());
+    index += match[0].length - 1;
+    start = index + 1;
+  }
+  if (!parts.length) return [value];
+  parts.push(value.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+export function policyExpressionGuarantees(
+  expression: string | null,
+  dimension: "ownership" | "tenant",
+): boolean {
+  if (!expression) return false;
+  const value = trimOuterParentheses(expression);
+  const or = splitBoolean(value, "or");
+  if (or.length > 1)
+    return or.every((part) => policyExpressionGuarantees(part, dimension));
+  const and = splitBoolean(value, "and");
+  if (and.length > 1)
+    return and.some((part) => policyExpressionGuarantees(part, dimension));
+  if (/^\\s*not\\b/i.test(value)) return false;
+  const classification = classifyPolicyExpression(value);
+  return dimension === "ownership"
+    ? classification === "identity"
+    : classification === "tenant";
+}
+
 export function policyGuarantees(
   snapshot: DatabaseSnapshot,
   schema: string,
   table: string,
   dimension: "ownership" | "tenant",
 ): boolean {
-  const accepted =
-    dimension === "ownership"
-      ? new Set<PolicyExpressionClass>(["identity"])
-      : new Set<PolicyExpressionClass>(["tenant"]);
-  return snapshot.policies.some(
-    (policy) =>
-      policy.schema === schema &&
-      policy.table === table &&
-      policy.permissive === "PERMISSIVE" &&
-      (accepted.has(classifyPolicyExpression(policy.using)) ||
-        accepted.has(classifyPolicyExpression(policy.check))),
+  const policies = snapshot.policies.filter(
+    (policy) => policy.schema === schema && policy.table === table,
+  );
+  const expressionGuarantees = (policy: Policy) =>
+    policyExpressionGuarantees(policy.using, dimension) ||
+    policyExpressionGuarantees(policy.check, dimension);
+  if (
+    policies.some(
+      (policy) =>
+        policy.permissive === "RESTRICTIVE" && expressionGuarantees(policy),
+    )
+  )
+    return true;
+  const permissive = policies.filter(
+    (policy) => policy.permissive === "PERMISSIVE",
+  );
+  return (
+    permissive.length > 0 && permissive.every((policy) => expressionGuarantees(policy))
   );
 }
 
@@ -526,6 +618,46 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
         ],
         `role-only-policy:${policy.schema}:${policy.table}:${policy.name}`,
         "Bind row access to auth.uid() or a reviewed tenant claim when per-user or tenant isolation is required.",
+      );
+  }
+
+  for (const table of snapshot.tables) {
+    const policies = snapshot.policies.filter(
+      (policy) =>
+        policy.schema === table.schema &&
+        policy.table === table.name &&
+        policy.permissive === "PERMISSIVE" &&
+        policy.roles.some((role) => broadGrant(snapshot, role, broad)),
+    );
+    const hasScoped = policies.some(
+      (policy) =>
+        policyExpressionGuarantees(policy.using, "ownership") ||
+        policyExpressionGuarantees(policy.check, "ownership") ||
+        policyExpressionGuarantees(policy.using, "tenant") ||
+        policyExpressionGuarantees(policy.check, "tenant"),
+    );
+    const hasUnscopedAlternative = policies.some(
+      (policy) =>
+        !policyExpressionGuarantees(policy.using, "ownership") &&
+        !policyExpressionGuarantees(policy.check, "ownership") &&
+        !policyExpressionGuarantees(policy.using, "tenant") &&
+        !policyExpressionGuarantees(policy.check, "tenant") &&
+        !["constant-deny"].includes(classifyPolicyExpression(policy.using)) &&
+        !["constant-deny"].includes(classifyPolicyExpression(policy.check)),
+    );
+    if (table.rls && hasScoped && hasUnscopedAlternative)
+      add(
+        `${table.schema}.${table.name}`,
+        "REAPER-RLS-005",
+        "Permissive policy alternatives prevent isolation proof",
+        "MEDIUM",
+        "RLS",
+        [
+          "At least one permissive policy has a recognized identity/tenant constraint, but another applicable permissive alternative does not.",
+          "PostgreSQL OR-combines permissive policies, so a scoped policy alone does not prove row isolation.",
+        ],
+        `mixed-permissive:${table.schema}:${table.name}`,
+        "Review all permissive policies together. Remove or restrict alternatives that can authorize rows without the intended ownership/tenant predicate.",
       );
   }
 

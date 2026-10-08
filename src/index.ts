@@ -3,6 +3,7 @@ export {
   introspect,
   analyzeDatabase,
   classifyPolicyExpression,
+  policyExpressionGuarantees,
   policyGuarantees,
 } from "./postgres.js";
 export { report, fails } from "./reporter.js";
