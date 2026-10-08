@@ -52,15 +52,15 @@ The vulnerable fixture produces one SQL, one ownership and one tenant finding. T
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Parsing         | TypeScript compiler AST and symbol resolution for JS, TS, JSX and TSX                                                                                                     |
 | Routes          | Express/Fastify registrations, supported sequential middleware and Next.js `route.ts` exported handlers                                                                   |
-| Flow            | Assignments, destructuring, shared-object/property mutation, local imports, direct calls, `.call`/`.apply`, arrays, branches, bounded loops, try/catch/finally and switch |
+| Flow            | Assignments, destructuring, shared-object/property mutation, local imports, direct calls, `.bind`/`.call`/`.apply`, common Object/Reflect alias patterns, arrays, branches, bounded loops, try/catch/finally and switch |
 | SQL             | Tainted SQL text in pg, Prisma unsafe raw calls and Knex raw; parsed constant UPDATE/DELETE without WHERE                                                                 |
 | Data access     | Prisma authorization reasoning plus Supabase, Knex and Drizzle data-access discovery                                                                                      |
 | PostgreSQL      | Read-only catalogs for tables, RLS, policies, inherited roles, table/schema/column grants, functions, views/materialized views and triggers                               |
-| RLS             | Common policy-expression classification for identity, tenant, role-only and constant predicates; arbitrary SQL remains conservative                                       |
+| RLS             | Identity/tenant/role/constant classification plus bounded AND/OR and permissive/restrictive policy-composition reasoning; arbitrary SQL remains conservative                            |
 | Supabase        | Service-role exposure, table/RPC/Storage graph discovery, table/RPC/Storage source-to-catalog correlation                                                                 |
 | Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                                                                       |
 | Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                                                                  |
-| Verification    | Authorized assertions, bounded OpenAPI GET/HEAD discovery, optional synthetic setup/teardown, budgets, rate limits, timeouts and cancellation                             |
+| Verification    | Authorized assertions, bounded OpenAPI GET/HEAD discovery/probing, optional synthetic-user provisioning and setup/teardown, budgets, rate limits, timeouts and cancellation          |
 | Platform        | Self-contained HTML dashboard, localhost-only REST service and programmatic Rule SDK                                                                                      |
 | Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                                                                        |
 | Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                                                              |
@@ -73,7 +73,7 @@ A field named `userId` is not enough to infer an ownership relationship. REAPER 
 
 The default trusted principal paths are `req.user.id`, `request.user.id`, `req.auth.userId`, `request.auth.userId`, and the `tenantId`/`organizationId` properties of `req.user` and `request.user`. This is a **modeling assumption**: REAPER does not prove that authentication middleware established those values. Verify that assumption before relying on a scoped-query result.
 
-Ownership and tenant findings are conservative. REAPER can model supported direct post-query deny guards and sequentially resolved Express/Fastify middleware that mutates the shared request object, but opaque framework wrappers, dynamically selected middleware and external authorization services still require review.
+Ownership and tenant findings are conservative. REAPER can model supported direct post-query deny guards, sequentially resolved Express/Fastify middleware that mutates the shared request object, and explicitly configured contracts for opaque authorization middleware. Dynamically selected wrappers and external authorization services that are neither resolvable nor configured still require review.
 
 ```ts
 // reaper.config.ts — literal data only
@@ -85,6 +85,11 @@ export default {
     },
   },
   principalPaths: ["req.user.id", "req.user.organizationId"],
+  middleware: {
+    requireAuth: {
+      establishes: ["req.user.id"],
+    },
+  },
   exclude: ["fixtures"],
   maxFiles: 10000,
   maxFileBytes: 1000000,
@@ -96,6 +101,23 @@ export default {
     rateLimitPerSecond: 5,
     discoverOpenApi: true,
     openApiPaths: ["/openapi.json"],
+    probeDiscovered: true,
+    allowMutations: true,
+    syntheticUsers: {
+      count: 2,
+      path: "/test/signup",
+      body: {
+        email:
+          "reaper-{{SYNTHETIC_RUN}}-{{SYNTHETIC_INDEX}}@example.test",
+      },
+      expectStatus: 201,
+      tokenPath: "token",
+      idPath: "user.id",
+      cleanup: {
+        path: "/test/users/{{USER_ID}}",
+        expectStatus: 204,
+      },
+    },
     assertions: [
       {
         name: "cross-tenant order must be denied",
@@ -123,6 +145,7 @@ reaper migrations ./application
 reaper crypto ./application
 reaper scan ./application --db-env DATABASE_URL --format json --output combined.json
 reaper graph combined.json --format dot --output graph.dot
+reaper cfg ./application --format dot --output control-flow.dot
 reaper score combined.json
 reaper discover http://localhost:3000 --config reaper.config.ts
 reaper verify http://localhost:3000 --config reaper.config.ts --fail-on high
@@ -170,7 +193,7 @@ Only connect to databases you are authorized to inspect. Start with a dedicated 
 
 `reaper verify` remains authorization-scoped rather than an open-ended web scanner. Localhost targets are permitted automatically. Remote origins are blocked unless their exact origin is listed in `verify.allowedTargets`.
 
-REAPER can optionally discover GET/HEAD operations from an allowlisted target's OpenAPI document. Assertions remain operator-defined. Synthetic scenario setup/teardown can use POST, PUT, PATCH or DELETE only when `verify.allowMutations: true` is explicitly configured. Setup responses can capture bounded JSON values such as synthetic IDs or tokens into in-memory variables for later assertions and cleanup. Token values are not copied into findings.
+REAPER can optionally discover GET/HEAD operations from an allowlisted target's OpenAPI document and, when `probeDiscovered: true`, issue bounded safe probes to non-templated discovered GET/HEAD routes. Assertions remain operator-defined. Synthetic scenario setup/teardown can use POST, PUT, PATCH or DELETE only when `verify.allowMutations: true` is explicitly configured. `syntheticUsers` can provision 2–4 test identities from an explicitly configured signup template, capture token/ID JSON paths in memory, expose `USER_1_TOKEN`/ `USER_1_ID`-style variables to assertions, and clean the identities up through an explicitly configured DELETE path. Token values are not copied into findings.
 
 Redirect following is disabled. Concurrency, request rate, total request budget, response-capture size and per-request timeout are bounded, and Ctrl+C cancellation is propagated through the scenario. A runtime finding means a security property that **you explicitly declared** did not produce the expected HTTP status. REAPER does not brute-force credentials, crawl arbitrary internet targets or invent destructive requests.
 
@@ -197,7 +220,7 @@ console.log(report(result, "json"));
 
 ## Architecture
 
-`project.ts` bounds file discovery and extracts basic Prisma relationships. `analysis.ts` uses the compiler's symbols and a bounded abstract interpreter to propagate input provenance into database sinks. `sql.ts` parses constant SQL. `postgres.ts` collects and reviews catalog evidence. `model.ts`, `findings.ts` and `reporter.ts` define the public result contract, fingerprints and output formats. `cli.ts` orchestrates those modules.
+`project.ts` bounds file discovery and extracts basic Prisma relationships. `analysis.ts` uses the compiler's symbols and a bounded abstract interpreter to propagate input provenance into database sinks. `cfg.ts` builds an explicit statement/branch/loop control-flow graph for review/export. `sql.ts` parses constant SQL. `postgres.ts` collects and reviews catalog evidence, including view dependencies and function definitions. `model.ts`, `findings.ts` and `reporter.ts` define the public result contract, fingerprints and output formats. `cli.ts` orchestrates those modules.
 
 The graph represents observed route → query → resource edges. It is not yet a complete authorization or privilege graph. Source text and credentials are not copied into findings; flow evidence contains labels and locations.
 
@@ -217,12 +240,12 @@ SARIF can be uploaded with GitHub's Code Scanning action in a consuming reposito
 ## Known limits and next work
 
 - Control-flow and alias analysis are **bounded abstract interpretation**, not a proof-complete JavaScript execution model. Loops are analyzed conservatively without arbitrary fixed-point iteration, recursion is bounded, and async/event context is not fully reconstructed.
-- Shared-object property mutation, direct function calls, `.call`/`.apply`, supported middleware chains, try/catch/finally and switch are modeled, but proxies, reflection, runtime code generation, arbitrary decorators, opaque framework wrappers and highly dynamic dispatch can remain unresolved.
-- Next.js support is centered on exported route handlers. Middleware analysis currently requires resolvable functions in supported route registrations; externally configured or dynamically selected middleware still requires review.
-- RLS reasoning recognizes common identity, tenant, role-only and constant patterns. It does not theorem-prove arbitrary SQL functions, subqueries or all combinations of permissive/restrictive policies.
-- PostgreSQL view and trigger posture is inspected, but full dependency-level privilege composition, trigger-body semantics and extension-specific authorization models remain conservative. Column grants are collected but are not yet fully correlated with selected fields.
+- Shared-object property mutation, direct function calls, `.bind`/`.call`/`.apply`, `Object.assign`, `Object.defineProperty`, `Reflect.get`/`Reflect.set`, supported middleware chains, try/catch/finally and switch are modeled. Proxies, runtime code generation, arbitrary decorators and highly dynamic dispatch remain conservative.
+- Next.js support is centered on exported route handlers. Express/Fastify middleware can be resolved from source or represented by literal `middleware.*.establishes` contracts; dynamically selected middleware without a contract still requires review.
+- RLS reasoning recognizes common identity, tenant, role-only and constant patterns, bounded AND/OR composition and PostgreSQL permissive/restrictive interaction. It does not theorem-prove arbitrary SQL functions, subqueries or procedural policy helpers.
+- PostgreSQL view dependencies, trigger metadata and SECURITY DEFINER function definitions are inspected, including dynamic-SQL review. Full transitive privilege composition, trigger-body semantics and extension-specific authorization models remain conservative. Column grants are collected but are not yet fully correlated with selected fields.
 - Prisma has the deepest authorization semantics. Drizzle and Knex are represented in the data-access graph, but their ownership/tenant reasoning is not yet as rich as Prisma's.
-- OpenAPI discovery is intentionally limited to GET/HEAD operations from configured documentation endpoints. Synthetic account/resource creation is configuration-driven; REAPER does not guess signup flows, MFA/CAPTCHA handling or cleanup semantics.
+- OpenAPI discovery/probing is intentionally limited to GET/HEAD operations from configured documentation endpoints and skips templated paths during automatic probes. Synthetic identity creation is template-driven; REAPER does not guess signup flows, MFA/CAPTCHA handling, credentials or destructive cleanup semantics.
 - The localhost REST service is intentionally small and unauthenticated because it binds only to `127.0.0.1`; it is not a hosted multi-user service.
 - The numerical score is a triage aid. A clean scan or a high score is not authorization assurance.
 
