@@ -1331,7 +1331,7 @@ export function analyze(
     if (ts.isForStatement(node)) {
       const loop = new Map(env);
       if (node.initializer) {
-        if (ts.isVariableDeclarationList(node.initializer))
+        if (ts.isVariableDeclarationList(node.initializer)) {
           for (const declaration of node.initializer.declarations)
             if (declaration.initializer)
               bind(
@@ -1339,7 +1339,7 @@ export function analyze(
                 evaluate(declaration.initializer, loop, route, depth + 1),
                 loop,
               );
-            else evaluate(node.initializer, loop, route, depth + 1);
+        } else evaluate(node.initializer, loop, route, depth + 1);
       }
       if (node.condition) evaluate(node.condition, loop, route, depth + 1);
       statement(node.statement, loop, route, depth + 1);
