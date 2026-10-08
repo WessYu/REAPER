@@ -37,14 +37,19 @@ export async function scan(options: {
   await runRules(result, config, options.rules ?? []);
   const baseline = new Set(options.baseline ?? []);
   const contents = new Map<string, string[]>();
+  const scannableFiles = new Set(
+    files.map((file) => path.relative(root, file).replaceAll("\\", "/")),
+  );
   for (const f of result.findings) {
     if (baseline.has(f.fingerprint)) f.status = "baseline";
-    if (!contents.has(f.file))
+    const findingFile = f.file.replaceAll("\\", "/");
+    if (!scannableFiles.has(findingFile)) continue;
+    if (!contents.has(findingFile))
       contents.set(
-        f.file,
-        (await readFile(path.join(root, f.file), "utf8")).split(/\r?\n/),
+        findingFile,
+        (await readFile(path.join(root, findingFile), "utf8")).split(/\r?\n/),
       );
-    const previous = contents.get(f.file)?.[f.line - 2] ?? "";
+    const previous = contents.get(findingFile)?.[f.line - 2] ?? "";
     const match = previous.match(
       /^\s*(?:\/\/|--)\s*reaper-ignore\s+(REAPER-[A-Z]+-\d+)\s+--\s+reason:\s*(\S.*)$/,
     );
