@@ -61,7 +61,6 @@ test("finding explanation keeps evidence and remediation visible", () => {
   assert.match(output, /Scope the query/);
 });
 
-
 test("dashboard renderer creates a self-contained review artifact", async () => {
   const result = await scan({ root: "test/fixtures/vulnerable" });
   const html = renderDashboard(result);
