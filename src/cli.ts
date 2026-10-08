@@ -135,8 +135,7 @@ async function main(): Promise<void> {
   }
   if (command === "discover") {
     if (!arg) throw new Error("discover requires a target URL.");
-    if (!values.config)
-      throw new Error("discover requires --config.");
+    if (!values.config) throw new Error("discover requires --config.");
     const verifyConfig = await readConfig(values.config);
     const { discoverEndpoints } = await import("./verify.js");
     const endpoints = await discoverEndpoints(arg, verifyConfig);
