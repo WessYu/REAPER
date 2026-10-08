@@ -3,14 +3,14 @@
 ## 0.2.0 — unreleased
 
 - Expanded bounded control-flow analysis across loops, try/catch/finally and switch with conservative environment merges.
-- Added shared-object/property mutation tracking, deeper alias propagation, direct `.call`/`.apply` support and array mutation tracking for supported values.
-- Added sequentially resolved Express/Fastify route middleware analysis before handler evaluation.
+- Added shared-object/property mutation tracking, deeper alias propagation, `.bind`/`.call`/`.apply`, common `Object.assign`/`Object.defineProperty` and `Reflect.get`/`Reflect.set` modeling, and array mutation tracking for supported values.
+- Added sequentially resolved Express/Fastify route middleware analysis plus literal contracts for opaque middleware that establishes trusted request principals.
 - Added Supabase Storage bucket/operation graph discovery and source-to-PostgreSQL Storage/RLS correlation.
-- Added PostgreSQL view/materialized-view and trigger introspection plus client-facing view and SECURITY DEFINER trigger posture findings.
-- Added common symbolic RLS expression classification for identity, tenant/JWT, role-only and constant predicates.
-- Added bounded OpenAPI GET/HEAD discovery for localhost/exact-allowlisted targets.
-- Added explicit synthetic setup/teardown scenarios with mutation opt-in, bounded JSON capture, in-memory token/ID variables and cleanup.
-- Added a self-contained HTML dashboard and localhost-only REST review service.
+- Added PostgreSQL view/materialized-view dependency and trigger introspection, client-facing view and SECURITY DEFINER trigger posture findings, and dynamic-SQL review for broadly executable SECURITY DEFINER functions.
+- Added common symbolic RLS expression classification for identity, tenant/JWT, role-only and constant predicates, bounded boolean composition, and permissive/restrictive PostgreSQL policy reasoning.
+- Added bounded OpenAPI GET/HEAD discovery and optional active safe-route probing for localhost/exact-allowlisted targets.
+- Added explicit synthetic setup/teardown scenarios plus optional two-to-four-user provisioning from configured signup/cleanup templates, with mutation opt-in, bounded JSON capture and in-memory token/ID variables.
+- Added an explicit project control-flow graph exporter (JSON/DOT), a self-contained HTML dashboard and localhost-only REST review service.
 - Added a programmatic Rule SDK with deterministic finding emission.
 - Expanded tests for middleware, alias/property mutation, Storage, RLS classification, views, triggers, discovery, synthetic lifecycle, dashboard, REST service and custom rules.
 - Kept runtime and database boundaries conservative: no arbitrary internet crawling, credential brute force, automatic destructive requests or project-code execution during static scanning.
