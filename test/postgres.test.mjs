@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyzeDatabase } from "../dist/index.js";
+import {
+  analyzeDatabase,
+  policyExpressionGuarantees,
+  policyGuarantees,
+} from "../dist/index.js";
 const table = {
   schema: "public",
   name: "orders",
