@@ -20,3 +20,6 @@ export { runRules } from "./rules.js";
 export type { ReaperRule, RuleContext } from "./rules.js";
 export { renderDashboard } from "./dashboard.js";
 export { createReaperServer } from "./server.js";
+
+export { buildProjectCfg, renderControlFlowGraph } from "./cfg.js";
+export type * from "./cfg.js";

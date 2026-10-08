@@ -57,3 +57,14 @@ test("programmatic rule SDK can add deterministic custom findings", async () => 
   assert.equal(finding.status, "new");
   assert.equal(finding.fingerprint.length, 64);
 });
+
+test("control-flow graph models branches loops and abrupt control edges", async () => {
+  const { buildProjectCfg, renderControlFlowGraph } = await import(
+    "../dist/index.js"
+  );
+  const graph = await buildProjectCfg("test/fixtures/secure");
+  assert.ok(graph.nodes.some((node) => node.kind === "entry"));
+  assert.ok(graph.edges.length > 0);
+  assert.match(renderControlFlowGraph(graph, "dot"), /digraph REAPER_CFG/);
+});
+

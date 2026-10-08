@@ -17,6 +17,7 @@ import { verify } from "./verify.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
+import { buildProjectCfg, renderControlFlowGraph } from "./cfg.js";
 import type { ScanResult } from "./model.js";
 const help = `REAPER 0.2.0 — Data Access Security Engine
 
@@ -35,6 +36,7 @@ reaper diff <old> <new> Compare two JSON reports by fingerprint
 reaper report <json>    Render a saved JSON report
 reaper explain <id> --input <json>
 reaper graph <json>      Render report graph as JSON or DOT
+reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
@@ -101,6 +103,15 @@ async function main(): Promise<void> {
       throw new Error("Invalid REAPER report.");
     return data;
   };
+  if (command === "cfg") {
+    const root = path.resolve(arg ?? ".");
+    const cfg = await buildProjectCfg(root);
+    await output(
+      renderControlFlowGraph(cfg, format === "dot" ? "dot" : "json"),
+    );
+    if (cfg.diagnostics.length) process.exitCode = 2;
+    return;
+  }
   if (command === "dashboard") {
     const rendered = renderDashboard(await saved(arg));
     await output(rendered);

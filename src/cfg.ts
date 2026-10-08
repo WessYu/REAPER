@@ -242,7 +242,8 @@ function buildStatement(
 }
 
 function functionName(node: ts.FunctionLikeDeclaration, source: ts.SourceFile): string {
-  if (node.name && ts.isIdentifier(node.name)) return node.name.text;
+  const named = "name" in node ? node.name : undefined;
+  if (named && ts.isIdentifier(named)) return named.text;
   if (
     (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
     node.parent &&
@@ -311,7 +312,13 @@ export async function buildProjectCfg(
     const graph = buildSourceFile(relative, source);
     nodes.push(...graph.nodes);
     edges.push(...graph.edges);
-    for (const diagnostic of source.parseDiagnostics)
+    const parseDiagnostics =
+      (
+        source as ts.SourceFile & {
+          parseDiagnostics?: readonly ts.Diagnostic[];
+        }
+      ).parseDiagnostics ?? [];
+    for (const diagnostic of parseDiagnostics)
       diagnostics.push({
         file: relative,
         message: ts.flattenDiagnosticMessageText(diagnostic.messageText, " "),
