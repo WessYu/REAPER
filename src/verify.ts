@@ -499,8 +499,7 @@ async function syntheticUsers(
       });
       break;
     }
-    if (id !== undefined)
-      context.variables.set(`USER_${index}_ID`, String(id));
+    if (id !== undefined) context.variables.set(`USER_${index}_ID`, String(id));
     created.push(index);
   }
 
