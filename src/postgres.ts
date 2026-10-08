@@ -58,6 +58,22 @@ export interface DatabaseFunction {
   config: string[] | null;
   executeRoles: string[];
 }
+export interface DatabaseView {
+  schema: string;
+  name: string;
+  owner: string;
+  materialized: boolean;
+  securityInvoker: boolean;
+  definition: string;
+}
+export interface DatabaseTrigger {
+  schema: string;
+  table: string;
+  name: string;
+  functionSchema: string;
+  functionName: string;
+  enabled: string;
+}
 export interface DatabaseSnapshot {
   tables: Table[];
   policies: Policy[];
@@ -67,6 +83,8 @@ export interface DatabaseSnapshot {
   schemaGrants: SchemaGrant[];
   columnGrants: ColumnGrant[];
   functions: DatabaseFunction[];
+  views: DatabaseView[];
+  triggers: DatabaseTrigger[];
   serverVersion: string;
   limitations: string[];
 }
@@ -125,7 +143,7 @@ export async function introspect(
          CROSS JOIN LATERAL pg_catalog.aclexplode(
            COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))
          ) a
-        WHERE c.relkind IN ('r','p') AND ${catalogFilter}
+        WHERE c.relkind IN ('r','p','v','m') AND ${catalogFilter}
         ORDER BY 1,2,3,4`,
     );
 
@@ -176,6 +194,35 @@ export async function introspect(
         ORDER BY 1,2,3`,
     );
 
+    const views = await client.query<DatabaseView>(
+      `SELECT n.nspname AS schema,
+              c.relname AS name,
+              pg_catalog.pg_get_userbyid(c.relowner) AS owner,
+              (c.relkind='m') AS materialized,
+              COALESCE('security_invoker=true'=ANY(c.reloptions),false) AS "securityInvoker",
+              pg_catalog.pg_get_viewdef(c.oid,true) AS definition
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        WHERE c.relkind IN ('v','m') AND ${catalogFilter}
+        ORDER BY 1,2`,
+    );
+
+    const triggers = await client.query<DatabaseTrigger>(
+      `SELECT n.nspname AS schema,
+              c.relname AS table,
+              t.tgname AS name,
+              pn.nspname AS "functionSchema",
+              p.proname AS "functionName",
+              t.tgenabled::text AS enabled
+         FROM pg_catalog.pg_trigger t
+         JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
+         JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+         JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+         JOIN pg_catalog.pg_namespace pn ON pn.oid=p.pronamespace
+        WHERE NOT t.tgisinternal AND ${catalogFilter}
+        ORDER BY 1,2,3`,
+    );
+
     const version = await client.query<{ server_version: string }>(
       "SHOW server_version",
     );
@@ -190,12 +237,15 @@ export async function introspect(
       schemaGrants: schemaGrants.rows,
       columnGrants: columnGrants.rows,
       functions: functions.rows,
+      views: views.rows,
+      triggers: triggers.rows,
       serverVersion: version.rows[0]!.server_version,
       limitations: [
         "Catalog visibility depends on the connected role.",
         "Role inheritance is modeled only through PostgreSQL role memberships and ROLINHERIT; SET ROLE and runtime JWT/session claims are not proven.",
-        "Views, materialized-view definitions, triggers and extension-specific privilege models are not evaluated yet.",
-        "Open-policy findings are candidates: arbitrary policy expressions are not symbolically evaluated.",
+        "View and trigger posture is inspected, but dependency-level privilege composition remains conservative.",
+        "RLS expressions are symbolically classified for common auth.uid(), JWT tenant and role-only patterns; arbitrary SQL predicates are not theorem-proved.",
+        "Extension-specific privilege models outside recognized Supabase/PostgreSQL catalogs may require manual review.",
       ],
     };
   } catch (error) {
@@ -273,6 +323,63 @@ export function unsafeSecurityDefinerSearchPath(fn: DatabaseFunction): boolean {
   return schemas.some(
     (schema) =>
       schema === "$user" || schema === "public" || schema === "pg_temp",
+  );
+}
+
+export type PolicyExpressionClass =
+  | "identity"
+  | "tenant"
+  | "role-only"
+  | "constant-open"
+  | "constant-deny"
+  | "unknown";
+
+export function classifyPolicyExpression(
+  expression: string | null,
+): PolicyExpressionClass {
+  if (!expression) return "unknown";
+  const normalized = expression
+    .replace(/::[a-zA-Z0-9_."\[\]]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (/^\(*\s*true\s*\)*$/.test(normalized)) return "constant-open";
+  if (/^\(*\s*false\s*\)*$/.test(normalized)) return "constant-deny";
+  if (/auth\.uid\s*\(\s*\)/.test(normalized)) return "identity";
+  if (
+    /(auth\.jwt\s*\(\s*\)|current_setting\s*\([^)]*(?:jwt|claim|tenant|organization|workspace|account))/.test(
+      normalized,
+    ) &&
+    /(?:tenant|organization|workspace|account|org)[_-]?id/.test(normalized)
+  )
+    return "tenant";
+  if (
+    /(auth\.role\s*\(\s*\)|current_user|session_user)/.test(normalized) &&
+    !/(?:user|owner|tenant|organization|workspace|account|org)[_-]?id/.test(
+      normalized,
+    )
+  )
+    return "role-only";
+  return "unknown";
+}
+
+export function policyGuarantees(
+  snapshot: DatabaseSnapshot,
+  schema: string,
+  table: string,
+  dimension: "ownership" | "tenant",
+): boolean {
+  const accepted =
+    dimension === "ownership"
+      ? new Set<PolicyExpressionClass>(["identity"])
+      : new Set<PolicyExpressionClass>(["tenant"]);
+  return snapshot.policies.some(
+    (policy) =>
+      policy.schema === schema &&
+      policy.table === table &&
+      policy.permissive === "PERMISSIVE" &&
+      (accepted.has(classifyPolicyExpression(policy.using)) ||
+        accepted.has(classifyPolicyExpression(policy.check))),
   );
 }
 
@@ -397,7 +504,129 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       );
   }
 
-  for (const grant of snapshot.schemaGrants)
+
+  for (const policy of snapshot.policies) {
+    const classifications = [
+      classifyPolicyExpression(policy.using),
+      classifyPolicyExpression(policy.check),
+    ];
+    if (
+      policy.permissive === "PERMISSIVE" &&
+      policy.roles.some((role) => broadGrant(snapshot, role, broad)) &&
+      classifications.includes("role-only")
+    )
+      add(
+        `${policy.schema}.${policy.table}`,
+        "REAPER-RLS-004",
+        "RLS policy gates by role without row identity",
+        "MEDIUM",
+        "RLS",
+        [
+          `Policy ${policy.name} is permissive for a broad role.`,
+          "The recognized predicate checks session role but no supported user/tenant row identity was established.",
+        ],
+        `role-only-policy:${policy.schema}:${policy.table}:${policy.name}`,
+        "Bind row access to auth.uid() or a reviewed tenant claim when per-user or tenant isolation is required.",
+      );
+  }
+
+  for (const view of snapshot.views) {
+    const grants = effectiveTableGrants(snapshot, view.schema, view.name).filter(
+      (grant) => grant.privilege === "SELECT",
+    );
+    if (grants.length && !view.securityInvoker)
+      add(
+        `${view.schema}.${view.name}`,
+        "REAPER-VIEW-001",
+        "Broadly readable view does not use security_invoker",
+        "HIGH",
+        "Privileges",
+        [
+          `Effective broad SELECT through: ${[
+            ...new Set(grants.map((grant) => grant.role)),
+          ].join(", ")}`,
+          "The view executes with owner privileges unless security_invoker is enabled; review RLS behavior on referenced relations.",
+        ],
+        `view-security:${view.schema}:${view.name}`,
+        "Prefer security_invoker=true for client-facing views when caller RLS/privileges should apply, and review the view definition and grants.",
+      );
+  }
+
+  for (const trigger of snapshot.triggers) {
+    const fn = snapshot.functions.find(
+      (candidate) =>
+        candidate.schema === trigger.functionSchema &&
+        candidate.name === trigger.functionName,
+    );
+    if (!fn?.securityDefiner || !unsafeSecurityDefinerSearchPath(fn)) continue;
+    const grants = effectiveTableGrants(
+      snapshot,
+      trigger.schema,
+      trigger.table,
+    ).filter((grant) =>
+      ["INSERT", "UPDATE", "DELETE"].includes(grant.privilege),
+    );
+    if (!grants.length) continue;
+    add(
+      `${trigger.schema}.${trigger.table}`,
+      "REAPER-TRIGGER-001",
+      "Broad DML can invoke SECURITY DEFINER trigger with unsafe search_path",
+      "HIGH",
+      "Privileges",
+      [
+        `Trigger ${trigger.name} invokes ${trigger.functionSchema}.${trigger.functionName}.`,
+        `Effective broad DML through: ${[
+          ...new Set(grants.map((grant) => `${grant.role}:${grant.privilege}`)),
+        ].join(", ")}`,
+        "The trigger function is SECURITY DEFINER and lacks a trusted function-local search_path.",
+      ],
+      `trigger-security:${trigger.schema}:${trigger.table}:${trigger.name}`,
+      "Set a trusted function-local search_path, minimize table DML grants and review the trigger body for privilege-sensitive operations.",
+    );
+  }
+
+  const storage = snapshot.tables.find(
+    (table) => table.schema === "storage" && table.name === "objects",
+  );
+  if (storage) {
+    const storagePolicies = snapshot.policies.filter(
+      (policy) => policy.schema === "storage" && policy.table === "objects",
+    );
+    if (!storage.rls)
+      add(
+        "storage.objects",
+        "REAPER-STORAGE-001",
+        "Supabase Storage objects table has RLS disabled",
+        "HIGH",
+        "Supabase",
+        ["storage.objects exists and row-level security is disabled."],
+        "storage-no-rls",
+        "Enable RLS on storage.objects and define reviewed bucket/object policies before exposing Storage to client roles.",
+      );
+    for (const policy of storagePolicies)
+      if (
+        policy.permissive === "PERMISSIVE" &&
+        policy.roles.some((role) => broadGrant(snapshot, role, broad)) &&
+        [
+          classifyPolicyExpression(policy.using),
+          classifyPolicyExpression(policy.check),
+        ].includes("constant-open")
+      )
+        add(
+          "storage.objects",
+          "REAPER-STORAGE-002",
+          "Supabase Storage policy permits all objects for a broad role",
+          "HIGH",
+          "Supabase",
+          [
+            `Policy ${policy.name} contains a constant-open predicate for roles ${policy.roles.join(", ")}.`,
+          ],
+          `storage-open:${policy.name}`,
+          "Scope Storage policies to reviewed bucket, ownership or tenant predicates rather than a constant TRUE predicate.",
+        );
+  }
+
+    for (const grant of snapshot.schemaGrants)
     if (grant.privilege === "CREATE" && broadGrant(snapshot, grant.role, broad))
       add(
         grant.schema,
