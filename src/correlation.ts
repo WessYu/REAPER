@@ -1,6 +1,7 @@
 import { finding } from "./findings.js";
 import {
   broadGrant,
+  classifyPolicyExpression,
   effectiveTableGrants,
   unsafeSecurityDefinerSearchPath,
 } from "./postgres.js";
@@ -54,6 +55,99 @@ export function correlateSourceDatabase(
       resourceNode.kind !== "resource"
     )
       continue;
+
+    if (resourceNode.label.startsWith("storage:")) {
+      const bucket = resourceNode.label.slice("storage:".length);
+      const loc = queryLocation(query);
+      if (!loc) continue;
+      const table = snapshot.tables.find(
+        (candidate) =>
+          candidate.schema === "storage" && candidate.name === "objects",
+      );
+      if (!table) continue;
+      const route = routeByQuery.get(query.id);
+      const resource = `storage.objects bucket ${bucket}`;
+      const grants = effectiveTableGrants(
+        snapshot,
+        "storage",
+        "objects",
+      ).filter((grant) =>
+        ["SELECT", "INSERT", "UPDATE", "DELETE"].includes(grant.privilege),
+      );
+      if (grants.length && !table.rls)
+        findings.push(
+          finding(
+            {
+              ...loc,
+              ruleId: "REAPER-STORAGE-003",
+              title:
+                "Supabase Storage client path reaches storage.objects without RLS",
+              description: `Observed ${query.label} against bucket ${bucket}; storage.objects has effective broad DML/SELECT access and RLS is disabled.`,
+              severity: "HIGH",
+              confidence: "HIGH",
+              category: "Supabase",
+              cwe: 862,
+              route,
+              resource,
+              evidence: [
+                `Storage bucket: ${bucket}`,
+                `Source operation: ${query.label}`,
+                `Effective broad grants: ${[
+                  ...new Set(
+                    grants.map(
+                      (grant) => `${grant.role}:${grant.privilege}`,
+                    ),
+                  ),
+                ].join(", ")}`,
+                "storage.objects row-level security is disabled.",
+              ],
+              dataFlow: [{ ...loc, kind: "sink", label: query.label }],
+              recommendation:
+                "Enable RLS on storage.objects and define reviewed bucket/ownership policies before exposing this Storage path to client roles.",
+            },
+            `storage-db:${query.id}:${bucket}:no-rls`,
+          ),
+        );
+
+      const openPolicies = snapshot.policies.filter(
+        (policy) =>
+          policy.schema === "storage" &&
+          policy.table === "objects" &&
+          policy.permissive === "PERMISSIVE" &&
+          policy.roles.some((role) => broadGrant(snapshot, role)) &&
+          [
+            classifyPolicyExpression(policy.using),
+            classifyPolicyExpression(policy.check),
+          ].includes("constant-open"),
+      );
+      if (table.rls && openPolicies.length)
+        findings.push(
+          finding(
+            {
+              ...loc,
+              ruleId: "REAPER-STORAGE-004",
+              title:
+                "Supabase Storage client path is covered by constant-open policy",
+              description: `Observed ${query.label} against bucket ${bucket}; a broad permissive storage.objects policy contains a constant-open predicate.`,
+              severity: "HIGH",
+              confidence: "HIGH",
+              category: "Supabase",
+              cwe: 862,
+              route,
+              resource,
+              evidence: [
+                `Storage bucket: ${bucket}`,
+                `Open policies: ${openPolicies.map((policy) => policy.name).join(", ")}`,
+              ],
+              dataFlow: [{ ...loc, kind: "sink", label: query.label }],
+              recommendation:
+                "Replace constant-open Storage policies with bucket, ownership or tenant predicates and retest the client path.",
+            },
+            `storage-db:${query.id}:${bucket}:open-policy`,
+          ),
+        );
+      continue;
+    }
 
     if (resourceNode.label.startsWith("rpc:")) {
       const rpc = resourceNode.label.slice("rpc:".length);
