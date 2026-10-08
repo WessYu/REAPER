@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.1.1 — unreleased
+## 0.1.1 — 2026-10-08
 
 - Fixed npm executable packaging by shipping a stable `bin/reaper.js` wrapper, so the `reaper` command is created even when `dist/` does not exist before `prepack` runs.
 - Kept `prepack` building the TypeScript output before the package tarball is finalized.
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-10-08
 
 - Added bounded TypeScript AST analysis, inter-file direct-call expansion and request-to-query evidence.
 - Added SQL text, unrestricted mutation, ownership and tenant-isolation review rules with direct post-query deny-guard proofs.
@@ -19,4 +19,4 @@
 - Added bounded, assertion-driven runtime verification for authorized localhost/allowlisted targets using GET/HEAD only.
 - Added secure/vulnerable fixtures, adversarial authorization tests, PostgreSQL integration tests, runtime-verification tests and Node 22/24 package-install CI.
 
-This is an experimental implementation milestone, not a production stability declaration or npm publication.
+This is an experimental implementation milestone, not a production stability declaration. Version 0.1.1 is published on npm as `@wess2001/reaper`.

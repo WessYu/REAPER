@@ -8,14 +8,32 @@
 <p align="center"><em>Know exactly who can access your data. Before an attacker does.</em></p>
 
 [![CI](https://github.com/WessYu/REAPER/actions/workflows/ci.yml/badge.svg)](https://github.com/WessYu/REAPER/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@wess2001/reaper.svg)](https://www.npmjs.com/package/@wess2001/reaper)
 
 REAPER traces request input into supported database calls and reports authorization, tenant-isolation, SQL, migration, secret and database-posture risks. It can combine source analysis with read-only PostgreSQL evidence and can run explicitly configured, bounded authorization assertions against authorized targets.
 
-Version **0.1.0 is experimental**. Static/catalog findings identify patterns worth investigating, not proof that an application is exploitable. Runtime findings are only marked CONFIRMED when a configured authorization assertion observes a status different from its declared security expectation. A clean report does not establish security. There is no AI dependency, telemetry or automatic database repair.
+Version **0.1.1 is experimental**. Static/catalog findings identify patterns worth investigating, not proof that an application is exploitable. Runtime findings are only marked CONFIRMED when a configured authorization assertion observes a status different from its declared security expectation. A clean report does not establish security. There is no AI dependency, telemetry or automatic database repair.
 
-## Run locally
+## Install and run
 
 Requires Node.js 22 or 24.
+
+Run directly from npm:
+
+```sh
+npx @wess2001/reaper@0.1.1 --help
+npx @wess2001/reaper@0.1.1 scan ./application
+```
+
+Or install the CLI globally:
+
+```sh
+npm install -g @wess2001/reaper@0.1.1
+reaper --help
+reaper scan ./application
+```
+
+For local development:
 
 ```sh
 git clone https://github.com/WessYu/REAPER.git
@@ -27,16 +45,6 @@ node dist/cli.js scan test/fixtures/secure --fail-on medium
 ```
 
 The vulnerable fixture produces one SQL, one ownership and one tenant finding. The secure fixture produces none of those findings. Both are analysis fixtures, not deployable applications.
-
-To install the built CLI from a local tarball:
-
-```sh
-npm pack
-npm install -g ./wess2001-reaper-0.1.0.tgz
-reaper --help
-```
-
-The npm package has **not** been published. Do not assume `npx @wess2001/reaper` is available.
 
 ## Implemented coverage
 
