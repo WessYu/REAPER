@@ -67,4 +67,3 @@ test("control-flow graph models branches loops and abrupt control edges", async 
   assert.ok(graph.edges.length > 0);
   assert.match(renderControlFlowGraph(graph, "dot"), /digraph REAPER_CFG/);
 });
-
