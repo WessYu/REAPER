@@ -28,7 +28,10 @@ export function renderDashboard(result: ScanResult): string {
     )
     .join("");
   const graph = result.graph.edges
-    .map((edge) => `<li><code>${escapeHtml(edge.from)}</code> → <code>${escapeHtml(edge.to)}</code> <small>${escapeHtml(edge.relation)}</small></li>`)
+    .map(
+      (edge) =>
+        `<li><code>${escapeHtml(edge.from)}</code> → <code>${escapeHtml(edge.to)}</code> <small>${escapeHtml(edge.relation)}</small></li>`,
+    )
     .join("");
   return `<!doctype html>
 <html lang="en">
