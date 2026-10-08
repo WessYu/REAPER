@@ -2,11 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
-import {
-  verify,
-  validateConfig,
-  discoverEndpoints,
-} from "../dist/index.js";
+import { verify, validateConfig, discoverEndpoints } from "../dist/index.js";
 
 async function server(handler) {
   const instance = http.createServer(handler);
@@ -180,7 +176,6 @@ test("verify config caps active request rate", () => {
     /rateLimitPerSecond/,
   );
 });
-
 
 test("OpenAPI discovery only returns GET and HEAD operations", async () => {
   const { instance, origin } = await server((req, res) => {
