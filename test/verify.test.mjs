@@ -30,7 +30,6 @@ test("verify confirms configured authorization failures on localhost", async () 
     res.statusCode = 200;
     res.end("unexpected access");
   });
-  process.env.REAPER_SYNTH_EMAIL = "synthetic@example.test";
   try {
     const result = await verify(origin, {
       verify: {
@@ -242,6 +241,7 @@ test("synthetic setup can capture credentials for assertions and teardown", asyn
     res.statusCode = 404;
     res.end("{}");
   });
+  process.env.REAPER_SYNTH_EMAIL = "synthetic@example.test";
   try {
     const result = await verify(origin, {
       verify: {
