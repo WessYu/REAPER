@@ -25,20 +25,20 @@ dynamic middleware are not treated as authorization proof.
 
 ## PostgreSQL, RLS and privilege posture
 
-| Rule               | Evidence                                                                               | Severity / confidence |
-| ------------------ | -------------------------------------------------------------------------------------- | --------------------- |
-| REAPER-RLS-001     | Broad table grant with RLS disabled                                                    | HIGH / MEDIUM         |
-| REAPER-RLS-002     | RLS enabled with no policies                                                           | INFO / MEDIUM         |
-| REAPER-RLS-003     | Broad permissive policy has constant TRUE USING/CHECK                                  | MEDIUM / MEDIUM       |
-| REAPER-RLS-004     | Broad permissive policy is recognized as role-only without row identity                | MEDIUM / MEDIUM       |
-| REAPER-RLS-005     | Scoped permissive policy coexists with an unscoped permissive alternative               | MEDIUM / MEDIUM       |
-| REAPER-PRIV-001    | Broad role has TRUNCATE, TRIGGER or REFERENCES                                         | HIGH / MEDIUM         |
-| REAPER-PRIV-002    | Broad role has effective CREATE on an application schema                               | HIGH / MEDIUM         |
-| REAPER-PRIV-003    | Broad application role is SUPERUSER or BYPASSRLS                                       | CRITICAL / MEDIUM     |
-| REAPER-PG-001      | Broadly executable SECURITY DEFINER function has unsafe function-local search_path     | HIGH / MEDIUM         |
+| Rule               | Evidence                                                                                 | Severity / confidence |
+| ------------------ | ---------------------------------------------------------------------------------------- | --------------------- |
+| REAPER-RLS-001     | Broad table grant with RLS disabled                                                      | HIGH / MEDIUM         |
+| REAPER-RLS-002     | RLS enabled with no policies                                                             | INFO / MEDIUM         |
+| REAPER-RLS-003     | Broad permissive policy has constant TRUE USING/CHECK                                    | MEDIUM / MEDIUM       |
+| REAPER-RLS-004     | Broad permissive policy is recognized as role-only without row identity                  | MEDIUM / MEDIUM       |
+| REAPER-RLS-005     | Scoped permissive policy coexists with an unscoped permissive alternative                | MEDIUM / MEDIUM       |
+| REAPER-PRIV-001    | Broad role has TRUNCATE, TRIGGER or REFERENCES                                           | HIGH / MEDIUM         |
+| REAPER-PRIV-002    | Broad role has effective CREATE on an application schema                                 | HIGH / MEDIUM         |
+| REAPER-PRIV-003    | Broad application role is SUPERUSER or BYPASSRLS                                         | CRITICAL / MEDIUM     |
+| REAPER-PG-001      | Broadly executable SECURITY DEFINER function has unsafe function-local search_path       | HIGH / MEDIUM         |
 | REAPER-PG-002      | Broadly executable SECURITY DEFINER function contains dynamic-SQL construction/execution | MEDIUM / MEDIUM       |
-| REAPER-VIEW-001    | Broadly readable view does not use security_invoker                                    | HIGH / MEDIUM         |
-| REAPER-TRIGGER-001 | Broad table DML can invoke a SECURITY DEFINER trigger function with unsafe search_path | HIGH / MEDIUM         |
+| REAPER-VIEW-001    | Broadly readable view does not use security_invoker                                      | HIGH / MEDIUM         |
+| REAPER-TRIGGER-001 | Broad table DML can invoke a SECURITY DEFINER trigger function with unsafe search_path   | HIGH / MEDIUM         |
 
 Role membership is expanded through PostgreSQL memberships when ROLINHERIT
 applies. RLS expressions are classified for common identity
