@@ -1,9 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  createReaperServer,
-  scan,
-} from "../dist/index.js";
+import { createReaperServer, scan } from "../dist/index.js";
 
 test("local REST service binds loopback and exposes health/report only for its configured root", async () => {
   const service = await createReaperServer({
@@ -15,9 +12,7 @@ test("local REST service binds loopback and exposes health/report only for its c
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { ok: true, version: "0.2.0" });
 
-    const report = await fetch(
-      `http://127.0.0.1:${service.port}/api/report`,
-    );
+    const report = await fetch(`http://127.0.0.1:${service.port}/api/report`);
     assert.equal(report.status, 200);
     const body = await report.json();
     assert.equal(body.version, "0.2.0");
