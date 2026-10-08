@@ -48,22 +48,22 @@ The vulnerable fixture produces one SQL, one ownership and one tenant finding. T
 
 ## Implemented coverage
 
-| Area            | Current behavior                                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parsing         | TypeScript compiler AST and symbol resolution for JS, TS, JSX and TSX                                                                                                     |
-| Routes          | Express/Fastify registrations, supported sequential middleware and Next.js `route.ts` exported handlers                                                                   |
+| Area            | Current behavior                                                                                                                                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parsing         | TypeScript compiler AST and symbol resolution for JS, TS, JSX and TSX                                                                                                                                                   |
+| Routes          | Express/Fastify registrations, supported sequential middleware and Next.js `route.ts` exported handlers                                                                                                                 |
 | Flow            | Assignments, destructuring, shared-object/property mutation, local imports, direct calls, `.bind`/`.call`/`.apply`, common Object/Reflect alias patterns, arrays, branches, bounded loops, try/catch/finally and switch |
-| SQL             | Tainted SQL text in pg, Prisma unsafe raw calls and Knex raw; parsed constant UPDATE/DELETE without WHERE                                                                 |
-| Data access     | Prisma authorization reasoning plus Supabase, Knex and Drizzle data-access discovery                                                                                      |
-| PostgreSQL      | Read-only catalogs for tables, RLS, policies, inherited roles, table/schema/column grants, functions, views/materialized views and triggers                               |
-| RLS             | Identity/tenant/role/constant classification plus bounded AND/OR and permissive/restrictive policy-composition reasoning; arbitrary SQL remains conservative                            |
-| Supabase        | Service-role exposure, table/RPC/Storage graph discovery, table/RPC/Storage source-to-catalog correlation                                                                 |
-| Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                                                                       |
-| Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                                                                  |
-| Verification    | Authorized assertions, bounded OpenAPI GET/HEAD discovery/probing, optional synthetic-user provisioning and setup/teardown, budgets, rate limits, timeouts and cancellation          |
-| Platform        | Self-contained HTML dashboard, localhost-only REST service and programmatic Rule SDK                                                                                      |
-| Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                                                                        |
-| Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                                                              |
+| SQL             | Tainted SQL text in pg, Prisma unsafe raw calls and Knex raw; parsed constant UPDATE/DELETE without WHERE                                                                                                               |
+| Data access     | Prisma authorization reasoning plus Supabase, Knex and Drizzle data-access discovery                                                                                                                                    |
+| PostgreSQL      | Read-only catalogs for tables, RLS, policies, inherited roles, table/schema/column grants, functions, views/materialized views and triggers                                                                             |
+| RLS             | Identity/tenant/role/constant classification plus bounded AND/OR and permissive/restrictive policy-composition reasoning; arbitrary SQL remains conservative                                                            |
+| Supabase        | Service-role exposure, table/RPC/Storage graph discovery, table/RPC/Storage source-to-catalog correlation                                                                                                               |
+| Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                                                                                                                     |
+| Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                                                                                                                |
+| Verification    | Authorized assertions, bounded OpenAPI GET/HEAD discovery/probing, optional synthetic-user provisioning and setup/teardown, budgets, rate limits, timeouts and cancellation                                             |
+| Platform        | Self-contained HTML dashboard, localhost-only REST service and programmatic Rule SDK                                                                                                                                    |
+| Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                                                                                                                      |
+| Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                                                                                                            |
 
 Local import resolution follows standard TypeScript module resolution within discovered files. The scanner does not load the target's compiler plugins, execute its configuration or import its dependencies.
 
@@ -107,8 +107,7 @@ export default {
       count: 2,
       path: "/test/signup",
       body: {
-        email:
-          "reaper-{{SYNTHETIC_RUN}}-{{SYNTHETIC_INDEX}}@example.test",
+        email: "reaper-{{SYNTHETIC_RUN}}-{{SYNTHETIC_INDEX}}@example.test",
       },
       expectStatus: 201,
       tokenPath: "token",
