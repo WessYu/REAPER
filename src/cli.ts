@@ -51,7 +51,7 @@ reaper doctor           Check runtime version
 --help | --version
 
 Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
-Runtime verification is limited to configured GET/HEAD authorization assertions. Dashboard is not implemented in 0.1.0.
+Runtime verification is authorization-scoped: localhost or exact allowlist, bounded discovery, explicit assertions and opt-in synthetic setup/teardown.
 `;
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     if (!file) throw new Error("A JSON report path is required.");
     const data = (await json(file)) as ScanResult;
     if (
-      !["0.1.0", "0.2.0"].includes(data?.version) ||
+      !["0.1.0", "0.1.1", "0.2.0"].includes(data?.version) ||
       !Array.isArray(data.findings) ||
       !data.metrics ||
       !Array.isArray(data.diagnostics)
