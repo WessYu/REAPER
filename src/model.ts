@@ -68,6 +68,20 @@ export interface VerifyLifecycleRequest {
   body?: VerifyJson;
   capture?: Record<string, string>;
 }
+export interface VerifySyntheticUsers {
+  count?: number;
+  path: string;
+  method?: "POST" | "PUT";
+  body: VerifyJson;
+  expectStatus?: number;
+  tokenPath: string;
+  idPath?: string;
+  cleanup?: {
+    path: string;
+    method?: "DELETE";
+    expectStatus?: number;
+  };
+}
 export interface VerifyConfig {
   allowedTargets?: string[];
   maxRequests?: number;
@@ -76,7 +90,10 @@ export interface VerifyConfig {
   rateLimitPerSecond?: number;
   discoverOpenApi?: boolean;
   openApiPaths?: string[];
+  probeDiscovered?: boolean;
+  discoveryAuthEnv?: string;
   allowMutations?: boolean;
+  syntheticUsers?: VerifySyntheticUsers;
   setup?: VerifyLifecycleRequest[];
   teardown?: VerifyLifecycleRequest[];
   assertions: VerifyAssertion[];

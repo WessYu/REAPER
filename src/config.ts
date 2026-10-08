@@ -115,7 +115,10 @@ export function validateConfig(value: unknown): Config {
       "rateLimitPerSecond",
       "discoverOpenApi",
       "openApiPaths",
+      "probeDiscovered",
+      "discoveryAuthEnv",
       "allowMutations",
+      "syntheticUsers",
       "setup",
       "teardown",
       "assertions",
@@ -127,9 +130,21 @@ export function validateConfig(value: unknown): Config {
       throw new Error("verify.allowedTargets must be a string array.");
     if (verify.openApiPaths !== undefined && !strings(verify.openApiPaths))
       throw new Error("verify.openApiPaths must be a string array.");
-    for (const key of ["discoverOpenApi", "allowMutations"])
+    for (const key of [
+      "discoverOpenApi",
+      "probeDiscovered",
+      "allowMutations",
+    ])
       if (verify[key] !== undefined && typeof verify[key] !== "boolean")
         throw new Error(`verify.${key} must be boolean.`);
+    if (
+      verify.discoveryAuthEnv !== undefined &&
+      (typeof verify.discoveryAuthEnv !== "string" ||
+        !/^[A-Z_][A-Z0-9_]*$/i.test(verify.discoveryAuthEnv))
+    )
+      throw new Error(
+        "verify.discoveryAuthEnv must be an environment variable name.",
+      );
     for (const key of [
       "maxRequests",
       "concurrency",
@@ -244,13 +259,110 @@ export function validateConfig(value: unknown): Config {
     };
     lifecycle(verify.setup, "setup");
     lifecycle(verify.teardown, "teardown");
+    if (verify.syntheticUsers !== undefined) {
+      if (
+        !verify.syntheticUsers ||
+        typeof verify.syntheticUsers !== "object" ||
+        Array.isArray(verify.syntheticUsers)
+      )
+        throw new Error("verify.syntheticUsers must be an object.");
+      const synthetic = verify.syntheticUsers as Record<string, unknown>;
+      const syntheticAllowed = new Set([
+        "count",
+        "path",
+        "method",
+        "body",
+        "expectStatus",
+        "tokenPath",
+        "idPath",
+        "cleanup",
+      ]);
+      for (const key of Object.keys(synthetic))
+        if (!syntheticAllowed.has(key))
+          throw new Error(`Unknown verify.syntheticUsers key: ${key}`);
+      if (
+        synthetic.count !== undefined &&
+        (!Number.isSafeInteger(synthetic.count) ||
+          Number(synthetic.count) < 2 ||
+          Number(synthetic.count) > 4)
+      )
+        throw new Error("verify.syntheticUsers.count must be between 2 and 4.");
+      if (
+        typeof synthetic.path !== "string" ||
+        !synthetic.path.startsWith("/") ||
+        synthetic.path.startsWith("//")
+      )
+        throw new Error(
+          "verify.syntheticUsers.path must be an origin-relative path.",
+        );
+      if (
+        synthetic.method !== undefined &&
+        synthetic.method !== "POST" &&
+        synthetic.method !== "PUT"
+      )
+        throw new Error(
+          "verify.syntheticUsers.method must be POST or PUT.",
+        );
+      if (!jsonLiteral(synthetic.body))
+        throw new Error("verify.syntheticUsers.body must be literal JSON.");
+      if (
+        typeof synthetic.tokenPath !== "string" ||
+        synthetic.tokenPath.length < 1
+      )
+        throw new Error(
+          "verify.syntheticUsers.tokenPath must be a JSON path.",
+        );
+      if (
+        synthetic.idPath !== undefined &&
+        (typeof synthetic.idPath !== "string" || synthetic.idPath.length < 1)
+      )
+        throw new Error("verify.syntheticUsers.idPath must be a JSON path.");
+      if (
+        synthetic.expectStatus !== undefined &&
+        (!Number.isSafeInteger(synthetic.expectStatus) ||
+          Number(synthetic.expectStatus) < 100 ||
+          Number(synthetic.expectStatus) > 599)
+      )
+        throw new Error(
+          "verify.syntheticUsers.expectStatus must be an HTTP status.",
+        );
+      if (synthetic.cleanup !== undefined) {
+        if (
+          !synthetic.cleanup ||
+          typeof synthetic.cleanup !== "object" ||
+          Array.isArray(synthetic.cleanup)
+        )
+          throw new Error(
+            "verify.syntheticUsers.cleanup must be an object.",
+          );
+        const cleanup = synthetic.cleanup as Record<string, unknown>;
+        for (const key of Object.keys(cleanup))
+          if (!["path", "method", "expectStatus"].includes(key))
+            throw new Error(
+              `Unknown verify.syntheticUsers.cleanup key: ${key}`,
+            );
+        if (
+          typeof cleanup.path !== "string" ||
+          !cleanup.path.startsWith("/") ||
+          cleanup.path.startsWith("//")
+        )
+          throw new Error(
+            "verify.syntheticUsers.cleanup.path must be origin-relative.",
+          );
+        if (cleanup.method !== undefined && cleanup.method !== "DELETE")
+          throw new Error(
+            "verify.syntheticUsers.cleanup.method must be DELETE.",
+          );
+      }
+    }
     if (
       ((verify.setup as unknown[] | undefined)?.length ||
-        (verify.teardown as unknown[] | undefined)?.length) &&
+        (verify.teardown as unknown[] | undefined)?.length ||
+        verify.syntheticUsers !== undefined) &&
       verify.allowMutations !== true
     )
       throw new Error(
-        "verify.allowMutations must be true when setup/teardown requests are configured.",
+        "verify.allowMutations must be true when mutating setup/teardown or syntheticUsers are configured.",
       );
     if (!Array.isArray(verify.assertions))
       throw new Error("verify.assertions must be an array.");
