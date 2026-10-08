@@ -1456,6 +1456,7 @@ export function analyze(
   }
   const routes = new Set<Fn>();
   const routeMiddleware = new Map<string, Fn[]>();
+  const inheritedMiddleware: Array<{ prefix?: string; fn: Fn }> = [];
   function addMiddleware(fn: Fn, route: string): void {
     const list = routeMiddleware.get(route) ?? [];
     if (!list.includes(fn)) list.push(fn);
@@ -1491,6 +1492,20 @@ export function analyze(
         }
       : empty();
     const env = new Map<ts.Symbol, Value>();
+    const routePath = route.includes(" ")
+      ? route.slice(route.indexOf(" ") + 1)
+      : route;
+    for (const middleware of inheritedMiddleware)
+      if (
+        middleware.prefix === undefined ||
+        routePath === middleware.prefix ||
+        routePath.startsWith(
+          middleware.prefix.endsWith("/")
+            ? middleware.prefix
+            : middleware.prefix + "/",
+        )
+      )
+        invoke(middleware.fn, [request, empty(), empty()], env, route, 0);
     for (const middleware of routeMiddleware.get(route) ?? [])
       invoke(middleware, [request, empty(), empty()], env, route, 0);
     invoke(fn, [request, context], env, route, 0);
@@ -1503,6 +1518,42 @@ export function analyze(
         message: ts.flattenDiagnosticMessageText(diagnostic.messageText, " "),
       });
     function visit(node: ts.Node): void {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression)
+      ) {
+        const method = node.expression.name.text;
+        const receiver = node.expression.expression;
+        const routeLibrary = library(receiver, new Set());
+        if (
+          routeLibrary === "express" &&
+          method === "use" &&
+          node.arguments.length
+        ) {
+          const first = node.arguments[0];
+          const prefix =
+            first && ts.isStringLiteral(first) ? first.text : undefined;
+          const start = prefix === undefined ? 0 : 1;
+          for (const argument of node.arguments.slice(start)) {
+            const fn = evaluate(argument, new Map(), undefined, 0).fn;
+            if (fn) inheritedMiddleware.push({ prefix, fn });
+          }
+        }
+        if (
+          routeLibrary === "fastify" &&
+          method === "addHook" &&
+          node.arguments[0] &&
+          ts.isStringLiteral(node.arguments[0]) &&
+          ["onRequest", "preParsing", "preValidation", "preHandler"].includes(
+            node.arguments[0].text,
+          )
+        ) {
+          const fn = node.arguments[1]
+            ? evaluate(node.arguments[1], new Map(), undefined, 0).fn
+            : undefined;
+          if (fn) inheritedMiddleware.push({ fn });
+        }
+      }
       if (
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression) &&
