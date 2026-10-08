@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { finding } from "./findings.js";
 import type {
@@ -318,11 +319,17 @@ async function lifecycle(
   }
 }
 
-function openApiEndpoints(document: unknown): string[] {
+export interface DiscoveredEndpoint {
+  method: "GET" | "HEAD";
+  path: string;
+  status?: number;
+}
+
+function openApiEndpoints(document: unknown): DiscoveredEndpoint[] {
   if (!document || typeof document !== "object") return [];
   const paths = (document as Record<string, unknown>).paths;
   if (!paths || typeof paths !== "object" || Array.isArray(paths)) return [];
-  const endpoints: string[] = [];
+  const endpoints: DiscoveredEndpoint[] = [];
   for (const [path, value] of Object.entries(
     paths as Record<string, unknown>,
   )) {
@@ -330,12 +337,26 @@ function openApiEndpoints(document: unknown): string[] {
     const operations = value as Record<string, unknown>;
     for (const method of ["get", "head"])
       if (operations[method] && typeof operations[method] === "object")
-        endpoints.push(`${method.toUpperCase()} ${path}`);
+        endpoints.push({
+          method: method.toUpperCase() as "GET" | "HEAD",
+          path,
+        });
   }
-  return [...new Set(endpoints)].sort();
+  return [
+    ...new Map(
+      endpoints.map((endpoint) => [
+        `${endpoint.method} ${endpoint.path}`,
+        endpoint,
+      ]),
+    ).values(),
+  ].sort((a, b) =>
+    `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`),
+  );
 }
 
-async function discoverWithContext(context: RuntimeContext): Promise<string[]> {
+async function discoverWithContext(
+  context: RuntimeContext,
+): Promise<DiscoveredEndpoint[]> {
   if (context.config.discoverOpenApi !== true) return [];
   const paths = context.config.openApiPaths?.length
     ? context.config.openApiPaths
@@ -351,13 +372,35 @@ async function discoverWithContext(context: RuntimeContext): Promise<string[]> {
       const endpoints = openApiEndpoints(await limitedJson(response));
       if (!endpoints.length) continue;
       for (const endpoint of endpoints) {
-        const id = `route:runtime:${endpoint}`;
+        const label = `${endpoint.method} ${endpoint.path}`;
+        const id = `route:runtime:${label}`;
         if (!context.result.graph.nodes.some((node) => node.id === id))
           context.result.graph.nodes.push({
             id,
             kind: "route",
-            label: endpoint,
+            label,
           });
+        if (
+          context.config.probeDiscovered === true &&
+          !/[{}]/.test(endpoint.path)
+        ) {
+          try {
+            const probed = await request(context, {
+              path: endpoint.path,
+              method: endpoint.method,
+              authEnv: context.config.discoveryAuthEnv,
+            });
+            if (probed) {
+              endpoint.status = probed.status;
+              await probed.body?.cancel();
+              context.result.metrics.sinks++;
+            }
+          } catch (error) {
+            context.result.diagnostics.push({
+              message: `Discovery probe ${label} failed: ${error instanceof Error ? error.message : "unknown error"}.`,
+            });
+          }
+        }
       }
       context.result.metrics.routes += endpoints.length;
       return endpoints;
@@ -372,11 +415,11 @@ async function discoverWithContext(context: RuntimeContext): Promise<string[]> {
   return [];
 }
 
-export async function discoverEndpoints(
+export async function discoverRoutes(
   target: string,
   config: Config,
   options: { signal?: AbortSignal } = {},
-): Promise<string[]> {
+): Promise<DiscoveredEndpoint[]> {
   const parsed = targetUrl(target);
   if (!config.verify)
     throw new Error("Verification configuration is required.");
@@ -396,6 +439,105 @@ export async function discoverEndpoints(
     pacing: Promise.resolve(),
   };
   return discoverWithContext(context);
+}
+
+export async function discoverEndpoints(
+  target: string,
+  config: Config,
+  options: { signal?: AbortSignal } = {},
+): Promise<string[]> {
+  return (await discoverRoutes(target, config, options)).map(
+    (endpoint) => `${endpoint.method} ${endpoint.path}`,
+  );
+}
+
+async function syntheticUsers(
+  context: RuntimeContext,
+): Promise<() => Promise<void>> {
+  const synthetic = context.config.syntheticUsers;
+  if (!synthetic) return async () => {};
+  if (context.config.allowMutations !== true)
+    throw new Error("Synthetic users require allowMutations=true.");
+  const count = synthetic.count ?? 2;
+  const run = randomUUID().slice(0, 12);
+  const created: number[] = [];
+  for (let index = 1; index <= count; index++) {
+    context.variables.set("SYNTHETIC_INDEX", String(index));
+    context.variables.set("SYNTHETIC_RUN", run);
+    const response = await request(context, {
+      path: synthetic.path,
+      method: synthetic.method ?? "POST",
+      body: synthetic.body,
+    });
+    if (!response) break;
+    context.result.metrics.sinks++;
+    const body = await limitedJson(response);
+    if (
+      synthetic.expectStatus !== undefined &&
+      response.status !== synthetic.expectStatus
+    ) {
+      context.result.diagnostics.push({
+        message: `Synthetic user ${index} expected HTTP ${synthetic.expectStatus} but received ${response.status}.`,
+      });
+      break;
+    }
+    const token = jsonPath(body, synthetic.tokenPath);
+    const id = synthetic.idPath ? jsonPath(body, synthetic.idPath) : undefined;
+    if (typeof token !== "string" || !token) {
+      context.result.diagnostics.push({
+        message: `Synthetic user ${index} token capture failed at ${synthetic.tokenPath}.`,
+      });
+      break;
+    }
+    context.variables.set(`USER_${index}_TOKEN`, token);
+    if (
+      synthetic.idPath &&
+      !["string", "number", "boolean"].includes(typeof id)
+    ) {
+      context.result.diagnostics.push({
+        message: `Synthetic user ${index} id capture failed at ${synthetic.idPath}.`,
+      });
+      break;
+    }
+    if (id !== undefined)
+      context.variables.set(`USER_${index}_ID`, String(id));
+    created.push(index);
+  }
+
+  return async () => {
+    if (!synthetic.cleanup) return;
+    for (const index of created.reverse()) {
+      context.variables.set(
+        "USER_ID",
+        context.variables.get(`USER_${index}_ID`) ?? "",
+      );
+      context.variables.set(
+        "CURRENT_USER_TOKEN",
+        context.variables.get(`USER_${index}_TOKEN`) ?? "",
+      );
+      try {
+        const response = await request(context, {
+          path: synthetic.cleanup.path,
+          method: synthetic.cleanup.method ?? "DELETE",
+          authVar: "CURRENT_USER_TOKEN",
+        });
+        if (!response) continue;
+        context.result.metrics.sinks++;
+        await response.body?.cancel();
+        if (
+          synthetic.cleanup.expectStatus !== undefined &&
+          response.status !== synthetic.cleanup.expectStatus
+        )
+          context.result.diagnostics.push({
+            message: `Synthetic user ${index} cleanup expected HTTP ${synthetic.cleanup.expectStatus} but received ${response.status}.`,
+          });
+      } catch {
+        context.result.diagnostics.push({
+          message: `Synthetic user ${index} cleanup failed.`,
+        });
+      }
+    }
+  };
 }
 
 async function executeAssertion(
@@ -496,9 +638,11 @@ export async function verify(
   const concurrency = Math.min(config.verify.concurrency ?? 2, 8);
   let cursor = 0;
 
+  let cleanupSynthetic = async () => {};
   try {
     await discoverWithContext(context);
     await lifecycle(context, config.verify.setup ?? [], "setup");
+    cleanupSynthetic = await syntheticUsers(context);
 
     async function worker(): Promise<void> {
       for (;;) {
@@ -522,6 +666,7 @@ export async function verify(
       ),
     );
   } finally {
+    await cleanupSynthetic();
     await lifecycle(context, config.verify.teardown ?? [], "teardown");
   }
 
