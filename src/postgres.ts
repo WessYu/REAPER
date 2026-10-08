@@ -504,7 +504,6 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
       );
   }
 
-
   for (const policy of snapshot.policies) {
     const classifications = [
       classifyPolicyExpression(policy.using),
@@ -531,9 +530,11 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
   }
 
   for (const view of snapshot.views ?? []) {
-    const grants = effectiveTableGrants(snapshot, view.schema, view.name).filter(
-      (grant) => grant.privilege === "SELECT",
-    );
+    const grants = effectiveTableGrants(
+      snapshot,
+      view.schema,
+      view.name,
+    ).filter((grant) => grant.privilege === "SELECT");
     if (grants.length && !view.securityInvoker)
       add(
         `${view.schema}.${view.name}`,
@@ -626,7 +627,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
         );
   }
 
-    for (const grant of snapshot.schemaGrants)
+  for (const grant of snapshot.schemaGrants)
     if (grant.privilege === "CREATE" && broadGrant(snapshot, grant.role, broad))
       add(
         grant.schema,
