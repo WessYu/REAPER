@@ -47,6 +47,17 @@ const supabaseOperations = new Set([
   "upsert",
   "delete",
 ]);
+const supabaseStorageOperations = new Set([
+  "download",
+  "upload",
+  "update",
+  "remove",
+  "list",
+  "move",
+  "copy",
+  "createSignedUrl",
+  "createSignedUrls",
+]);
 const operations = new Set([
   "findUnique",
   "findUniqueOrThrow",
@@ -362,20 +373,32 @@ export function analyze(
   function member(base: Value, key: string, node: ts.Node): Value {
     if (base.fields?.has(key)) return base.fields.get(key)!;
     const origin = base.origin ? `${base.origin}.${key}` : undefined;
+    let value: Value;
     if (origin && principals.has(origin))
-      return { trace: [], principal: origin, origin };
-    const source =
-      origin &&
-      /^(?:req|request)\.(?:params|query|body|headers|cookies)(?:\.|$)/.test(
-        origin,
-      );
-    if (source) return { origin, trace: [evidence(node, "source", origin)] };
-    return {
-      ...base,
-      origin,
-      resourceField: base.resource ? key : base.resourceField,
-      text: base.text === undefined ? undefined : `${base.text}.${key}`,
-    };
+      value = { trace: [], principal: origin, origin };
+    else {
+      const source =
+        origin &&
+        /^(?:req|request)\.(?:params|query|body|headers|cookies)(?:\.|$)/.test(
+          origin,
+        );
+      if (source) value = { origin, trace: [evidence(node, "source", origin)] };
+      else
+        value = {
+          ...base,
+          fields: undefined,
+          origin,
+          resourceField: base.resource ? key : base.resourceField,
+          text: base.text === undefined ? undefined : `${base.text}.${key}`,
+          operation:
+            base.driver === "supabase" && key === "storage"
+              ? "storage"
+              : base.operation,
+        };
+    }
+    base.fields ??= new Map<string, Value>();
+    base.fields.set(key, value);
+    return value;
   }
   function propertyKey(node: ts.PropertyName): string | undefined {
     return ts.isIdentifier(node) ||
@@ -470,6 +493,10 @@ export function analyze(
                 : empty()),
           );
         }
+        if (ts.isMethodDeclaration(property)) {
+          const key = propertyKey(property.name);
+          if (key) fields.set(key, { trace: [], fn: property });
+        }
       }
       return { ...combine([...fields.values()]), fields };
     }
@@ -514,14 +541,36 @@ export function analyze(
         return combined;
       }
       if (
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        (ts.isPropertyAccessExpression(node.left) ||
+          ts.isElementAccessExpression(node.left))
+      ) {
+        const base = evaluate(node.left.expression, env, route, depth + 1);
+        const key = ts.isPropertyAccessExpression(node.left)
+          ? node.left.name.text
+          : evaluate(
+              node.left.argumentExpression,
+              env,
+              route,
+              depth + 1,
+            ).text;
+        if (key !== undefined) {
+          base.fields ??= new Map<string, Value>();
+          base.fields.set(key, right);
+          return right;
+        }
+      }
+      if (
         node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
         node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-        !ts.isIdentifier(node.left)
+        !ts.isIdentifier(node.left) &&
+        !ts.isPropertyAccessExpression(node.left) &&
+        !ts.isElementAccessExpression(node.left)
       ) {
         result.diagnostics.push({
           ...location(node),
           message:
-            "Property/index mutation is not modeled; downstream constraints require manual review.",
+            "Complex assignment target is not modeled; downstream constraints require manual review.",
         });
       }
       const left = evaluate(node.left, env, route, depth + 1);
@@ -599,6 +648,20 @@ export function analyze(
         )
           return { trace: [evidence(node, "source", `request.${method}()`)] };
         if (sinkValue) return sinkValue;
+        if (method === "call" && receiver.fn)
+          return invoke(receiver.fn, args.slice(1), env, route, depth + 1);
+        if (method === "apply" && receiver.fn)
+          return invoke(
+            receiver.fn,
+            args[1]?.items ?? [],
+            env,
+            route,
+            depth + 1,
+          );
+        if (method === "push" && receiver.items) {
+          receiver.items.push(...args);
+          return receiver;
+        }
       }
       if (callee.fn) return invoke(callee.fn, args, env, route, depth + 1);
       if (callee.driver === "knex" && args[0]?.text)
@@ -765,6 +828,18 @@ export function analyze(
     }
 
     if (driver === "supabase") {
+      if (
+        method === "from" &&
+        receiver.operation === "storage" &&
+        args[0]?.text
+      ) {
+        return {
+          trace: combine(args).trace,
+          driver,
+          operation: "storage-bucket",
+          resource: `storage:${args[0].text}`,
+        };
+      }
       if (method === "from" && args[0]?.text) {
         return {
           trace: combine(args).trace,
@@ -801,6 +876,44 @@ export function analyze(
             relation: "calls",
           });
         return { trace: combine(args).trace, driver, resource };
+      }
+      if (
+        receiver.resource?.startsWith("storage:") &&
+        supabaseStorageOperations.has(method)
+      ) {
+        const resource = receiver.resource;
+        const queryId = `query:${loc.file}:${loc.line}:${loc.column}`;
+        sinkCounts.add(`${loc.file}:${node.pos}`);
+        if (!result.graph.nodes.some((n) => n.id === queryId))
+          result.graph.nodes.push({
+            id: queryId,
+            kind: "query",
+            label: `supabase.storage.${method}`,
+          });
+        const resourceId = `resource:${resource}`;
+        if (!result.graph.nodes.some((n) => n.id === resourceId))
+          result.graph.nodes.push({
+            id: resourceId,
+            kind: "resource",
+            label: resource,
+          });
+        result.graph.edges.push({
+          from: queryId,
+          to: resourceId,
+          relation: "accesses",
+        });
+        if (route)
+          result.graph.edges.push({
+            from: `route:${route}`,
+            to: queryId,
+            relation: "calls",
+          });
+        return {
+          ...receiver,
+          trace: combine([receiver, ...args]).trace,
+          driver,
+          operation: method,
+        };
       }
       if (receiver.resource && supabaseOperations.has(method)) {
         const resource = receiver.resource;
@@ -1149,6 +1262,22 @@ export function analyze(
     }
   }
 
+  function mergeEnvironment(
+    target: Environment,
+    ...branches: Environment[]
+  ): void {
+    for (const s of new Set(branches.flatMap((branch) => [...branch.keys()]))) {
+      const values = branches.map((branch) => branch.get(s) ?? empty());
+      const first = values[0];
+      target.set(
+        s,
+        first && values.every((value) => value === first)
+          ? first
+          : combine(values),
+      );
+    }
+  }
+
   function statement(
     node: ts.Statement,
     env: Environment,
@@ -1204,20 +1333,88 @@ export function analyze(
         value: combine([a.value, b.value]),
       };
     }
-    if (
-      ts.isForStatement(node) ||
-      ts.isForOfStatement(node) ||
-      ts.isForInStatement(node) ||
-      ts.isWhileStatement(node) ||
-      ts.isDoStatement(node) ||
-      ts.isTryStatement(node) ||
-      ts.isSwitchStatement(node)
-    ) {
-      result.diagnostics.push({
-        ...location(node),
-        message:
-          "Loop, try or switch control flow is unsupported; review this region manually.",
-      });
+    if (ts.isForStatement(node)) {
+      const loop = new Map(env);
+      if (node.initializer) {
+        if (ts.isVariableDeclarationList(node.initializer))
+          for (const declaration of node.initializer.declarations)
+            if (declaration.initializer)
+              bind(
+                declaration.name,
+                evaluate(declaration.initializer, loop, route, depth + 1),
+                loop,
+              );
+        else evaluate(node.initializer, loop, route, depth + 1);
+      }
+      if (node.condition) evaluate(node.condition, loop, route, depth + 1);
+      statement(node.statement, loop, route, depth + 1);
+      if (node.incrementor) evaluate(node.incrementor, loop, route, depth + 1);
+      mergeEnvironment(env, loop);
+      return { returned: false, value: empty() };
+    }
+    if (ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+      const loop = new Map(env);
+      const iterable = evaluate(node.expression, loop, route, depth + 1);
+      const value =
+        ts.isForOfStatement(node) && iterable.items?.length
+          ? combine(iterable.items)
+          : iterable;
+      if (ts.isVariableDeclarationList(node.initializer)) {
+        const declaration = node.initializer.declarations[0];
+        if (declaration) bind(declaration.name, value, loop);
+      } else if (ts.isIdentifier(node.initializer))
+        bind(node.initializer, value, loop);
+      statement(node.statement, loop, route, depth + 1);
+      mergeEnvironment(env, loop);
+      return { returned: false, value: empty() };
+    }
+    if (ts.isWhileStatement(node) || ts.isDoStatement(node)) {
+      const loop = new Map(env);
+      evaluate(node.expression, loop, route, depth + 1);
+      statement(node.statement, loop, route, depth + 1);
+      mergeEnvironment(env, loop);
+      return { returned: false, value: empty() };
+    }
+    if (ts.isTryStatement(node)) {
+      const success = new Map(env);
+      const failure = new Map(env);
+      const a = block(node.tryBlock, success, route, depth + 1);
+      let b = { returned: false, value: empty() };
+      if (node.catchClause) {
+        if (node.catchClause.variableDeclaration)
+          bind(node.catchClause.variableDeclaration.name, empty(), failure);
+        b = block(node.catchClause.block, failure, route, depth + 1);
+      }
+      mergeEnvironment(env, success, failure);
+      if (node.finallyBlock) {
+        const final = block(node.finallyBlock, env, route, depth + 1);
+        if (final.returned) return final;
+      }
+      return {
+        returned: a.returned && !!node.catchClause && b.returned,
+        value: combine([a.value, b.value]),
+      };
+    }
+    if (ts.isSwitchStatement(node)) {
+      evaluate(node.expression, env, route, depth + 1);
+      const branches: Environment[] = [];
+      const values: Value[] = [];
+      for (const clause of node.caseBlock.clauses) {
+        const branch = new Map(env);
+        if (ts.isCaseClause(clause))
+          evaluate(clause.expression, branch, route, depth + 1);
+        let value = empty();
+        for (const child of clause.statements) {
+          if (ts.isBreakStatement(child)) break;
+          const step = statement(child, branch, route, depth + 1);
+          value = combine([value, step.value]);
+          if (step.returned) break;
+        }
+        branches.push(branch);
+        values.push(value);
+      }
+      mergeEnvironment(env, ...branches);
+      return { returned: false, value: combine(values) };
     }
     return { returned: false, value: empty() };
   }
@@ -1263,6 +1460,12 @@ export function analyze(
     }
   }
   const routes = new Set<Fn>();
+  const routeMiddleware = new Map<string, Fn[]>();
+  function addMiddleware(fn: Fn, route: string): void {
+    const list = routeMiddleware.get(route) ?? [];
+    if (!list.includes(fn)) list.push(fn);
+    routeMiddleware.set(route, list);
+  }
   function addRoute(fn: Fn, route: string, next: boolean): void {
     routes.add(fn);
     result.metrics.routes++;
@@ -1292,7 +1495,10 @@ export function analyze(
           ]),
         }
       : empty();
-    invoke(fn, [request, context], new Map(), route, 0);
+    const env = new Map<ts.Symbol, Value>();
+    for (const middleware of routeMiddleware.get(route) ?? [])
+      invoke(middleware, [request, empty(), empty()], env, route, 0);
+    invoke(fn, [request, context], env, route, 0);
   }
   for (const sf of program.getSourceFiles()) {
     if (!allowed.has(sf.fileName)) continue;
@@ -1315,16 +1521,17 @@ export function analyze(
         const receiver = node.expression.expression;
         const routeLibrary = library(receiver, new Set());
         if (routeLibrary === "express" || routeLibrary === "fastify") {
-          const last = node.arguments[node.arguments.length - 1];
-          const fn = last
-            ? evaluate(last, new Map(), undefined, 0).fn
-            : undefined;
-          if (fn)
-            addRoute(
-              fn,
-              `${node.expression.name.text.toUpperCase()} ${node.arguments[0].text}`,
-              false,
-            );
+          const route = `${node.expression.name.text.toUpperCase()} ${node.arguments[0].text}`;
+          const handlers = node.arguments
+            .slice(1)
+            .map((argument) => evaluate(argument, new Map(), route, 0).fn)
+            .filter((fn): fn is Fn => !!fn);
+          const fn = handlers.at(-1);
+          if (fn) {
+            for (const middleware of handlers.slice(0, -1))
+              addMiddleware(middleware, route);
+            addRoute(fn, route, false);
+          }
         }
       }
       if (
