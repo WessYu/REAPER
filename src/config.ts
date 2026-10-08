@@ -219,8 +219,8 @@ export function validateConfig(value: unknown): Config {
       throw new Error(
         "verify.allowMutations must be true when setup/teardown requests are configured.",
       );
-    if (!Array.isArray(verify.assertions) || verify.assertions.length === 0)
-      throw new Error("verify.assertions must be a non-empty array.");
+    if (!Array.isArray(verify.assertions))
+      throw new Error("verify.assertions must be an array.");
     for (const assertion of verify.assertions) {
       if (
         !assertion ||

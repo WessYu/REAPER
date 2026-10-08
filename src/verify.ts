@@ -1,6 +1,23 @@
 import { performance } from "node:perf_hooks";
 import { finding } from "./findings.js";
-import type { Config, ScanResult, VerifyAssertion } from "./model.js";
+import type {
+  Config,
+  ScanResult,
+  VerifyAssertion,
+  VerifyJson,
+  VerifyLifecycleRequest,
+} from "./model.js";
+
+interface RuntimeContext {
+  target: URL;
+  config: NonNullable<Config["verify"]>;
+  result: ScanResult;
+  variables: Map<string, string>;
+  signal?: AbortSignal;
+  requestCount: number;
+  nextRequestAt: number;
+  pacing: Promise<void>;
+}
 
 function targetUrl(value: string): URL {
   let parsed: URL;
@@ -40,7 +57,7 @@ function authorizedTarget(target: URL, config: Config): boolean {
 
 function runtimeResult(target: URL): ScanResult {
   return {
-    version: "0.1.0",
+    version: "0.2.0",
     root: target.origin,
     findings: [],
     diagnostics: [],
@@ -60,6 +77,393 @@ function severity(assertion: VerifyAssertion): "CRITICAL" | "HIGH" {
   return assertion.dimension === "tenant" ? "CRITICAL" : "HIGH";
 }
 
+function interpolate(value: string, variables: Map<string, string>): string {
+  return value.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (_, name: string) => {
+    const replacement = variables.get(name);
+    if (replacement === undefined)
+      throw new Error(`Missing captured variable ${name}.`);
+    return replacement;
+  });
+}
+
+function requestPath(path: string, variables: Map<string, string>): string {
+  return path.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (_, name: string) => {
+    const replacement = variables.get(name);
+    if (replacement === undefined)
+      throw new Error(`Missing captured variable ${name}.`);
+    return encodeURIComponent(replacement);
+  });
+}
+
+function bodyValue(
+  value: VerifyJson,
+  variables: Map<string, string>,
+): VerifyJson {
+  if (typeof value === "string") {
+    if (value.startsWith("$env:")) {
+      const name = value.slice("$env:".length);
+      const resolved = process.env[name];
+      if (resolved === undefined)
+        throw new Error(`Missing environment variable ${name}.`);
+      return resolved;
+    }
+    return interpolate(value, variables);
+  }
+  if (Array.isArray(value))
+    return value.map((entry) => bodyValue(entry, variables));
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        bodyValue(entry, variables),
+      ]),
+    );
+  return value;
+}
+
+function authToken(
+  authEnv: string | undefined,
+  authVar: string | undefined,
+  variables: Map<string, string>,
+): string | undefined {
+  if (authEnv) {
+    const token = process.env[authEnv];
+    if (!token) throw new Error(`Missing environment variable ${authEnv}.`);
+    return token;
+  }
+  if (authVar) {
+    const token = variables.get(authVar);
+    if (!token) throw new Error(`Missing captured variable ${authVar}.`);
+    return token;
+  }
+  return undefined;
+}
+
+async function pace(context: RuntimeContext): Promise<boolean> {
+  let release!: () => void;
+  const previous = context.pacing;
+  context.pacing = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    if (context.signal?.aborted) return false;
+    const rate = context.config.rateLimitPerSecond ?? 5;
+    const wait = Math.max(0, context.nextRequestAt - Date.now());
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    if (context.signal?.aborted) return false;
+    context.nextRequestAt = Date.now() + Math.ceil(1000 / rate);
+    return true;
+  } finally {
+    release();
+  }
+}
+
+function consumeBudget(context: RuntimeContext): void {
+  context.requestCount++;
+  const max = context.config.maxRequests ?? 100;
+  if (context.requestCount > max)
+    throw new Error(`Verification request budget exceeded (${max}).`);
+}
+
+async function request(
+  context: RuntimeContext,
+  input: {
+    path: string;
+    method: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+    authEnv?: string;
+    authVar?: string;
+    body?: VerifyJson;
+  },
+): Promise<Response | undefined> {
+  if (!(await pace(context))) return undefined;
+  consumeBudget(context);
+  const path = requestPath(input.path, context.variables);
+  const url = new URL(path, context.target);
+  if (url.origin !== context.target.origin)
+    throw new Error("Verification request escaped the target origin.");
+  const headers = new Headers({
+    accept: "application/json, text/plain;q=0.5",
+    "user-agent": "REAPER/0.2.0 authorized-verification",
+  });
+  const token = authToken(input.authEnv, input.authVar, context.variables);
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  let body: string | undefined;
+  if (input.body !== undefined) {
+    headers.set("content-type", "application/json");
+    body = JSON.stringify(bodyValue(input.body, context.variables));
+  }
+  const controller = new AbortController();
+  const timeoutMs = context.config.timeoutMs ?? 5000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = context.signal
+    ? AbortSignal.any([controller.signal, context.signal])
+    : controller.signal;
+  try {
+    return await fetch(url, {
+      method: input.method,
+      headers,
+      body,
+      redirect: "manual",
+      signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function limitedJson(
+  response: Response,
+  maxBytes = 65536,
+): Promise<unknown> {
+  const declared = Number(response.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel();
+    throw new Error("Response body exceeds capture limit.");
+  }
+  if (!response.body) return undefined;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error("Response body exceeds capture limit.");
+    }
+    chunks.push(value);
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(merged);
+  if (!text.trim()) return undefined;
+  return JSON.parse(text) as unknown;
+}
+
+function jsonPath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const part of path.split(".")) {
+    if (!part) continue;
+    if (Array.isArray(current) && /^\d+$/.test(part))
+      current = current[Number(part)];
+    else if (current && typeof current === "object")
+      current = (current as Record<string, unknown>)[part];
+    else return undefined;
+  }
+  return current;
+}
+
+async function lifecycle(
+  context: RuntimeContext,
+  requests: VerifyLifecycleRequest[],
+  phase: "setup" | "teardown",
+): Promise<void> {
+  if (!requests.length) return;
+  if (context.config.allowMutations !== true)
+    throw new Error("Mutating lifecycle requests require allowMutations=true.");
+  for (const item of requests) {
+    try {
+      const response = await request(context, item);
+      if (!response) return;
+      context.result.metrics.sinks++;
+      const captured =
+        item.capture && Object.keys(item.capture).length
+          ? await limitedJson(response)
+          : (await response.body?.cancel(), undefined);
+      if (
+        item.expectStatus !== undefined &&
+        response.status !== item.expectStatus
+      )
+        context.result.diagnostics.push({
+          message: `${phase} request "${item.name}" expected HTTP ${item.expectStatus} but received ${response.status}.`,
+        });
+      for (const [name, path] of Object.entries(item.capture ?? {})) {
+        const value = jsonPath(captured, path);
+        if (
+          typeof value !== "string" &&
+          typeof value !== "number" &&
+          typeof value !== "boolean"
+        ) {
+          context.result.diagnostics.push({
+            message: `${phase} request "${item.name}" could not capture ${name} from JSON path ${path}.`,
+          });
+          continue;
+        }
+        context.variables.set(name, String(value));
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error && error.name === "AbortError"
+          ? context.signal?.aborted
+            ? "was cancelled"
+            : "timed out"
+          : "failed";
+      context.result.diagnostics.push({
+        message: `${phase} request "${item.name}" ${message}.`,
+      });
+      if (phase === "setup") return;
+    }
+  }
+}
+
+function openApiEndpoints(document: unknown): string[] {
+  if (!document || typeof document !== "object") return [];
+  const paths = (document as Record<string, unknown>).paths;
+  if (!paths || typeof paths !== "object" || Array.isArray(paths)) return [];
+  const endpoints: string[] = [];
+  for (const [path, value] of Object.entries(
+    paths as Record<string, unknown>,
+  )) {
+    if (!path.startsWith("/") || !value || typeof value !== "object") continue;
+    const operations = value as Record<string, unknown>;
+    for (const method of ["get", "head"])
+      if (operations[method] && typeof operations[method] === "object")
+        endpoints.push(`${method.toUpperCase()} ${path}`);
+  }
+  return [...new Set(endpoints)].sort();
+}
+
+async function discoverWithContext(context: RuntimeContext): Promise<string[]> {
+  if (context.config.discoverOpenApi !== true) return [];
+  const paths =
+    context.config.openApiPaths?.length
+      ? context.config.openApiPaths
+      : ["/openapi.json", "/swagger.json", "/api-docs", "/api/openapi.json"];
+  for (const path of paths) {
+    try {
+      const response = await request(context, { path, method: "GET" });
+      if (!response) return [];
+      if (!response.ok) {
+        await response.body?.cancel();
+        continue;
+      }
+      const endpoints = openApiEndpoints(await limitedJson(response));
+      if (!endpoints.length) continue;
+      for (const endpoint of endpoints) {
+        const id = `route:runtime:${endpoint}`;
+        if (!context.result.graph.nodes.some((node) => node.id === id))
+          context.result.graph.nodes.push({
+            id,
+            kind: "route",
+            label: endpoint,
+          });
+      }
+      context.result.metrics.routes += endpoints.length;
+      return endpoints;
+    } catch {
+      continue;
+    }
+  }
+  context.result.diagnostics.push({
+    message:
+      "OpenAPI discovery was enabled, but no supported GET/HEAD endpoint document was found.",
+  });
+  return [];
+}
+
+export async function discoverEndpoints(
+  target: string,
+  config: Config,
+  options: { signal?: AbortSignal } = {},
+): Promise<string[]> {
+  const parsed = targetUrl(target);
+  if (!config.verify)
+    throw new Error("Verification configuration is required.");
+  if (!authorizedTarget(parsed, config))
+    throw new Error(
+      "Remote discovery target is blocked. Add its exact origin to verify.allowedTargets.",
+    );
+  const result = runtimeResult(parsed);
+  const context: RuntimeContext = {
+    target: parsed,
+    config: { ...config.verify, discoverOpenApi: true },
+    result,
+    variables: new Map(),
+    signal: options.signal,
+    requestCount: 0,
+    nextRequestAt: 0,
+    pacing: Promise.resolve(),
+  };
+  return discoverWithContext(context);
+}
+
+async function executeAssertion(
+  context: RuntimeContext,
+  assertion: VerifyAssertion,
+): Promise<void> {
+  try {
+    const response = await request(context, {
+      path: assertion.path,
+      method: assertion.method ?? "GET",
+      authEnv: assertion.authEnv,
+      authVar: assertion.authVar,
+    });
+    if (!response) return;
+    await response.body?.cancel();
+    context.result.metrics.sinks++;
+    if (response.status === assertion.expectStatus) return;
+
+    const resolvedPath = requestPath(assertion.path, context.variables);
+    const route = `${assertion.method ?? "GET"} ${new URL(
+      resolvedPath,
+      context.target,
+    ).pathname}`;
+    const loc = {
+      file: `runtime/${context.target.hostname}`,
+      line: 1,
+      column: 1,
+    };
+    context.result.findings.push(
+      finding(
+        {
+          ...loc,
+          ruleId: "REAPER-VERIFY-001",
+          title: "Configured authorization assertion failed",
+          description: `Assertion "${assertion.name}" expected HTTP ${assertion.expectStatus} but received ${response.status}.`,
+          severity: severity(assertion),
+          confidence: "CONFIRMED",
+          category: "Runtime Verification",
+          cwe: assertion.dimension === "tenant" ? 639 : 862,
+          route,
+          resource: assertion.path,
+          evidence: [
+            `Assertion: ${assertion.name}`,
+            `Expected status: ${assertion.expectStatus}`,
+            `Observed status: ${response.status}`,
+            assertion.authEnv
+              ? `Authentication token supplied from environment variable ${assertion.authEnv}.`
+              : assertion.authVar
+                ? `Authentication token supplied from captured scenario variable ${assertion.authVar}.`
+                : "Request was sent without an Authorization header.",
+          ],
+          dataFlow: [],
+          recommendation:
+            "Review the target route's authentication, ownership/tenant checks and database policy path. Re-run this assertion after remediation.",
+        },
+        `verify:${context.target.origin}:${assertion.method ?? "GET"}:${assertion.path}:${assertion.name}`,
+      ),
+    );
+  } catch (error) {
+    const reason =
+      error instanceof Error && error.name === "AbortError"
+        ? context.signal?.aborted
+          ? "was cancelled"
+          : "timed out"
+        : error instanceof Error
+          ? error.message
+          : "failed before an HTTP status was received";
+    context.result.diagnostics.push({
+      message: `Verification assertion "${assertion.name}" ${reason}.`,
+    });
+  }
+}
+
 export async function verify(
   target: string,
   config: Config,
@@ -74,141 +478,49 @@ export async function verify(
       "Remote verification target is blocked. Add its exact origin to verify.allowedTargets.",
     );
 
-  const assertions = config.verify.assertions;
-  const maxRequests = config.verify.maxRequests ?? 100;
-  if (assertions.length > maxRequests)
-    throw new Error(
-      `Verification requires ${assertions.length} requests but maxRequests is ${maxRequests}.`,
-    );
-  const concurrency = Math.min(config.verify.concurrency ?? 2, 8);
-  const timeoutMs = config.verify.timeoutMs ?? 5000;
-  const rateLimitPerSecond = config.verify.rateLimitPerSecond ?? 5;
-  const intervalMs = Math.ceil(1000 / rateLimitPerSecond);
   const result = runtimeResult(parsed);
+  const context: RuntimeContext = {
+    target: parsed,
+    config: config.verify,
+    result,
+    variables: new Map(),
+    signal: options.signal,
+    requestCount: 0,
+    nextRequestAt: 0,
+    pacing: Promise.resolve(),
+  };
+  const concurrency = Math.min(config.verify.concurrency ?? 2, 8);
   let cursor = 0;
-  let nextRequestAt = 0;
-  let pacing = Promise.resolve();
 
-  async function pace(): Promise<boolean> {
-    let release!: () => void;
-    const previous = pacing;
-    pacing = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    try {
-      if (options.signal?.aborted) return false;
-      const wait = Math.max(0, nextRequestAt - Date.now());
-      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-      if (options.signal?.aborted) return false;
-      nextRequestAt = Date.now() + intervalMs;
-      return true;
-    } finally {
-      release();
-    }
-  }
+  try {
+    await discoverWithContext(context);
+    await lifecycle(context, config.verify.setup ?? [], "setup");
 
-  async function execute(assertion: VerifyAssertion): Promise<void> {
-    const requestUrl = new URL(assertion.path, parsed);
-    if (requestUrl.origin !== parsed.origin)
-      throw new Error("Verification assertion escaped the target origin.");
-    const method = assertion.method ?? "GET";
-    const headers = new Headers({
-      accept: "application/json, text/plain;q=0.5",
-      "user-agent": "REAPER/0.1.0 authorized-verification",
-    });
-    if (assertion.authEnv) {
-      const token = process.env[assertion.authEnv];
-      if (!token) {
-        result.diagnostics.push({
-          message: `Verification assertion "${assertion.name}" requires environment variable ${assertion.authEnv}.`,
-        });
-        return;
+    async function worker(): Promise<void> {
+      for (;;) {
+        if (options.signal?.aborted) return;
+        const index = cursor++;
+        const assertion = config.verify!.assertions[index];
+        if (!assertion) return;
+        await executeAssertion(context, assertion);
       }
-      headers.set("authorization", `Bearer ${token}`);
     }
 
-    if (!(await pace())) return;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const signal = options.signal
-      ? AbortSignal.any([controller.signal, options.signal])
-      : controller.signal;
-    try {
-      const response = await fetch(requestUrl, {
-        method,
-        headers,
-        redirect: "manual",
-        signal,
-      });
-      await response.body?.cancel();
-      result.metrics.sinks++;
-      if (response.status === assertion.expectStatus) return;
-
-      const route = `${method} ${requestUrl.pathname}`;
-      const loc = {
-        file: `runtime/${requestUrl.hostname}`,
-        line: 1,
-        column: 1,
-      };
-      result.findings.push(
-        finding(
-          {
-            ...loc,
-            ruleId: "REAPER-VERIFY-001",
-            title: "Configured authorization assertion failed",
-            description: `Assertion "${assertion.name}" expected HTTP ${assertion.expectStatus} but received ${response.status}.`,
-            severity: severity(assertion),
-            confidence: "CONFIRMED",
-            category: "Runtime Verification",
-            cwe: assertion.dimension === "tenant" ? 639 : 862,
-            route,
-            resource: assertion.path,
-            evidence: [
-              `Assertion: ${assertion.name}`,
-              `Expected status: ${assertion.expectStatus}`,
-              `Observed status: ${response.status}`,
-              assertion.authEnv
-                ? `Authentication token supplied from environment variable ${assertion.authEnv}.`
-                : "Request was sent without an Authorization header.",
-            ],
-            dataFlow: [],
-            recommendation:
-              "Review the target route's authentication, ownership/tenant checks and database policy path. Re-run this assertion after remediation.",
-          },
-          `verify:${parsed.origin}:${method}:${assertion.path}:${assertion.name}`,
-        ),
-      );
-    } catch (error) {
-      const reason =
-        error instanceof Error && error.name === "AbortError"
-          ? options.signal?.aborted
-            ? "was cancelled"
-            : `timed out after ${timeoutMs}ms`
-          : "failed before an HTTP status was received";
-      result.diagnostics.push({
-        message: `Verification assertion "${assertion.name}" ${reason}.`,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    await Promise.all(
+      Array.from(
+        {
+          length: Math.min(
+            concurrency,
+            Math.max(1, config.verify.assertions.length),
+          ),
+        },
+        () => worker(),
+      ),
+    );
+  } finally {
+    await lifecycle(context, config.verify.teardown ?? [], "teardown");
   }
 
-  async function worker(): Promise<void> {
-    for (;;) {
-      if (options.signal?.aborted) return;
-      const index = cursor++;
-      const assertion = assertions[index];
-      if (!assertion) return;
-      await execute(assertion);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, assertions.length) }, () =>
-      worker(),
-    ),
-  );
   result.findings.sort((a, b) => a.id.localeCompare(b.id));
   result.metrics.durationMs = Math.round(performance.now() - start);
   result.metrics.memoryBytes = process.memoryUsage().rss;
