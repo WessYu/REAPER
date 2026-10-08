@@ -720,6 +720,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
         "Prefer security_invoker=true for client-facing views when caller RLS/privileges should apply, and review the view definition and grants.",
       );
     }
+  }
 
   for (const trigger of snapshot.triggers ?? []) {
     const fn = snapshot.functions.find(
@@ -837,7 +838,7 @@ export function analyzeDatabase(snapshot: DatabaseSnapshot): Finding[] {
     const searchPath = configuredSearchPath(fn);
     if (unsafeSecurityDefinerSearchPath(fn))
       add(
-      resource,
+        resource,
       "REAPER-PG-001",
       "Broadly executable SECURITY DEFINER function has unsafe search_path",
       "HIGH",
