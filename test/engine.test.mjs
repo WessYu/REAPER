@@ -456,8 +456,10 @@ test("Supabase Storage operations contribute bucket-scoped graph sinks", async (
     },
   ));
 
-test("Express app.use middleware can establish a shared principal before a route", async () =>
-  source(
+test(
+  "Express app.use middleware can establish a shared principal before a route",
+  async () =>
+    source(
     prefix +
       `function auth(req,res,next){req.user={id:req.auth.userId};next();}app.use(auth);app.get('/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
     (r) =>
@@ -465,17 +467,21 @@ test("Express app.use middleware can establish a shared principal before a route
         r.findings.filter((f) => f.ruleId === "REAPER-AUTH-001").length,
         0,
       ),
-    { resources: { order: { ownership: ["userId"] } } },
-  ));
+      { resources: { order: { ownership: ["userId"] } } },
+    ),
+);
 
-test("path-scoped Express middleware only applies under its mount prefix", async () =>
-  source(
+test(
+  "path-scoped Express middleware only applies under its mount prefix",
+  async () =>
+    source(
     prefix +
       `function auth(req,res,next){req.user={id:req.auth.userId};next();}app.use('/private',auth);app.get('/public/a',(req)=>prisma.order.findUnique({where:{id:req.params.id,userId:req.user.id}}));`,
     (r) =>
       assert.ok(r.findings.some((f) => f.ruleId === "REAPER-AUTH-001")),
-    { resources: { order: { ownership: ["userId"] } } },
-  ));
+      { resources: { order: { ownership: ["userId"] } } },
+    ),
+);
 
 test("Fastify preHandler hooks can establish request principals", async () =>
   source(
