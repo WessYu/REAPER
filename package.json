@@ -27,7 +27,7 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "lint": "eslint src",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write src/analysis.ts && git diff -- src/analysis.ts && exit 1",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test",
     "prepublishOnly": "npm run check",
     "prepack": "npm run build"
