@@ -16,7 +16,10 @@ test("local REST service binds loopback and exposes health/report only for its c
     assert.equal(report.status, 200);
     const body = await report.json();
     assert.equal(body.version, "0.2.0");
-    assert.equal(body.root.endsWith("test/fixtures/secure"), true);
+    assert.equal(
+      body.root.replaceAll("\\", "/").endsWith("test/fixtures/secure"),
+      true,
+    );
   } finally {
     await new Promise((resolve) => service.server.close(resolve));
   }
