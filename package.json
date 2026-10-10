@@ -29,6 +29,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test",
+    "prepublishOnly": "npm run check",
     "prepack": "npm run build"
   },
   "dependencies": {
@@ -49,5 +50,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WessYu/REAPER.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
