@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">REAPER real CI terminal proof</title>
+  <desc id="desc">GitHub Actions run 177 showing the vulnerable fixture with three findings and the secure fixture with zero findings.</desc>
+  <rect width="1280" height="720" rx="26" fill="#0d0d0d"/>
+  <rect x="1" y="1" width="1278" height="718" rx="25" fill="none" stroke="#2e2e2e" stroke-width="2"/>
+  <circle cx="34" cy="32" r="6" fill="#555"/><circle cx="56" cy="32" r="6" fill="#555"/><circle cx="78" cy="32" r="6" fill="#555"/>
+  <text x="104" y="38" fill="#8d8d8d" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">REAPER / GitHub Actions / quality (22) / run #177</text>
+  <line x1="0" y1="58" x2="1280" y2="58" stroke="#252525"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="42" y="98" fill="#ededed" font-size="20">$ reaper scan test/fixtures/vulnerable</text>
+    <text x="42" y="132" fill="#bdbdbd" font-size="18">REAPER 0.2.0 — Data Access Security Engine</text>
+    <text x="42" y="162" fill="#8f8f8f" font-size="17">2 files | 2 routes | 2 sinks | 79 ms</text>
+    <text x="42" y="196" fill="#ededed" font-size="18">CRITICAL: 0 | HIGH: 1 | MEDIUM: 2 | LOW: 0 | INFO: 0</text>
+    <text x="42" y="242" fill="#d7d7d7" font-size="18">MEDIUM  REAPER-AUTH-001</text><text x="330" y="242" fill="#8f8f8f" font-size="17">Ownership constraint not established</text>
+    <text x="42" y="278" fill="#d7d7d7" font-size="18">MEDIUM  REAPER-TENANT-001</text><text x="330" y="278" fill="#8f8f8f" font-size="17">Tenant constraint not established</text>
+    <text x="42" y="314" fill="#f4f4f4" font-size="18">HIGH    REAPER-SQL-001</text><text x="330" y="314" fill="#bdbdbd" font-size="17">User input reaches SQL text</text>
+    <line x1="42" y1="350" x2="1238" y2="350" stroke="#252525"/>
+    <text x="42" y="396" fill="#ededed" font-size="20">$ reaper scan test/fixtures/secure --fail-on medium</text>
+    <text x="42" y="430" fill="#bdbdbd" font-size="18">REAPER 0.2.0 — Data Access Security Engine</text>
+    <text x="42" y="460" fill="#8f8f8f" font-size="17">1 files | 3 routes | 3 sinks | 80 ms</text>
+    <text x="42" y="494" fill="#ededed" font-size="18">CRITICAL: 0 | HIGH: 0 | MEDIUM: 0 | LOW: 0 | INFO: 0</text>
+    <rect x="42" y="536" width="1196" height="84" rx="10" fill="#151515" stroke="#2a2a2a"/>
+    <text x="64" y="571" fill="#d5d5d5" font-size="17">Observed directly in CI — no fabricated terminal output.</text>
+    <text x="64" y="600" fill="#8f8f8f" font-size="16">Run #177 · Ubuntu 24.04 · Node 22 · exact repository fixtures</text>
+    <text x="42" y="672" fill="#666" font-size="15">Static/catalog findings are review candidates, not proof of exploitability.</text>
+  </g>
+</svg>
