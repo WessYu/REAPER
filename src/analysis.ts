@@ -97,11 +97,7 @@ export function analyze(
     (f) => !f.endsWith(".prisma") && !f.endsWith(".sql"),
   );
   const fileKey = (file: string): string =>
-    path
-      .resolve(file)
-      .split(String.fromCharCode(92))
-      .join("/")
-      .toLowerCase();
+    path.resolve(file).split(String.fromCharCode(92)).join("/").toLowerCase();
   const allowed = new Map(scripts.map((file) => [fileKey(file), file]));
   const options: ts.CompilerOptions = {
     allowJs: true,
@@ -1647,7 +1643,7 @@ export function analyze(
     invoke(fn, [request, context], env, route, 0);
   }
   for (const sf of program.getSourceFiles()) {
-    if (!allowed.has(sf.fileName)) continue;
+    if (!allowed.has(fileKey(sf.fileName))) continue;
     for (const diagnostic of program.getSyntacticDiagnostics(sf))
       result.diagnostics.push({
         file: path.relative(root, sf.fileName),
