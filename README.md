@@ -46,6 +46,18 @@ node dist/cli.js scan test/fixtures/secure --fail-on medium
 
 The vulnerable fixture produces one SQL, one ownership and one tenant finding. The secure fixture produces none of those findings. Both are analysis fixtures, not deployable applications.
 
+## Real CI proof
+
+<p align="center">
+  <a href="https://github.com/WessYu/REAPER/actions/runs/38094079292">
+    <img src="./assets/reaper-proof.svg" alt="Real REAPER CI run showing vulnerable and secure fixture scans" width="100%" />
+  </a>
+</p>
+
+This proof is rendered from the actual output of GitHub Actions run **#177** on Node.js 22. The vulnerable fixture produced one HIGH and two MEDIUM findings; the secure fixture completed with zero findings at the MEDIUM gate. The workflow executes those CLI commands directly after installing the packed REAPER tarball.
+
+[View the exact CI run →](https://github.com/WessYu/REAPER/actions/runs/38094079292)
+
 ## Implemented coverage
 
 | Area            | Current behavior                                                                                                                                                                                                        |
