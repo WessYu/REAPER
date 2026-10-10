@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600" role="img" aria-labelledby="title desc">
+  <title id="title">REAPER — Data Access Security Engine</title>
+  <desc id="desc">Monochrome REAPER banner using the original icon without redrawing it.</desc>
+  <rect width="1600" height="600" fill="#070707"/>
+  <rect x="34" y="34" width="1532" height="532" rx="42" fill="none" stroke="#2f2f2f" stroke-width="2"/>
+  <line x1="560" y1="118" x2="560" y2="482" stroke="#262626" stroke-width="1"/>
+  <image href="reaper-icon.png" x="110" y="110" width="380" height="380"/>
+  <text x="640" y="184" fill="#8b8b8b" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="28" font-weight="700" letter-spacing="3">DATA ACCESS SECURITY ENGINE</text>
+  <text x="640" y="310" fill="#f2f2f2" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="104" font-weight="800" letter-spacing="4">REAPER</text>
+  <text x="640" y="384" fill="#c8c8c8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="34">Know exactly who can access your data.</text>
+  <text x="640" y="432" fill="#c8c8c8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="34">Before an attacker does.</text>
+  <text x="640" y="505" fill="#777777" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23">TypeScript  •  PostgreSQL  •  Authorization  •  RLS</text>
+</svg>

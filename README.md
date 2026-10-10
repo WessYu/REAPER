@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/reaper-icon.svg" width="112" alt="REAPER icon" />
+  <img src="./assets/reaper-icon.png" width="112" alt="REAPER icon" />
 </p>
 
 <h1 align="center">REAPER</h1>
@@ -235,6 +235,14 @@ node --test test/integration/postgres.mjs
 For the integration command, set `REAPER_TEST_DATABASE_URL` to a disposable PostgreSQL database. **The test harness creates and drops synthetic tables and a test role**; production introspection does not. GitHub Actions runs Node 22/24, PostgreSQL 17 integration, lint, formatting, strict typechecking, unit/CLI tests and installation from the packed tarball.
 
 SARIF can be uploaded with GitHub's Code Scanning action in a consuming repository. Review repository access and report sensitivity before uploading. REAPER itself does not upload reports.
+
+## What REAPER does not pretend to solve
+
+REAPER is not a complete JavaScript interpreter, a formal authorization prover or an unrestricted penetration-testing engine.
+
+Real boundaries remain: proof-complete CFG/points-to analysis, arbitrary proxies and runtime metaprogramming, dynamically selected middleware without an explicit contract, unrestricted symbolic reasoning over RLS SQL/functions/subqueries, complete transitive semantics for views/triggers/functions, endpoint discovery beyond authorized OpenAPI GET/HEAD probing, and autonomous account creation without an operator-supplied test flow.
+
+The dashboard, localhost REST service and Rule SDK are implemented support surfaces; they do not replace engine precision. The priority remains deterministic evidence, deeper framework/data-layer correlation and resistance to false positives and false negatives rather than inflating the feature list.
 
 ## Known limits and next work
 
