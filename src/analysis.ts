@@ -96,7 +96,12 @@ export function analyze(
   const scripts = files.filter(
     (f) => !f.endsWith(".prisma") && !f.endsWith(".sql"),
   );
-  const fileKey = (file: string): string => path.resolve(file).split(String.fromCharCode(92)).join("/").toLowerCase();
+  const fileKey = (file: string): string =>
+    path
+      .resolve(file)
+      .split(String.fromCharCode(92))
+      .join("/")
+      .toLowerCase();
   const allowed = new Map(scripts.map((file) => [fileKey(file), file]));
   const options: ts.CompilerOptions = {
     allowJs: true,
