@@ -96,7 +96,8 @@ export function analyze(
   const scripts = files.filter(
     (f) => !f.endsWith(".prisma") && !f.endsWith(".sql"),
   );
-  const allowed = new Set(scripts);
+  const fileKey = (file: string): string => path.resolve(file).split(String.fromCharCode(92)).join("/").toLowerCase();
+  const allowed = new Map(scripts.map((file) => [fileKey(file), file]));
   const options: ts.CompilerOptions = {
     allowJs: true,
     noLib: true,
@@ -107,9 +108,11 @@ export function analyze(
   };
   const host = ts.createCompilerHost(options);
   const originalRead = host.readFile;
-  host.readFile = (file) =>
-    allowed.has(file) ? originalRead(file) : undefined;
-  host.fileExists = (file) => allowed.has(file);
+  host.readFile = (file) => {
+    const sourceFile = allowed.get(fileKey(file));
+    return sourceFile ? originalRead(sourceFile) : undefined;
+  };
+  host.fileExists = (file) => allowed.has(fileKey(file));
   const program = ts.createProgram(scripts, options, host);
   const checker = program.getTypeChecker();
   const visitedSinks = new Set<string>();
