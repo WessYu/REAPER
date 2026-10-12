@@ -25,3 +25,5 @@ export { buildProjectCfg, renderControlFlowGraph } from "./cfg.js";
 export type * from "./cfg.js";
 
 export { validateAttackConfig } from "./attack-config.js";
+
+export { attack } from "./attack.js";

@@ -171,13 +171,51 @@ export interface Diagnostic extends Partial<Location> {
 }
 export interface GraphNode {
   id: string;
-  kind: "route" | "query" | "resource";
+  kind:
+    | "route"
+    | "query"
+    | "resource"
+    | "principal"
+    | "request"
+    | "finding";
   label: string;
 }
 export interface GraphEdge {
   from: string;
   to: string;
-  relation: "calls" | "accesses";
+  relation:
+    | "calls"
+    | "accesses"
+    | "tests"
+    | "owns"
+    | "correlates"
+    | "observed";
+}
+export interface AttackAuditEvent {
+  sequence: number;
+  scenario: string;
+  step: string;
+  identity?: string;
+  method: string;
+  path: string;
+  status?: number;
+  durationMs: number;
+  phase: "setup" | "attack" | "cleanup";
+}
+export interface AttackScenarioResult {
+  name: string;
+  kind: AttackScenarioKind;
+  status: "passed" | "confirmed" | "incomplete";
+  findingId?: string;
+}
+export interface AttackSummary {
+  target: string;
+  environment: AttackEnvironment;
+  startedAt: string;
+  requestCount: number;
+  serverErrors: number;
+  scenarios: AttackScenarioResult[];
+  audit: AttackAuditEvent[];
 }
 export interface ScanResult {
   version: "0.2.0";
@@ -193,6 +231,7 @@ export interface ScanResult {
     memoryBytes: number;
   };
   coverage: { source: boolean; database: boolean; runtime: boolean };
+  attack?: AttackSummary;
 }
 export const severities: Severity[] = [
   "CRITICAL",
