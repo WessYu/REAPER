@@ -108,6 +108,7 @@ export interface AttackScope {
   allowedTargets?: string[];
   pathPrefixes?: string[];
   allowProduction?: boolean;
+  allowProductionMutations?: boolean;
 }
 export interface AttackIdentity {
   authEnv?: string;
