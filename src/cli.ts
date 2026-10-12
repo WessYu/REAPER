@@ -18,6 +18,7 @@ import { attack } from "./attack.js";
 import { renderAttackRegression } from "./regression.js";
 import { buildAttackPlan, buildIdentityMatrix } from "./attack-plan.js";
 import { createCallbackCollector } from "./callback.js";
+import { verifyAttackAudit } from "./audit.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
@@ -47,6 +48,7 @@ reaper attack <target>    Run bounded stateful active-security scenarios
 reaper attack-plan <json> Build active-test candidates from static findings
 reaper attack-matrix      Show ownership/tenant identity pairs from config
 reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
+reaper audit-verify <json> Verify the tamper-evident active audit chain
 reaper callback [label]   Start a loopback-only canary callback collector
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
@@ -244,6 +246,13 @@ async function main(): Promise<void> {
     if (result.diagnostics.length) process.exitCode = 2;
     else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
       process.exitCode = 1;
+    return;
+  }
+  if (command === "audit-verify") {
+    const result = await saved(arg);
+    const audit = verifyAttackAudit(result);
+    await output(JSON.stringify(audit, null, 2) + "\n");
+    if (!audit.valid) process.exitCode = 1;
     return;
   }
   if (command === "baseline") {
