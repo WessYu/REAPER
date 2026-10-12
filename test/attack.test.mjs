@@ -344,3 +344,72 @@ test("attack mode blocks production mutation even for direct API callers", async
   }
 });
 
+test("attack audit carries a run id, authorization reference and cleanup failures", async () => {
+  const { instance, origin } = await server((req, res) => {
+    if (req.method === "GET") {
+      res.statusCode = 200;
+      res.end("{}");
+      return;
+    }
+    res.statusCode = 500;
+    res.end("cleanup failed");
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-1234",
+          environment: "staging",
+        },
+        allowMutations: true,
+        maxConsecutiveServerErrors: 1,
+        identities: {
+          userA: { tokenEnv: "REAPER_ATTACK_USER_A" },
+        },
+        scenarios: [
+          {
+            id: "audit",
+            title: "Audit evidence",
+            dimension: "ownership",
+            steps: [
+              {
+                name: "read",
+                path: "/foreign",
+                actor: "userA",
+                resource: "foreign:test-resource",
+                expect: { deniedStatuses: [403, 404] },
+              },
+            ],
+            cleanup: [
+              {
+                name: "cleanup",
+                path: "/foreign",
+                method: "DELETE",
+                actor: "userA",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.match(result.attack.runId, /^[0-9a-f-]{36}$/);
+    assert.equal(result.attack.authorizationReference, "SEC-1234");
+    assert.equal(result.attack.cleanupFailures, 1);
+    assert.ok(
+      result.attack.audit.some((event) => event.outcome === "cleanup-error"),
+    );
+    assert.ok(
+      result.findings[0].evidence.includes(
+        "Authorization reference: SEC-1234",
+      ),
+    );
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+

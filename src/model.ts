@@ -162,16 +162,23 @@ export interface AttackAuditEvent {
   path: string;
   status?: number;
   durationMs: number;
-  outcome: "passed" | "confirmed" | "error" | "cleanup";
+  outcome:
+    | "passed"
+    | "confirmed"
+    | "error"
+    | "cleanup"
+    | "cleanup-error";
 }
 
 export interface AttackRunMetadata {
+  runId: string;
   target: string;
   authorizationReference: string;
   environment: AttackAuthorization["environment"];
   startedAt: string;
   completedAt: string;
   requests: number;
+  cleanupFailures: number;
   confirmed: Array<{ scenarioId: string; findingId: string }>;
   audit: AttackAuditEvent[];
 }

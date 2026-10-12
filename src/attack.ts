@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { performance } from "node:perf_hooks";
 import { finding } from "./findings.js";
@@ -374,6 +375,7 @@ async function requestStep(
         resource,
         evidence: [
           `Scenario: ${scenario.title}`,
+          `Authorization reference: ${context.config.authorization.reference}`,
           `Dimension: ${scenario.dimension}`,
           `Actor: ${step.actor ?? "anonymous"}`,
           `Expected denial statuses: ${denied.join(", ")}`,
@@ -430,12 +432,14 @@ export async function runAttack(
   const startedAt = new Date().toISOString();
   const result = resultFor(parsed);
   result.attack = {
+    runId: randomUUID(),
     target: parsed.origin,
     authorizationReference: attack.authorization.reference,
     environment: attack.authorization.environment,
     startedAt,
     completedAt: startedAt,
     requests: 0,
+    cleanupFailures: 0,
     confirmed: [],
     audit: [],
   };
@@ -454,9 +458,13 @@ export async function runAttack(
 
   for (const scenario of attack.scenarios) {
     let scenarioFailed = false;
+    let currentStep: AttackStep | undefined;
     try {
-      for (const step of scenario.steps)
+      for (const step of scenario.steps) {
+        currentStep = step;
         await requestStep(context, scenario, step, false);
+      }
+      currentStep = undefined;
     } catch (error) {
       scenarioFailed = true;
       result.diagnostics.push({
@@ -464,9 +472,10 @@ export async function runAttack(
       });
       result.attack.audit.push({
         scenarioId: scenario.id,
-        step: "scenario",
-        method: "N/A",
-        path: "",
+        step: currentStep?.name ?? "scenario",
+        actor: currentStep?.actor,
+        method: currentStep?.method ?? "GET",
+        path: currentStep?.path ?? "",
         durationMs: 0,
         outcome: "error",
       });
@@ -476,6 +485,16 @@ export async function runAttack(
         try {
           await requestStep(context, scenario, step, true);
         } catch (error) {
+          result.attack.cleanupFailures++;
+          result.attack.audit.push({
+            scenarioId: scenario.id,
+            step: step.name,
+            actor: step.actor,
+            method: step.method ?? "GET",
+            path: step.path,
+            durationMs: 0,
+            outcome: "cleanup-error",
+          });
           result.diagnostics.push({
             message: `Attack scenario ${scenario.id} cleanup failed: ${error instanceof Error ? error.message : "unknown error"}`,
           });
