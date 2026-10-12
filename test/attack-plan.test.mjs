@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildAttackPlan, buildIdentityMatrix } from "../dist/index.js";
+import {
+  buildAttackPlan,
+  buildIdentityMatrix,
+  previewAttackExecution,
+} from "../dist/index.js";
 
 test("attack planner converts ownership and tenant findings into reviewable candidates", () => {
   const report = {
@@ -83,3 +87,52 @@ test("identity matrix distinguishes same-role ownership from cross-tenant pairs"
   );
   assert.deepEqual(vertical.dimensions, ["privilege"]);
 });
+
+test("active execution preview exposes every configured request without executing traffic", () => {
+  const preview = previewAttackExecution({
+    scope: {
+      authorized: true,
+      environment: "staging",
+      allowedTargets: ["https://preview.example.test"],
+      pathPrefixes: ["/api/"],
+    },
+    allowMutations: true,
+    identities: { a: {}, b: {} },
+    scenarios: [
+      {
+        name: "foreign object",
+        kind: "bola",
+        attackerIdentity: "a",
+        ownerIdentity: "b",
+        setup: [
+          {
+            name: "create",
+            path: "/api/orders",
+            method: "POST",
+            identity: "b",
+          },
+        ],
+        attack: { name: "read", path: "/api/orders/{{RESOURCE_ID}}" },
+        cleanup: [
+          {
+            name: "remove",
+            path: "/api/orders/{{RESOURCE_ID}}",
+            method: "DELETE",
+            identity: "b",
+          },
+        ],
+      },
+    ],
+  });
+  assert.deepEqual(preview.totals, {
+    scenarios: 1,
+    requests: 3,
+    mutations: 2,
+  });
+  assert.deepEqual(
+    preview.steps.map((step) => step.phase),
+    ["setup", "attack", "cleanup"],
+  );
+  assert.ok(preview.warnings.some((warning) => /mutating/.test(warning)));
+});
+
