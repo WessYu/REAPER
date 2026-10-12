@@ -1277,3 +1277,54 @@ test("cleanup still runs after external cancellation", async () => {
     await once(instance, "close");
   }
 });
+
+
+test("authorization expiry stops later requests in a long-running scenario", async () => {
+  let requests = 0;
+  const { instance, origin } = await server((_req, res) => {
+    requests++;
+    setTimeout(() => {
+      res.statusCode = 200;
+      res.end("{}");
+    }, 60);
+  });
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-EXPIRY",
+          environment: "staging",
+          expiresAt: new Date(Date.now() + 25).toISOString(),
+        },
+        rateLimitPerSecond: 20,
+        scenarios: [
+          {
+            id: "expiry-mid-run",
+            title: "Authorization expires during execution",
+            dimension: "session",
+            steps: [
+              {
+                name: "first",
+                path: "/first",
+                expect: { allowedStatuses: [200] },
+              },
+              {
+                name: "second",
+                path: "/second",
+                expect: { allowedStatuses: [200] },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(requests, 1);
+    assert.ok(result.diagnostics.some((item) => /expired during the run/.test(item.message)));
+  } finally {
+    instance.closeAllConnections?.();
+    instance.close();
+    await once(instance, "close");
+  }
+});
