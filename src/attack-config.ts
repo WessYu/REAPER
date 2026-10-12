@@ -297,6 +297,15 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         attack.allowMutations === true,
       ),
     );
+    if (
+      attack.allowMutations === true &&
+      authorization.environment !== "production" &&
+      (item.steps as AttackStep[]).some((step) =>
+        !["GET", "HEAD"].includes(step.method ?? "GET"),
+      ) &&
+      (!Array.isArray(item.cleanup) || item.cleanup.length === 0)
+    )
+      throw new Error(`${stepLabel} mutates state and requires cleanup steps.`);
     if (item.cleanup !== undefined) {
       if (!Array.isArray(item.cleanup))
         throw new Error(`${stepLabel}.cleanup must be an array.`);
