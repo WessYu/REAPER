@@ -142,6 +142,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     "allowMutations",
     "identities",
     "scenarios",
+    "matrices",
   ]);
   for (const key of Object.keys(attack))
     if (!allowed.has(key)) throw new Error(`Unknown attack key: ${key}`);
@@ -257,12 +258,25 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     }
   }
 
-  if (!Array.isArray(attack.scenarios) || attack.scenarios.length < 1)
-    throw new Error("attack.scenarios must be a non-empty array.");
-  if (attack.scenarios.length > 100)
+  if (
+    attack.scenarios !== undefined &&
+    (!Array.isArray(attack.scenarios) || attack.scenarios.length < 1)
+  )
+    throw new Error("attack.scenarios must be a non-empty array when provided.");
+  if (Array.isArray(attack.scenarios) && attack.scenarios.length > 100)
     throw new Error("attack.scenarios cannot exceed 100 entries.");
+  if (
+    attack.matrices !== undefined &&
+    (!Array.isArray(attack.matrices) || attack.matrices.length < 1)
+  )
+    throw new Error("attack.matrices must be a non-empty array when provided.");
+  if (
+    !Array.isArray(attack.scenarios) &&
+    !Array.isArray(attack.matrices)
+  )
+    throw new Error("attack requires scenarios or matrices.");
   const ids = new Set<string>();
-  for (const [index, raw] of attack.scenarios.entries()) {
+  for (const [index, raw] of (attack.scenarios ?? []).entries()) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw))
       throw new Error(`attack.scenarios[${index}] must be an object.`);
     const item = raw as Record<string, unknown>;
@@ -352,6 +366,97 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         ),
       );
     }
+  }
+
+  for (const [index, raw] of (attack.matrices ?? []).entries()) {
+    const label = `attack.matrices[${index}]`;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      throw new Error(`${label} must be an object.`);
+    const item = raw as Record<string, unknown>;
+    const keys = new Set([
+      "id",
+      "title",
+      "dimension",
+      "severity",
+      "method",
+      "path",
+      "actors",
+      "resources",
+      "deniedStatuses",
+    ]);
+    for (const key of Object.keys(item))
+      if (!keys.has(key)) throw new Error(`Unknown ${label} key: ${key}`);
+    if (typeof item.id !== "string" || !scenarioId.test(item.id))
+      throw new Error(`${label}.id is invalid.`);
+    if (ids.has(item.id))
+      throw new Error(`Duplicate attack scenario/matrix id: ${item.id}`);
+    ids.add(item.id);
+    if (typeof item.title !== "string" || item.title.trim().length < 3)
+      throw new Error(`${label}.title is required.`);
+    if (!["ownership", "tenant"].includes(String(item.dimension)))
+      throw new Error(`${label}.dimension must be ownership or tenant.`);
+    if (
+      item.severity !== undefined &&
+      !["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"].includes(
+        String(item.severity),
+      )
+    )
+      throw new Error(`${label}.severity is invalid.`);
+    if (
+      item.method !== undefined &&
+      !["GET", "HEAD"].includes(String(item.method))
+    )
+      throw new Error(`${label}.method must be GET or HEAD.`);
+    if (
+      typeof item.path !== "string" ||
+      !item.path.startsWith("/") ||
+      item.path.startsWith("//") ||
+      !item.path.includes("{{RESOURCE_ID}}")
+    )
+      throw new Error(
+        `${label}.path must be origin-relative and contain {{RESOURCE_ID}}.`,
+      );
+    if (!strings(item.actors))
+      throw new Error(`${label}.actors must be a non-empty string array.`);
+    for (const actor of item.actors)
+      if (!identities.has(actor))
+        throw new Error(`${label}.actors references unknown identity ${actor}.`);
+    if (
+      !Array.isArray(item.resources) ||
+      item.resources.length < 2 ||
+      item.resources.length > 20
+    )
+      throw new Error(`${label}.resources must contain 2 to 20 resources.`);
+    for (const [resourceIndex, rawResource] of item.resources.entries()) {
+      if (
+        !rawResource ||
+        typeof rawResource !== "object" ||
+        Array.isArray(rawResource)
+      )
+        throw new Error(`${label}.resources[${resourceIndex}] must be an object.`);
+      const resource = rawResource as Record<string, unknown>;
+      for (const key of Object.keys(resource))
+        if (!["id", "owner", "label"].includes(key))
+          throw new Error(
+            `Unknown ${label}.resources[${resourceIndex}] key: ${key}`,
+          );
+      if (typeof resource.id !== "string" || resource.id.length < 1)
+        throw new Error(`${label}.resources[${resourceIndex}].id is required.`);
+      if (typeof resource.owner !== "string" || !identities.has(resource.owner))
+        throw new Error(
+          `${label}.resources[${resourceIndex}].owner must reference a configured identity.`,
+        );
+      if (
+        resource.label !== undefined &&
+        (typeof resource.label !== "string" || resource.label.length < 1)
+      )
+        throw new Error(
+          `${label}.resources[${resourceIndex}].label must be non-empty.`,
+        );
+    }
+    statusList(item.deniedStatuses, `${label}.deniedStatuses`);
+    if ((item.actors as string[]).length * (item.resources as unknown[]).length > 100)
+      throw new Error(`${label} exceeds the 100-combination matrix cap.`);
   }
 
   return attack as unknown as AttackConfig;

@@ -142,6 +142,24 @@ export interface AttackScenario {
   cleanup?: AttackStep[];
 }
 
+export interface AttackMatrixResource {
+  id: string;
+  owner: string;
+  label?: string;
+}
+
+export interface AttackMatrix {
+  id: string;
+  title: string;
+  dimension: "ownership" | "tenant";
+  severity?: Severity;
+  method?: "GET" | "HEAD";
+  path: string;
+  actors: string[];
+  resources: AttackMatrixResource[];
+  deniedStatuses: number[];
+}
+
 export interface AttackConfig {
   allowedTargets: string[];
   authorization: AttackAuthorization;
@@ -151,7 +169,8 @@ export interface AttackConfig {
   maxConsecutiveServerErrors?: number;
   allowMutations?: boolean;
   identities?: Record<string, AttackIdentity>;
-  scenarios: AttackScenario[];
+  scenarios?: AttackScenario[];
+  matrices?: AttackMatrix[];
 }
 
 export interface AttackAuditEvent {
