@@ -68,3 +68,55 @@ test("dashboard renderer creates a self-contained review artifact", async () => 
   assert.match(html, /Security score/);
   assert.match(html, /REAPER-SQL-001/);
 });
+
+test("dashboard renders active-security provenance without secret material", () => {
+  const result = {
+    version: "0.2.0",
+    root: "http://127.0.0.1",
+    findings: [],
+    diagnostics: [],
+    graph: { nodes: [], edges: [] },
+    metrics: {
+      files: 0,
+      routes: 1,
+      sinks: 1,
+      durationMs: 5,
+      memoryBytes: 1,
+    },
+    coverage: { source: false, database: false, runtime: true },
+    attack: {
+      target: "http://127.0.0.1",
+      environment: "local",
+      authorizationId: "ENG-42",
+      configHash: "a".repeat(64),
+      startedAt: "2026-10-12T00:00:00.000Z",
+      requestCount: 1,
+      serverErrors: 0,
+      auditHash: "b".repeat(64),
+      scenarios: [
+        { name: "foreign order", kind: "bola", status: "passed" },
+      ],
+      audit: [
+        {
+          sequence: 1,
+          scenario: "foreign order",
+          step: "probe",
+          identity: "userA",
+          method: "GET",
+          path: "/api/orders/{{RESOURCE_ID}}",
+          status: 403,
+          durationMs: 4,
+          phase: "attack",
+          previousHash: "",
+          hash: "b".repeat(64),
+        },
+      ],
+    },
+  };
+  const html = renderDashboard(result);
+  assert.match(html, /Active security run/);
+  assert.match(html, /ENG-42/);
+  assert.match(html, /foreign order/);
+  assert.doesNotMatch(html, /Bearer|token-/);
+});
+

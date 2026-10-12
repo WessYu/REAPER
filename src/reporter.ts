@@ -107,6 +107,21 @@ export function report(result: ScanResult, format: string): string {
       .join(" | "),
     "",
   ];
+  if (result.attack) {
+    const confirmed = result.attack.scenarios.filter(
+      (scenario) => scenario.status === "confirmed",
+    ).length;
+    const incomplete = result.attack.scenarios.filter(
+      (scenario) => scenario.status === "incomplete",
+    ).length;
+    lines.push(
+      `ACTIVE ${result.attack.environment} | ${result.attack.scenarios.length} scenarios | ${confirmed} confirmed | ${incomplete} incomplete | ${result.attack.requestCount} requests`,
+      `  Scope authorization: ${result.attack.authorizationId ?? "local/unspecified"}`,
+      `  Config hash: ${result.attack.configHash}`,
+      `  Audit chain: ${result.attack.auditHash || "no requests"}`,
+      "",
+    );
+  }
   for (const f of result.findings)
     lines.push(
       `${f.severity} ${f.ruleId} [${f.confidence}; ${f.status}] ${f.file}:${f.line}`,
