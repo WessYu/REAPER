@@ -194,7 +194,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     throw new Error("attack.authorization is required.");
   const authorization = attack.authorization as Record<string, unknown>;
   for (const key of Object.keys(authorization))
-    if (!["acknowledged", "reference", "environment", "expiresAt"].includes(key))
+    if (
+      !["acknowledged", "reference", "environment", "expiresAt"].includes(key)
+    )
       throw new Error(`Unknown attack.authorization key: ${key}`);
   if (authorization.acknowledged !== true)
     throw new Error("attack.authorization.acknowledged must be true.");
