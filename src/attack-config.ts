@@ -193,7 +193,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     throw new Error("attack.authorization is required.");
   const authorization = attack.authorization as Record<string, unknown>;
   for (const key of Object.keys(authorization))
-    if (!["acknowledged", "reference", "environment"].includes(key))
+    if (!["acknowledged", "reference", "environment", "expiresAt"].includes(key))
       throw new Error(`Unknown attack.authorization key: ${key}`);
   if (authorization.acknowledged !== true)
     throw new Error("attack.authorization.acknowledged must be true.");
@@ -208,6 +208,24 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     )
   )
     throw new Error("attack.authorization.environment is invalid.");
+  if (authorization.expiresAt !== undefined) {
+    if (
+      typeof authorization.expiresAt !== "string" ||
+      !Number.isFinite(Date.parse(authorization.expiresAt))
+    )
+      throw new Error(
+        "attack.authorization.expiresAt must be an ISO-8601 date-time.",
+      );
+    if (Date.parse(authorization.expiresAt) <= Date.now())
+      throw new Error("attack authorization has expired.");
+  }
+  if (
+    authorization.environment === "production" &&
+    authorization.expiresAt === undefined
+  )
+    throw new Error(
+      "production attack authorization requires attack.authorization.expiresAt.",
+    );
 
   const positive = (
     key:

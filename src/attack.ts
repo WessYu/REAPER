@@ -549,6 +549,7 @@ export async function runAttack(
     runId: randomUUID(),
     target: parsed.origin,
     authorizationReference: attack.authorization.reference,
+    authorizationExpiresAt: attack.authorization.expiresAt,
     environment: attack.authorization.environment,
     startedAt,
     completedAt: startedAt,

@@ -311,6 +311,7 @@ test("attack mode blocks production mutation even for direct API callers", async
             acknowledged: true,
             reference: "test-suite",
             environment: "production",
+            expiresAt: "2099-01-01T00:00:00.000Z",
           },
           allowMutations: true,
           scenarios: [
@@ -716,5 +717,54 @@ test("JSON response proof can reference previously captured non-secret variables
     instance.close();
     await once(instance, "close");
   }
+});
+
+test("attack authorization expiry is validated and required for production", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        attack: {
+          allowedTargets: ["https://example.test"],
+          authorization: {
+            acknowledged: true,
+            reference: "SEC-EXPIRED",
+            environment: "staging",
+            expiresAt: "2000-01-01T00:00:00.000Z",
+          },
+          scenarios: [
+            {
+              id: "expired",
+              title: "Expired authorization",
+              dimension: "session",
+              steps: [{ name: "read", path: "/" }],
+            },
+          ],
+        },
+      }),
+    /expired/,
+  );
+
+  assert.throws(
+    () =>
+      validateConfig({
+        attack: {
+          allowedTargets: ["https://example.test"],
+          authorization: {
+            acknowledged: true,
+            reference: "SEC-PROD",
+            environment: "production",
+          },
+          scenarios: [
+            {
+              id: "prod",
+              title: "Production authorization",
+              dimension: "session",
+              steps: [{ name: "read", path: "/" }],
+            },
+          ],
+        },
+      }),
+    /expiresAt/,
+  );
 });
 

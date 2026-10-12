@@ -110,6 +110,7 @@ export interface AttackAuthorization {
   acknowledged: true;
   reference: string;
   environment: "local" | "preview" | "staging" | "production";
+  expiresAt?: string;
 }
 
 export interface AttackIdentity {
@@ -195,6 +196,7 @@ export interface AttackRunMetadata {
   runId: string;
   target: string;
   authorizationReference: string;
+  authorizationExpiresAt?: string;
   environment: AttackAuthorization["environment"];
   startedAt: string;
   completedAt: string;
