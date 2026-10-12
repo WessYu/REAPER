@@ -58,6 +58,7 @@ function validateStep(
     "body",
     "expect",
     "capture",
+    "captureCookies",
     "resource",
   ]);
   for (const key of Object.keys(item))
@@ -97,6 +98,22 @@ function validateStep(
     )
       throw new Error(
         `${label}.capture must map variable names to JSON paths.`,
+      );
+  }
+  if (item.captureCookies !== undefined) {
+    if (
+      !item.captureCookies ||
+      typeof item.captureCookies !== "object" ||
+      Array.isArray(item.captureCookies) ||
+      !Object.entries(item.captureCookies as Record<string, unknown>).every(
+        ([name, cookieName]) =>
+          envName.test(name) &&
+          typeof cookieName === "string" &&
+          /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(cookieName),
+      )
+    )
+      throw new Error(
+        `${label}.captureCookies must map variable names to cookie names.`,
       );
   }
   if (item.expect !== undefined) {
@@ -293,7 +310,15 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         throw new Error(`attack.identities.${name} must be an object.`);
       const identity = raw as Record<string, unknown>;
       for (const key of Object.keys(identity))
-        if (!["tokenEnv", "tokenVar"].includes(key))
+        if (
+          ![
+            "tokenEnv",
+            "tokenVar",
+            "cookie",
+            "headerEnvs",
+            "headerVars",
+          ].includes(key)
+        )
           throw new Error(`Unknown attack.identities.${name} key: ${key}`);
       for (const key of ["tokenEnv", "tokenVar"])
         if (
@@ -306,6 +331,72 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         throw new Error(
           `attack.identities.${name} cannot use tokenEnv and tokenVar together.`,
         );
+      if (identity.cookie !== undefined) {
+        if (
+          !identity.cookie ||
+          typeof identity.cookie !== "object" ||
+          Array.isArray(identity.cookie)
+        )
+          throw new Error(`attack.identities.${name}.cookie must be an object.`);
+        const cookie = identity.cookie as Record<string, unknown>;
+        for (const key of Object.keys(cookie))
+          if (!["name", "valueEnv", "valueVar"].includes(key))
+            throw new Error(
+              `Unknown attack.identities.${name}.cookie key: ${key}`,
+            );
+        if (
+          typeof cookie.name !== "string" ||
+          !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(cookie.name)
+        )
+          throw new Error(
+            `attack.identities.${name}.cookie.name is invalid.`,
+          );
+        for (const key of ["valueEnv", "valueVar"])
+          if (
+            cookie[key] !== undefined &&
+            (typeof cookie[key] !== "string" ||
+              !envName.test(String(cookie[key])))
+          )
+            throw new Error(
+              `attack.identities.${name}.cookie.${key} is invalid.`,
+            );
+        if (
+          (cookie.valueEnv === undefined) ===
+          (cookie.valueVar === undefined)
+        )
+          throw new Error(
+            `attack.identities.${name}.cookie requires exactly one of valueEnv or valueVar.`,
+          );
+      }
+      const restrictedHeaders = new Set([
+        "authorization",
+        "cookie",
+        "host",
+        "content-length",
+        "connection",
+        "transfer-encoding",
+      ]);
+      for (const key of ["headerEnvs", "headerVars"]) {
+        const headers = identity[key];
+        if (headers === undefined) continue;
+        if (!headers || typeof headers !== "object" || Array.isArray(headers))
+          throw new Error(`attack.identities.${name}.${key} must be an object.`);
+        for (const [header, variable] of Object.entries(
+          headers as Record<string, unknown>,
+        )) {
+          if (
+            !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(header) ||
+            restrictedHeaders.has(header.toLowerCase())
+          )
+            throw new Error(
+              `attack.identities.${name}.${key} contains an unsafe header name.`,
+            );
+          if (typeof variable !== "string" || !envName.test(variable))
+            throw new Error(
+              `attack.identities.${name}.${key} values must be environment-style variable names.`,
+            );
+        }
+      }
       identities.add(name);
     }
   }
