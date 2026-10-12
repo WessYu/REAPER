@@ -919,4 +919,3 @@ test("explicit confirmation statuses can narrow successful bypass evidence", asy
     await once(instance, "close");
   }
 });
-

@@ -429,7 +429,8 @@ async function requestStep(
   const denied = step.expect?.deniedStatuses;
   const allowed = step.expect?.allowedStatuses;
   const confirmStatuses =
-    step.expect?.confirmStatuses ?? Array.from({ length: 100 }, (_, i) => 200 + i);
+    step.expect?.confirmStatuses ??
+    Array.from({ length: 100 }, (_, i) => 200 + i);
   if (denied && response.status >= 500) {
     outcome = "inconclusive";
     context.result.diagnostics.push({
