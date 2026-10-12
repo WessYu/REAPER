@@ -180,6 +180,7 @@ export interface AttackConfig {
   allowedTargets: string[];
   authorization: AttackAuthorization;
   maxRequests?: number;
+  maxCleanupRequests?: number;
   timeoutMs?: number;
   rateLimitPerSecond?: number;
   maxConsecutiveServerErrors?: number;
@@ -216,6 +217,7 @@ export interface AttackRunMetadata {
   startedAt: string;
   completedAt: string;
   requests: number;
+  cleanupRequests: number;
   cleanupFailures: number;
   confirmed: Array<{ scenarioId: string; findingId: string }>;
   audit: AttackAuditEvent[];
