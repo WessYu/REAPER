@@ -458,7 +458,15 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         throw new Error(`${label}.expect must be an object.`);
       const expectation = scenario.expect as Record<string, unknown>;
       for (const key of Object.keys(expectation))
-        if (!["statuses", "headers", "absentHeaders"].includes(key))
+        if (
+          ![
+            "statuses",
+            "headers",
+            "absentHeaders",
+            "json",
+            "absentJsonPaths",
+          ].includes(key)
+        )
           throw new Error(`Unknown ${label}.expect key: ${key}`);
       if (
         expectation.statuses !== undefined &&
@@ -507,6 +515,39 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       )
         throw new Error(
           `${label}.expect.absentHeaders must contain non-sensitive header names.`,
+        );
+      if (expectation.json !== undefined) {
+        if (
+          !expectation.json ||
+          typeof expectation.json !== "object" ||
+          Array.isArray(expectation.json)
+        )
+          throw new Error(`${label}.expect.json must be an object.`);
+        for (const [path, expectedValue] of Object.entries(
+          expectation.json as Record<string, unknown>,
+        ))
+          if (
+            !/^[A-Za-z0-9_.-]+$/.test(path) ||
+            !(
+              expectedValue === null ||
+              typeof expectedValue === "string" ||
+              typeof expectedValue === "number" ||
+              typeof expectedValue === "boolean"
+            )
+          )
+            throw new Error(
+              `${label}.expect.json must map JSON paths to primitive values.`,
+            );
+      }
+      if (
+        expectation.absentJsonPaths !== undefined &&
+        (!strings(expectation.absentJsonPaths) ||
+          expectation.absentJsonPaths.some(
+            (path) => !/^[A-Za-z0-9_.-]+$/.test(path),
+          ))
+      )
+        throw new Error(
+          `${label}.expect.absentJsonPaths must contain JSON paths.`,
         );
     }
     if (
