@@ -199,6 +199,7 @@ export interface AttackAuditEvent {
   method: string;
   path: string;
   status?: number;
+  traceId: string;
   durationMs: number;
   phase: "setup" | "attack" | "cleanup";
   previousHash: string;
