@@ -251,6 +251,40 @@ function headerValue(
   return interpolate(value, variables);
 }
 
+function multipartBody(
+  step: AttackStep,
+  context: AttackContext,
+): FormData | undefined {
+  if (!step.multipart) return undefined;
+  const form = new FormData();
+  let total = 0;
+  const addBytes = (value: string) => {
+    total += new TextEncoder().encode(value).byteLength;
+    const maximum = context.config.maxUploadBytes ?? 65536;
+    if (total > maximum)
+      throw new Error(
+        `Synthetic multipart body exceeds attack.maxUploadBytes (${maximum}).`,
+      );
+  };
+  for (const [name, raw] of Object.entries(step.multipart.fields ?? {})) {
+    const value = headerValue(raw, context.variables);
+    addBytes(value);
+    form.append(name, value);
+  }
+  for (const file of step.multipart.files ?? []) {
+    const content = headerValue(file.content, context.variables);
+    addBytes(content);
+    form.append(
+      file.field,
+      new Blob([content], {
+        type: file.contentType ?? "application/octet-stream",
+      }),
+      file.filename,
+    );
+  }
+  return form;
+}
+
 async function pace(context: AttackContext): Promise<void> {
   const rate = context.config.rateLimitPerSecond ?? 5;
   const wait = Math.max(0, context.nextRequestAt - Date.now());
@@ -331,10 +365,12 @@ async function executeRequest(
   for (const [name, value] of Object.entries(step.headers ?? {}))
     headers.set(name, headerValue(value, context.variables));
 
-  let body: string | undefined;
+  let body: BodyInit | undefined;
   if (step.body !== undefined) {
     headers.set("content-type", "application/json");
     body = JSON.stringify(interpolateBody(step.body, context.variables));
+  } else if (step.multipart !== undefined) {
+    body = multipartBody(step, context);
   }
 
   const controller = new AbortController();
