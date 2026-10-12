@@ -51,6 +51,7 @@ reaper doctor           Check runtime version
 --fail-on <severity>     Exit 1 on new findings at/above threshold
 --baseline <file>        JSON array of accepted fingerprints
 --db-env <name>          Environment variable holding database URL
+--input <json>            Saved source report for attack correlation / explain input
 --help | --version
 
 Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
@@ -166,9 +167,13 @@ async function main(): Promise<void> {
     const controller = new AbortController();
     const cancel = () => controller.abort();
     process.once("SIGINT", cancel);
-    const result = await runAttack(arg, attackConfig, {
+    let result = await runAttack(arg, attackConfig, {
       signal: controller.signal,
     }).finally(() => process.removeListener("SIGINT", cancel));
+    if (values.input) {
+      const { correlateAttackSource } = await import("./attack-correlation.js");
+      result = correlateAttackSource(result, await saved(values.input));
+    }
     await output(report(result, format));
     if (result.diagnostics.length) process.exitCode = 2;
     else if (values["fail-on"] && fails(result.findings, values["fail-on"]))

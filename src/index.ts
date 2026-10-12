@@ -25,3 +25,7 @@ export { buildProjectCfg, renderControlFlowGraph } from "./cfg.js";
 export type * from "./cfg.js";
 
 export { runAttack } from "./attack.js";
+export {
+  correlateAttackSource,
+  normalizeAttackRoute,
+} from "./attack-correlation.js";
