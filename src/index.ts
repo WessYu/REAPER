@@ -34,3 +34,5 @@ export { createCallbackCollector } from "./callback.js";
 export type * from "./callback.js";
 export { verifyAttackAudit } from "./audit.js";
 export type * from "./audit.js";
+export { planOpenApi } from "./openapi.js";
+export type * from "./openapi.js";
