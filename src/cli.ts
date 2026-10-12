@@ -19,6 +19,7 @@ import { renderAttackRegression } from "./regression.js";
 import { buildAttackPlan, buildIdentityMatrix } from "./attack-plan.js";
 import { createCallbackCollector } from "./callback.js";
 import { verifyAttackAudit } from "./audit.js";
+import { planOpenApi } from "./openapi.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
@@ -46,6 +47,7 @@ reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run bounded stateful active-security scenarios
 reaper attack-plan <json> Build active-test candidates from static findings
+reaper openapi-plan <json> Model API operations without sending requests
 reaper attack-matrix      Show ownership/tenant identity pairs from config
 reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
 reaper audit-verify <json> Verify the tamper-evident active audit chain
@@ -188,6 +190,11 @@ async function main(): Promise<void> {
     await output(
       JSON.stringify(buildIdentityMatrix(attackConfig.attack), null, 2) + "\n",
     );
+    return;
+  }
+  if (command === "openapi-plan") {
+    if (!arg) throw new Error("openapi-plan requires an OpenAPI JSON path.");
+    await output(JSON.stringify(planOpenApi(await json(arg)), null, 2) + "\n");
     return;
   }
   if (command === "attack-plan") {
