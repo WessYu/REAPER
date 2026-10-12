@@ -151,7 +151,14 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   for (const target of attack.allowedTargets)
     try {
       const url = new URL(target);
-      if (!["http:", "https:"].includes(url.protocol) || url.pathname !== "/")
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.pathname !== "/" ||
+        url.search !== "" ||
+        url.hash !== "" ||
+        url.username !== "" ||
+        url.password !== ""
+      )
         throw new Error();
     } catch {
       throw new Error(
