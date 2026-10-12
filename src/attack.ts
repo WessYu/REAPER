@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { performance } from "node:perf_hooks";
+import { Readable } from "node:stream";
 import { finding } from "./findings.js";
 import { validateAttackConfig } from "./attack-config.js";
 import type {
@@ -66,6 +69,21 @@ function isLoopbackAddress(address: string): boolean {
   return mapped ? isLoopbackAddress(mapped[1]!) : false;
 }
 
+function isForbiddenInfrastructureAddress(address: string): boolean {
+  const normalized = address.toLowerCase();
+  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isForbiddenInfrastructureAddress(mapped[1]!);
+  const ipv4 = normalized.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipv4) {
+    const a = Number(ipv4[1]);
+    const b = Number(ipv4[2]);
+    return a === 0 || (a === 169 && b === 254) || a >= 224;
+  }
+  if (normalized === "::") return true;
+  const first = Number.parseInt(normalized.split(":")[0] || "0", 16);
+  return (first & 0xffc0) === 0xfe80 || (first & 0xff00) === 0xff00;
+}
+
 function isPrivateAddress(address: string): boolean {
   const normalized = address.toLowerCase();
   const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
@@ -75,26 +93,32 @@ function isPrivateAddress(address: string): boolean {
     const a = Number(ipv4[1]);
     const b = Number(ipv4[2]);
     return (
-      a === 0 ||
       a === 10 ||
       (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168)
     );
   }
-  if (normalized === "::") return true;
   const first = Number.parseInt(normalized.split(":")[0] || "0", 16);
-  return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+  return (first & 0xfe00) === 0xfc00;
 }
 
 function assertNetworkScope(addresses: string[], config: AttackConfig): void {
+  const forbidden = addresses.filter(
+    (address) =>
+      isForbiddenInfrastructureAddress(address) &&
+      !isLoopbackAddress(address),
+  );
+  if (forbidden.length)
+    throw new Error(
+      "Attack target resolves to a link-local, unspecified, multicast or reserved infrastructure address; these targets are blocked even when private-network testing is enabled.",
+    );
   const privateNonLoopback = addresses.filter(
     (address) => isPrivateAddress(address) && !isLoopbackAddress(address),
   );
   if (privateNonLoopback.length && config.allowPrivateNetwork !== true)
     throw new Error(
-      "Attack target resolves to a private/link-local network; set attack.allowPrivateNetwork=true only for explicitly authorized internal assessments.",
+      "Attack target resolves to a private network; set attack.allowPrivateNetwork=true only for explicitly authorized internal assessments.",
     );
 }
 
@@ -115,6 +139,77 @@ async function assertStableResolution(context: AttackContext): Promise<void> {
     throw new Error(
       "Target DNS resolution changed during the run; stopping to reduce DNS-rebinding risk.",
     );
+}
+
+function pinnedRequest(
+  context: AttackContext,
+  url: URL,
+  input: {
+    method: AttackStep["method"];
+    headers: Headers;
+    body?: string;
+    signal: AbortSignal;
+  },
+): Promise<Response> {
+  const address = context.baselineAddresses[0];
+  if (!address) throw new Error("Attack target did not resolve to an address.");
+
+  const headers: Record<string, string> = {};
+  input.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  headers.host = context.target.host;
+  headers["accept-encoding"] = "identity";
+
+  return new Promise<Response>((resolve, reject) => {
+    const onResponse = (incoming: import("node:http").IncomingMessage) => {
+      const responseHeaders = new Headers();
+      for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
+        const name = incoming.rawHeaders[index];
+        const value = incoming.rawHeaders[index + 1];
+        if (name && value !== undefined) responseHeaders.append(name, value);
+      }
+      const status = incoming.statusCode ?? 500;
+      const noBody =
+        input.method === "HEAD" || [204, 205, 304].includes(status);
+      const responseBody = noBody
+        ? null
+        : (Readable.toWeb(incoming) as unknown as BodyInit);
+      resolve(
+        new Response(responseBody, {
+          status,
+          statusText: incoming.statusMessage,
+          headers: responseHeaders,
+        }),
+      );
+    };
+
+    const common = {
+      protocol: url.protocol,
+      hostname: address,
+      port: url.port || undefined,
+      path: `${url.pathname}${url.search}`,
+      method: input.method,
+      headers,
+      signal: input.signal,
+      agent: false,
+    };
+    const request =
+      url.protocol === "https:"
+        ? httpsRequest(
+            {
+              ...common,
+              servername: isIpLiteral(context.target.hostname)
+                ? undefined
+                : context.target.hostname,
+              rejectUnauthorized: true,
+            },
+            onResponse,
+          )
+        : httpRequest(common, onResponse);
+    request.once("error", reject);
+    request.end(input.body);
+  });
 }
 
 function resultFor(target: URL): ScanResult {
@@ -423,11 +518,10 @@ async function requestStep(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await pinnedRequest(context, url, {
       method,
       headers,
       body,
-      redirect: "manual",
       signal,
     });
   } finally {

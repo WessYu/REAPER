@@ -1102,3 +1102,29 @@ test("identity header configuration rejects protocol-sensitive headers", () => {
     /unsafe header/,
   );
 });
+
+
+test("attack mode hard-blocks link-local infrastructure even with private-network opt-in", async () => {
+  await assert.rejects(
+    runAttack("http://169.254.169.254", {
+      attack: {
+        allowedTargets: ["http://169.254.169.254"],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-LINKLOCAL",
+          environment: "staging",
+        },
+        allowPrivateNetwork: true,
+        scenarios: [
+          {
+            id: "metadata-block",
+            title: "Metadata endpoint stays blocked",
+            dimension: "session",
+            steps: [{ name: "head", path: "/", method: "HEAD" }],
+          },
+        ],
+      },
+    }),
+    /blocked even when private-network testing is enabled/,
+  );
+});
