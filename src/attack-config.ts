@@ -158,6 +158,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     "rateLimitPerSecond",
     "maxConsecutiveServerErrors",
     "allowMutations",
+    "allowPrivateNetwork",
     "identities",
     "scenarios",
     "matrices",
@@ -247,11 +248,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   positive("rateLimitPerSecond", 20);
   positive("maxConsecutiveServerErrors", 10);
 
-  if (
-    attack.allowMutations !== undefined &&
-    typeof attack.allowMutations !== "boolean"
-  )
-    throw new Error("attack.allowMutations must be boolean.");
+  for (const key of ["allowMutations", "allowPrivateNetwork"])
+    if (attack[key] !== undefined && typeof attack[key] !== "boolean")
+      throw new Error(`attack.${key} must be boolean.`);
   if (
     authorization.environment === "production" &&
     attack.allowMutations === true
