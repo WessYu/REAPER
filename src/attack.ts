@@ -213,12 +213,16 @@ function requiredSecret(
 ): string | undefined {
   if (envName) {
     const value = process.env[envName];
-    if (!value) throw new Error(`Missing environment variable ${envName} for ${label}.`);
+    if (!value)
+      throw new Error(`Missing environment variable ${envName} for ${label}.`);
     return value;
   }
   if (variableName) {
     const value = variables.get(variableName);
-    if (!value) throw new Error(`Missing captured variable ${variableName} for ${label}.`);
+    if (!value)
+      throw new Error(
+        `Missing captured variable ${variableName} for ${label}.`,
+      );
     return value;
   }
   return undefined;
@@ -245,7 +249,10 @@ function applyIdentityHeaders(
 
   for (const [header, envName] of Object.entries(identity.headerEnvs ?? {})) {
     const value = process.env[envName];
-    if (!value) throw new Error(`Missing environment variable ${envName} for header ${header}.`);
+    if (!value)
+      throw new Error(
+        `Missing environment variable ${envName} for header ${header}.`,
+      );
     headers.set(header, value);
   }
   for (const [header, variableName] of Object.entries(
@@ -260,7 +267,10 @@ function applyIdentityHeaders(
   }
 }
 
-function responseCookie(response: Response, cookieName: string): string | undefined {
+function responseCookie(
+  response: Response,
+  cookieName: string,
+): string | undefined {
   const headers = response.headers as Headers & {
     getSetCookie?: () => string[];
   };

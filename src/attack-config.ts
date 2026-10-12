@@ -337,7 +337,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
           typeof identity.cookie !== "object" ||
           Array.isArray(identity.cookie)
         )
-          throw new Error(`attack.identities.${name}.cookie must be an object.`);
+          throw new Error(
+            `attack.identities.${name}.cookie must be an object.`,
+          );
         const cookie = identity.cookie as Record<string, unknown>;
         for (const key of Object.keys(cookie))
           if (!["name", "valueEnv", "valueVar"].includes(key))
@@ -348,9 +350,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
           typeof cookie.name !== "string" ||
           !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(cookie.name)
         )
-          throw new Error(
-            `attack.identities.${name}.cookie.name is invalid.`,
-          );
+          throw new Error(`attack.identities.${name}.cookie.name is invalid.`);
         for (const key of ["valueEnv", "valueVar"])
           if (
             cookie[key] !== undefined &&
@@ -360,10 +360,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
             throw new Error(
               `attack.identities.${name}.cookie.${key} is invalid.`,
             );
-        if (
-          (cookie.valueEnv === undefined) ===
-          (cookie.valueVar === undefined)
-        )
+        if ((cookie.valueEnv === undefined) === (cookie.valueVar === undefined))
           throw new Error(
             `attack.identities.${name}.cookie requires exactly one of valueEnv or valueVar.`,
           );
@@ -380,7 +377,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         const headers = identity[key];
         if (headers === undefined) continue;
         if (!headers || typeof headers !== "object" || Array.isArray(headers))
-          throw new Error(`attack.identities.${name}.${key} must be an object.`);
+          throw new Error(
+            `attack.identities.${name}.${key} must be an object.`,
+          );
         for (const [header, variable] of Object.entries(
           headers as Record<string, unknown>,
         )) {

@@ -965,7 +965,10 @@ test("authorization matrix can require response proof tied to each foreign resou
       },
     });
     assert.equal(result.findings.length, 1);
-    assert.equal(result.findings[0].resource, "proof-orders:order-a:owner:userA");
+    assert.equal(
+      result.findings[0].resource,
+      "proof-orders:order-a:owner:userA",
+    );
     assert.ok(
       result.diagnostics.some((item) =>
         /response proof did not match/.test(item.message),
@@ -1099,4 +1102,3 @@ test("identity header configuration rejects protocol-sensitive headers", () => {
     /unsafe header/,
   );
 });
-
