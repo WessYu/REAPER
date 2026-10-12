@@ -355,7 +355,11 @@ async function requestStep(
     : "passed";
   const denied = step.expect?.deniedStatuses;
   const allowed = step.expect?.allowedStatuses;
-  if (denied && !denied.includes(response.status)) {
+  if (denied && response.status >= 500) {
+    context.result.diagnostics.push({
+      message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}; server errors cannot confirm an authorization bypass.`,
+    });
+  } else if (denied && !denied.includes(response.status)) {
     const resource = step.resource
       ? interpolate(step.resource, context.variables)
       : undefined;
