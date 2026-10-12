@@ -20,6 +20,7 @@ import { buildAttackPlan, buildIdentityMatrix } from "./attack-plan.js";
 import { createCallbackCollector } from "./callback.js";
 import { verifyAttackAudit } from "./audit.js";
 import { planOpenApi } from "./openapi.js";
+import { planGraphql } from "./graphql.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
@@ -48,6 +49,7 @@ reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run bounded stateful active-security scenarios
 reaper attack-plan <json> Build active-test candidates from static findings
 reaper openapi-plan <json> Model API operations without sending requests
+reaper graphql-plan <json> Model GraphQL introspection without sending requests
 reaper attack-matrix      Show ownership/tenant identity pairs from config
 reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
 reaper audit-verify <json> Verify the tamper-evident active audit chain
@@ -190,6 +192,11 @@ async function main(): Promise<void> {
     await output(
       JSON.stringify(buildIdentityMatrix(attackConfig.attack), null, 2) + "\n",
     );
+    return;
+  }
+  if (command === "graphql-plan") {
+    if (!arg) throw new Error("graphql-plan requires an introspection JSON path.");
+    await output(JSON.stringify(planGraphql(await json(arg)), null, 2) + "\n");
     return;
   }
   if (command === "openapi-plan") {
