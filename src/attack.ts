@@ -437,15 +437,47 @@ function correlatedFindingsFor(
   return [...(primary ? [primary] : []), ...related];
 }
 
+function normalizeRouteLabel(value: string): string {
+  const match = value.trim().match(/^([A-Z]+)\s+(.+)$/i);
+  if (!match) return value.trim();
+  const method = match[1]!.toUpperCase();
+  const pathname = match[2]!
+    .replace(/\{\{[A-Za-z_][A-Za-z0-9_]*\}\}/g, ":param")
+    .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, ":param")
+    .replace(/\[[A-Za-z_][A-Za-z0-9_]*\]/g, ":param");
+  return `${method} ${pathname}`;
+}
+
+function staticRouteFor(
+  scenario: AttackScenario,
+  sourceReport: ScanResult | undefined,
+): GraphNode | undefined {
+  if (!sourceReport) return undefined;
+  const active = normalizeRouteLabel(
+    `${scenario.attack.method ?? "GET"} ${scenario.attack.path}`,
+  );
+  const sourceFinding = sourceFindingFor(scenario, sourceReport);
+  const preferred = sourceFinding?.route
+    ? normalizeRouteLabel(sourceFinding.route)
+    : undefined;
+  return sourceReport.graph.nodes.find(
+    (node) =>
+      node.kind === "route" &&
+      [active, preferred].filter(Boolean).includes(normalizeRouteLabel(node.label)),
+  );
+}
+
 function addGraph(
   context: AttackContext,
   scenario: AttackScenario,
   findingId?: string,
   sourceFindings: Finding[] = [],
+  sourceReport?: ScanResult,
 ): void {
   const principalId = `principal:${scenario.attackerIdentity}`;
   const requestId = `request:${scenario.name}`;
   const resourceId = `resource:${scenario.resource ?? scenario.attack.path}`;
+  const staticRoute = staticRouteFor(scenario, sourceReport);
   const nodes: GraphNode[] = [
     {
       id: principalId,
@@ -482,6 +514,12 @@ function addGraph(
     { from: principalId, to: requestId, relation: "tests" as const },
     { from: requestId, to: resourceId, relation: "accesses" as const },
   ];
+  if (staticRoute)
+    edges.push({
+      from: requestId,
+      to: staticRoute.id,
+      relation: "correlates" as const,
+    });
   if (findingId)
     edges.push({
       from: requestId,
@@ -717,6 +755,7 @@ async function runScenario(
         scenario,
         undefined,
         correlatedFindingsFor(scenario, sourceReport),
+        sourceReport,
       );
       return { name: scenario.name, kind: scenario.kind, status: "passed" };
     }
@@ -729,6 +768,7 @@ async function runScenario(
         scenario,
         undefined,
         correlatedFindingsFor(scenario, sourceReport),
+        sourceReport,
       );
       return { name: scenario.name, kind: scenario.kind, status: "incomplete" };
     }
@@ -760,6 +800,7 @@ async function runScenario(
       scenario,
       confirmed.id,
       correlatedFindingsFor(scenario, sourceReport),
+      sourceReport,
     );
     return {
       name: scenario.name,
@@ -794,20 +835,30 @@ export async function attack(
       "Attack target is blocked. Remote origins require an exact attack.scope.allowedTargets entry.",
     );
 
+  const sourceReport = options.sourceReport;
   const result: ScanResult = {
     version: "0.2.0",
     root: target.origin,
     findings: [],
     diagnostics: [],
-    graph: { nodes: [], edges: [] },
+    graph: sourceReport
+      ? {
+          nodes: sourceReport.graph.nodes.map((node) => ({ ...node })),
+          edges: sourceReport.graph.edges.map((edge) => ({ ...edge })),
+        }
+      : { nodes: [], edges: [] },
     metrics: {
-      files: 0,
-      routes: attackConfig.scenarios.length,
-      sinks: 0,
+      files: sourceReport?.metrics.files ?? 0,
+      routes: sourceReport?.metrics.routes ?? attackConfig.scenarios.length,
+      sinks: sourceReport?.metrics.sinks ?? 0,
       durationMs: 0,
       memoryBytes: 0,
     },
-    coverage: { source: false, database: false, runtime: true },
+    coverage: {
+      source: sourceReport?.coverage.source ?? false,
+      database: sourceReport?.coverage.database ?? false,
+      runtime: true,
+    },
     attack: {
       target: target.origin,
       environment: attackConfig.scope.environment,
