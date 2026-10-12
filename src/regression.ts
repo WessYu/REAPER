@@ -61,7 +61,9 @@ test("REAPER active-security regression: ${names.replaceAll('"', '\\"')}", async
     confirmed.length,
     0,
     confirmed
-      .map((finding) => \`${finding.ruleId}: ${finding.title} [${finding.route ?? "runtime"}]\`)
+      .map((finding) =>
+        finding.ruleId + ": " + finding.title + " [" + (finding.route ?? "runtime") + "]",
+      )
       .join("\\n"),
   );
 });
