@@ -1,4 +1,10 @@
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  sign,
+  verify,
+} from "node:crypto";
 import type { ScanResult } from "./model.js";
 
 export interface EvidencePayload {
@@ -92,5 +98,105 @@ export function verifyEvidenceBundle(value: unknown): EvidenceVerification {
     valid: expected === bundle.digest.value,
     expected,
     observed: bundle.digest.value,
+  };
+}
+
+export interface SignedEvidenceBundle {
+  bundle: EvidenceBundle;
+  signature: {
+    algorithm: "ed25519";
+    value: string;
+    keyFingerprint: string;
+  };
+}
+
+export interface SignedEvidenceVerification extends EvidenceVerification {
+  signatureValid: boolean;
+  keyFingerprint: string;
+}
+
+function fingerprintPublicKey(publicKeyPem: string): string {
+  const key = createPublicKey(publicKeyPem);
+  const der = key.export({ type: "spki", format: "der" });
+  return createHash("sha256").update(der).digest("hex");
+}
+
+export function signEvidenceBundle(
+  bundle: EvidenceBundle,
+  privateKeyPem: string,
+): SignedEvidenceBundle {
+  const verified = verifyEvidenceBundle(bundle);
+  if (!verified.valid)
+    throw new Error("Cannot sign an evidence bundle with an invalid digest.");
+  const privateKey = createPrivateKey(privateKeyPem);
+  if (privateKey.asymmetricKeyType !== "ed25519")
+    throw new Error("Evidence signing requires an Ed25519 private key.");
+  const publicKey = createPublicKey(privateKey);
+  const publicPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+  const signature = sign(
+    null,
+    Buffer.from(bundle.digest.value, "utf8"),
+    privateKey,
+  );
+  return {
+    bundle,
+    signature: {
+      algorithm: "ed25519",
+      value: signature.toString("base64"),
+      keyFingerprint: fingerprintPublicKey(publicPem),
+    },
+  };
+}
+
+export function verifySignedEvidence(
+  value: unknown,
+  publicKeyPem: string,
+): SignedEvidenceVerification {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return {
+      valid: false,
+      expected: "",
+      observed: "",
+      signatureValid: false,
+      keyFingerprint: "",
+    };
+  const signed = value as Partial<SignedEvidenceBundle>;
+  if (
+    !signed.bundle ||
+    signed.signature?.algorithm !== "ed25519" ||
+    typeof signed.signature.value !== "string"
+  )
+    return {
+      valid: false,
+      expected: "",
+      observed: "",
+      signatureValid: false,
+      keyFingerprint: "",
+    };
+  const integrity = verifyEvidenceBundle(signed.bundle);
+  let signatureValid = false;
+  let keyFingerprint = "";
+  try {
+    const publicKey = createPublicKey(publicKeyPem);
+    if (publicKey.asymmetricKeyType !== "ed25519")
+      throw new Error("not ed25519");
+    keyFingerprint = fingerprintPublicKey(publicKeyPem);
+    signatureValid = verify(
+      null,
+      Buffer.from(signed.bundle.digest.value, "utf8"),
+      publicKey,
+      Buffer.from(signed.signature.value, "base64"),
+    );
+  } catch {
+    signatureValid = false;
+  }
+  return {
+    ...integrity,
+    valid:
+      integrity.valid &&
+      signatureValid &&
+      signed.signature.keyFingerprint === keyFingerprint,
+    signatureValid,
+    keyFingerprint,
   };
 }
