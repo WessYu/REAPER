@@ -28,7 +28,11 @@ export { validateAttackConfig } from "./attack-config.js";
 
 export { attack } from "./attack.js";
 export { renderAttackRegression } from "./regression.js";
-export { buildAttackPlan, buildIdentityMatrix } from "./attack-plan.js";
+export {
+  buildAttackPlan,
+  buildIdentityMatrix,
+  previewAttackExecution,
+} from "./attack-plan.js";
 export type * from "./attack-plan.js";
 export { createCallbackCollector } from "./callback.js";
 export type * from "./callback.js";
