@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { finding } from "./findings.js";
 import { validateAttackConfig } from "./attack-config.js";
@@ -320,9 +320,11 @@ async function executeRequest(
     : undefined;
   const token = tokenFor(identity, context.variables);
   const cookie = cookieFor(identity, context.variables);
+  const traceId = randomUUID();
   const headers = new Headers({
     accept: "application/json, text/plain;q=0.5",
     "user-agent": "REAPER/0.2.0 authorized-active-security",
+    "x-reaper-trace-id": traceId,
   });
   if (token) headers.set("authorization", `Bearer ${token}`);
   if (cookie) headers.set("cookie", cookie);
@@ -363,6 +365,7 @@ async function executeRequest(
       method,
       path: step.path,
       status: response?.status,
+      traceId,
       durationMs: Math.round(performance.now() - started),
       phase,
       previousHash: context.lastAuditHash,
