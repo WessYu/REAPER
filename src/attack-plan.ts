@@ -152,3 +152,80 @@ export function buildIdentityMatrix(config: AttackConfig): IdentityMatrixEntry[]
       a.attacker.localeCompare(b.attacker) || a.owner.localeCompare(b.owner),
   );
 }
+
+export interface AttackExecutionPreviewStep {
+  scenario: string;
+  phase: "setup" | "attack" | "cleanup";
+  name: string;
+  method: string;
+  path: string;
+  identity?: string;
+  mutating: boolean;
+}
+
+export interface AttackExecutionPreview {
+  environment: AttackConfig["scope"]["environment"];
+  authorizationId?: string;
+  allowedTargets: string[];
+  pathPrefixes: string[];
+  steps: AttackExecutionPreviewStep[];
+  totals: {
+    scenarios: number;
+    requests: number;
+    mutations: number;
+  };
+  warnings: string[];
+}
+
+export function previewAttackExecution(
+  config: AttackConfig,
+): AttackExecutionPreview {
+  const steps: AttackExecutionPreviewStep[] = [];
+  const append = (
+    scenario: AttackConfig["scenarios"][number],
+    phase: AttackExecutionPreviewStep["phase"],
+    step: AttackConfig["scenarios"][number]["attack"],
+  ) => {
+    const method = step.method ?? "GET";
+    steps.push({
+      scenario: scenario.name,
+      phase,
+      name: step.name,
+      method,
+      path: step.path,
+      identity:
+        step.identity ??
+        (phase === "attack" ? scenario.attackerIdentity : undefined),
+      mutating: ["POST", "PUT", "PATCH", "DELETE"].includes(method),
+    });
+  };
+  for (const scenario of config.scenarios) {
+    for (const step of scenario.setup ?? []) append(scenario, "setup", step);
+    append(scenario, "attack", scenario.attack);
+    for (const step of [...(scenario.cleanup ?? [])].reverse())
+      append(scenario, "cleanup", step);
+  }
+  const mutations = steps.filter((step) => step.mutating).length;
+  const warnings: string[] = [];
+  if (config.scope.environment === "production")
+    warnings.push("Production scope: review authorization and expiry before execution.");
+  if (mutations)
+    warnings.push(
+      `${mutations} configured mutating request(s); cleanup and mutation budgets must be reviewed.`,
+    );
+  if (!(config.scope.pathPrefixes?.length))
+    warnings.push("No pathPrefixes are configured; the exact-origin boundary is the path scope.");
+  return {
+    environment: config.scope.environment,
+    authorizationId: config.scope.authorizationId,
+    allowedTargets: [...(config.scope.allowedTargets ?? [])],
+    pathPrefixes: [...(config.scope.pathPrefixes ?? [])],
+    steps,
+    totals: {
+      scenarios: config.scenarios.length,
+      requests: steps.length,
+      mutations,
+    },
+    warnings,
+  };
+}
