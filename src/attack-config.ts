@@ -262,7 +262,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     attack.scenarios !== undefined &&
     (!Array.isArray(attack.scenarios) || attack.scenarios.length < 1)
   )
-    throw new Error("attack.scenarios must be a non-empty array when provided.");
+    throw new Error(
+      "attack.scenarios must be a non-empty array when provided.",
+    );
   if (Array.isArray(attack.scenarios) && attack.scenarios.length > 100)
     throw new Error("attack.scenarios cannot exceed 100 entries.");
   if (
@@ -270,10 +272,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     (!Array.isArray(attack.matrices) || attack.matrices.length < 1)
   )
     throw new Error("attack.matrices must be a non-empty array when provided.");
-  if (
-    !Array.isArray(attack.scenarios) &&
-    !Array.isArray(attack.matrices)
-  )
+  if (!Array.isArray(attack.scenarios) && !Array.isArray(attack.matrices))
     throw new Error("attack requires scenarios or matrices.");
   const ids = new Set<string>();
   for (const [index, raw] of (attack.scenarios ?? []).entries()) {
@@ -420,7 +419,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       throw new Error(`${label}.actors must be a non-empty string array.`);
     for (const actor of item.actors)
       if (!identities.has(actor))
-        throw new Error(`${label}.actors references unknown identity ${actor}.`);
+        throw new Error(
+          `${label}.actors references unknown identity ${actor}.`,
+        );
     if (
       !Array.isArray(item.resources) ||
       item.resources.length < 2 ||
@@ -433,7 +434,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         typeof rawResource !== "object" ||
         Array.isArray(rawResource)
       )
-        throw new Error(`${label}.resources[${resourceIndex}] must be an object.`);
+        throw new Error(
+          `${label}.resources[${resourceIndex}] must be an object.`,
+        );
       const resource = rawResource as Record<string, unknown>;
       for (const key of Object.keys(resource))
         if (!["id", "owner", "label"].includes(key))
@@ -455,7 +458,10 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         );
     }
     statusList(item.deniedStatuses, `${label}.deniedStatuses`);
-    if ((item.actors as string[]).length * (item.resources as unknown[]).length > 100)
+    if (
+      (item.actors as string[]).length * (item.resources as unknown[]).length >
+      100
+    )
       throw new Error(`${label} exceeds the 100-combination matrix cap.`);
   }
 

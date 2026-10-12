@@ -402,9 +402,7 @@ test("attack audit carries a run id, authorization reference and cleanup failure
       result.attack.audit.some((event) => event.outcome === "cleanup-error"),
     );
     assert.ok(
-      result.findings[0].evidence.includes(
-        "Authorization reference: SEC-1234",
-      ),
+      result.findings[0].evidence.includes("Authorization reference: SEC-1234"),
     );
   } finally {
     delete process.env.REAPER_ATTACK_USER_A;
@@ -412,7 +410,6 @@ test("attack audit carries a run id, authorization reference and cleanup failure
     await once(instance, "close");
   }
 });
-
 
 test("HTTP 500 is inconclusive, never a confirmed authorization bypass", async () => {
   const { instance, origin } = await server((_req, res) => {
@@ -430,18 +427,22 @@ test("HTTP 500 is inconclusive, never a confirmed authorization bypass", async (
           environment: "staging",
         },
         identities: { userA: { tokenEnv: "REAPER_ATTACK_USER_A" } },
-        scenarios: [{
-          id: "inconclusive-server-error",
-          title: "Server error is not a bypass",
-          dimension: "ownership",
-          steps: [{
-            name: "foreign read",
-            path: "/orders/foreign",
-            actor: "userA",
-            resource: "order:foreign:owner:userB",
-            expect: { deniedStatuses: [403, 404] },
-          }],
-        }],
+        scenarios: [
+          {
+            id: "inconclusive-server-error",
+            title: "Server error is not a bypass",
+            dimension: "ownership",
+            steps: [
+              {
+                name: "foreign read",
+                path: "/orders/foreign",
+                actor: "userA",
+                resource: "order:foreign:owner:userB",
+                expect: { deniedStatuses: [403, 404] },
+              },
+            ],
+          },
+        ],
       },
     });
     assert.equal(result.findings.length, 0);
@@ -544,4 +545,3 @@ test("authorization matrices are capped and require configured owners", () => {
     /owner/,
   );
 });
-

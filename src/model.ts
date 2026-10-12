@@ -181,12 +181,7 @@ export interface AttackAuditEvent {
   path: string;
   status?: number;
   durationMs: number;
-  outcome:
-    | "passed"
-    | "confirmed"
-    | "error"
-    | "cleanup"
-    | "cleanup-error";
+  outcome: "passed" | "confirmed" | "error" | "cleanup" | "cleanup-error";
 }
 
 export interface AttackRunMetadata {

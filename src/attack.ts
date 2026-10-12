@@ -470,7 +470,8 @@ async function runMatrix(
       }
     }
   } finally {
-    if (previousResourceId === undefined) context.variables.delete("RESOURCE_ID");
+    if (previousResourceId === undefined)
+      context.variables.delete("RESOURCE_ID");
     else context.variables.set("RESOURCE_ID", previousResourceId);
   }
 }
