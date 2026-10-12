@@ -16,6 +16,7 @@ import { renderExplanation } from "./explain.js";
 import { verify } from "./verify.js";
 import { attack } from "./attack.js";
 import { renderAttackRegression } from "./regression.js";
+import { buildAttackPlan } from "./attack-plan.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
@@ -42,6 +43,7 @@ reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run bounded stateful active-security scenarios
+reaper attack-plan <json> Build active-test candidates from static findings
 reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
@@ -156,6 +158,11 @@ async function main(): Promise<void> {
     const { discoverRoutes } = await import("./verify.js");
     const endpoints = await discoverRoutes(arg, verifyConfig);
     await output(JSON.stringify(endpoints, null, 2) + "\n");
+    return;
+  }
+  if (command === "attack-plan") {
+    if (!arg) throw new Error("attack-plan requires a source report path.");
+    await output(JSON.stringify(buildAttackPlan(await saved(arg)), null, 2) + "\n");
     return;
   }
   if (command === "attack") {
