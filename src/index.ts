@@ -36,3 +36,5 @@ export { verifyAttackAudit } from "./audit.js";
 export type * from "./audit.js";
 export { planOpenApi } from "./openapi.js";
 export type * from "./openapi.js";
+export { planGraphql } from "./graphql.js";
+export type * from "./graphql.js";
