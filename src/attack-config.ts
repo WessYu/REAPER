@@ -1,8 +1,4 @@
-import type {
-  AttackConfig,
-  AttackStep,
-  VerifyJson,
-} from "./model.js";
+import type { AttackConfig, AttackStep, VerifyJson } from "./model.js";
 
 const envName = /^[A-Z_][A-Z0-9_]*$/i;
 const scenarioId = /^[a-z0-9][a-z0-9._-]{1,63}$/i;
@@ -36,7 +32,9 @@ function statusList(value: unknown, label: string): number[] | undefined {
     value.length < 1 ||
     !value.every(
       (status) =>
-        Number.isSafeInteger(status) && Number(status) >= 100 && Number(status) <= 599,
+        Number.isSafeInteger(status) &&
+        Number(status) >= 100 &&
+        Number(status) <= 599,
     )
   )
     throw new Error(`${label} must be a non-empty HTTP status array.`);
@@ -112,7 +110,10 @@ function validateStep(
     for (const key of Object.keys(expect))
       if (!["deniedStatuses", "allowedStatuses"].includes(key))
         throw new Error(`Unknown ${label}.expect key: ${key}`);
-    const denied = statusList(expect.deniedStatuses, `${label}.expect.deniedStatuses`);
+    const denied = statusList(
+      expect.deniedStatuses,
+      `${label}.expect.deniedStatuses`,
+    );
     const allowedStatuses = statusList(
       expect.allowedStatuses,
       `${label}.expect.allowedStatuses`,
@@ -190,7 +191,11 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     throw new Error("attack.authorization.environment is invalid.");
 
   const positive = (
-    key: "maxRequests" | "timeoutMs" | "rateLimitPerSecond" | "maxConsecutiveServerErrors",
+    key:
+      | "maxRequests"
+      | "timeoutMs"
+      | "rateLimitPerSecond"
+      | "maxConsecutiveServerErrors",
     max: number,
   ) => {
     const raw = attack[key];
@@ -261,7 +266,14 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     if (!raw || typeof raw !== "object" || Array.isArray(raw))
       throw new Error(`attack.scenarios[${index}] must be an object.`);
     const item = raw as Record<string, unknown>;
-    const keys = new Set(["id", "title", "dimension", "severity", "steps", "cleanup"]);
+    const keys = new Set([
+      "id",
+      "title",
+      "dimension",
+      "severity",
+      "steps",
+      "cleanup",
+    ]);
     for (const key of Object.keys(item))
       if (!keys.has(key))
         throw new Error(`Unknown attack.scenarios[${index}] key: ${key}`);
@@ -273,9 +285,13 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     if (typeof item.title !== "string" || item.title.trim().length < 3)
       throw new Error(`attack.scenarios[${index}].title is required.`);
     if (
-      !["ownership", "tenant", "vertical", "session", "business-logic"].includes(
-        String(item.dimension),
-      )
+      ![
+        "ownership",
+        "tenant",
+        "vertical",
+        "session",
+        "business-logic",
+      ].includes(String(item.dimension))
     )
       throw new Error(`attack.scenarios[${index}].dimension is invalid.`);
     if (
@@ -296,9 +312,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         attack.allowMutations === true,
       ),
     );
-    if (
-      ["ownership", "tenant", "vertical"].includes(String(item.dimension))
-    ) {
+    if (["ownership", "tenant", "vertical"].includes(String(item.dimension))) {
       for (const [stepIndex, rawStep] of (item.steps as unknown[]).entries()) {
         const step = rawStep as Record<string, unknown>;
         const expect = step.expect as Record<string, unknown> | undefined;
@@ -307,7 +321,10 @@ export function validateAttackConfig(value: unknown): AttackConfig {
             throw new Error(
               `${stepLabel}.steps[${stepIndex}] requires a configured actor for confirmed authorization testing.`,
             );
-          if (typeof step.resource !== "string" || step.resource.trim().length < 1)
+          if (
+            typeof step.resource !== "string" ||
+            step.resource.trim().length < 1
+          )
             throw new Error(
               `${stepLabel}.steps[${stepIndex}] requires a known test resource for confirmed authorization testing.`,
             );
@@ -317,8 +334,8 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     if (
       attack.allowMutations === true &&
       authorization.environment !== "production" &&
-      (item.steps as AttackStep[]).some((step) =>
-        !["GET", "HEAD"].includes(step.method ?? "GET"),
+      (item.steps as AttackStep[]).some(
+        (step) => !["GET", "HEAD"].includes(step.method ?? "GET"),
       ) &&
       (!Array.isArray(item.cleanup) || item.cleanup.length === 0)
     )

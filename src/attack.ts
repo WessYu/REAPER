@@ -58,7 +58,9 @@ function isIpLiteral(hostname: string): boolean {
 async function resolvedAddresses(target: URL): Promise<string[]> {
   if (isIpLiteral(target.hostname)) return [target.hostname.toLowerCase()];
   const values = await lookup(target.hostname, { all: true, verbatim: true });
-  return [...new Set(values.map((value) => value.address.toLowerCase()))].sort();
+  return [
+    ...new Set(values.map((value) => value.address.toLowerCase())),
+  ].sort();
 }
 
 async function assertStableResolution(context: AttackContext): Promise<void> {
@@ -114,7 +116,10 @@ function requestPath(value: string, variables: Map<string, string>): string {
   );
 }
 
-function bodyValue(value: VerifyJson, variables: Map<string, string>): VerifyJson {
+function bodyValue(
+  value: VerifyJson,
+  variables: Map<string, string>,
+): VerifyJson {
   if (typeof value === "string") {
     if (value.startsWith("$env:")) {
       const name = value.slice(5);
