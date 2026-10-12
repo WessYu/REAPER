@@ -88,10 +88,7 @@ function isPrivateAddress(address: string): boolean {
   return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
 }
 
-function assertNetworkScope(
-  addresses: string[],
-  config: AttackConfig,
-): void {
+function assertNetworkScope(addresses: string[], config: AttackConfig): void {
   const privateNonLoopback = addresses.filter(
     (address) => isPrivateAddress(address) && !isLoopbackAddress(address),
   );

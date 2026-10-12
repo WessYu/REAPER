@@ -828,4 +828,3 @@ test("loopback targets remain available without private-network opt-in", async (
     await once(instance, "close");
   }
 });
-
