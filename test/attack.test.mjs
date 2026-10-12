@@ -979,3 +979,124 @@ test("authorization matrix can require response proof tied to each foreign resou
   }
 });
 
+test("stateful attack identities can capture a session cookie and use secret-backed headers", async () => {
+  let privateRequests = 0;
+  const { instance, origin } = await server((req, res) => {
+    if (req.method === "POST" && req.url === "/login") {
+      res.setHeader("set-cookie", "sid=session-secret; Path=/; HttpOnly");
+      res.setHeader("content-type", "application/json");
+      res.statusCode = 200;
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/private") {
+      privateRequests++;
+      assert.equal(req.headers.cookie, "sid=session-secret");
+      assert.equal(req.headers["x-api-key"], "api-secret");
+      res.setHeader("content-type", "application/json");
+      res.statusCode = 200;
+      res.end(JSON.stringify({ user: "user-a" }));
+      return;
+    }
+    if (req.method === "DELETE" && req.url === "/session") {
+      assert.equal(req.headers.cookie, "sid=session-secret");
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  process.env.REAPER_API_KEY = "api-secret";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "session-test",
+          environment: "staging",
+        },
+        allowMutations: true,
+        identities: {
+          userA: {
+            cookie: { name: "sid", valueVar: "USER_A_SESSION" },
+            headerEnvs: { "x-api-key": "REAPER_API_KEY" },
+          },
+        },
+        scenarios: [
+          {
+            id: "session-flow",
+            title: "Session authentication flow",
+            dimension: "session",
+            steps: [
+              {
+                name: "login",
+                path: "/login",
+                method: "POST",
+                captureCookies: { USER_A_SESSION: "sid" },
+                expect: { allowedStatuses: [200] },
+              },
+              {
+                name: "private request",
+                path: "/private",
+                actor: "userA",
+                expect: {
+                  allowedStatuses: [200],
+                  jsonEquals: { user: "user-a" },
+                },
+              },
+            ],
+            cleanup: [
+              {
+                name: "logout",
+                path: "/session",
+                method: "DELETE",
+                actor: "userA",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(privateRequests, 1);
+    assert.equal(result.diagnostics.length, 0);
+    assert.ok(!JSON.stringify(result).includes("session-secret"));
+    assert.ok(!JSON.stringify(result).includes("api-secret"));
+  } finally {
+    delete process.env.REAPER_API_KEY;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("identity header configuration rejects protocol-sensitive headers", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        attack: {
+          allowedTargets: ["https://example.test"],
+          authorization: {
+            acknowledged: true,
+            reference: "headers-test",
+            environment: "staging",
+          },
+          identities: {
+            userA: {
+              headerEnvs: { host: "HOST_VALUE" },
+            },
+          },
+          scenarios: [
+            {
+              id: "headers",
+              title: "Unsafe header",
+              dimension: "session",
+              steps: [{ name: "read", path: "/" }],
+            },
+          ],
+        },
+      }),
+    /unsafe header/,
+  );
+});
+
