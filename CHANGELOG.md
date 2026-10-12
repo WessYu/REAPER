@@ -18,7 +18,9 @@
 - Tightened confirmation semantics: 5xx responses are inconclusive, confirmation defaults to 2xx, optional `confirmStatuses` narrows acceptance, and `jsonEquals` can prove selected returned resource fields without retaining response bodies.
 - Added attack/source correlation through `--input`, carrying confirmed runtime paths into matching source routes, reachable data resources and related static/catalog rule evidence.
 - Added expiring production authorization windows, explicit private-network opt-in, cookie-session capture/reuse and secret-backed custom identity headers with protocol-sensitive header blocking.
-- Expanded offensive audit metadata with run IDs, authorization references and explicit cleanup-failure events.
+- Expanded offensive audit metadata with run IDs, authorization references, cleanup-request counts and explicit cleanup-failure events.
+- Pinned attack-mode network connections to the initially approved DNS resolution, hard-blocked link-local/unspecified/multicast/reserved infrastructure addresses, and kept private-network access behind explicit opt-in.
+- Added a separate bounded cleanup request reserve, best-effort cleanup after cancellation and continuous authorization-expiry enforcement during long-running attack scenarios.
 - Expanded tests for middleware, alias/property mutation, Storage, RLS classification, views, triggers, discovery, synthetic lifecycle, dashboard, REST service and custom rules.
 - Kept runtime and database boundaries conservative: no arbitrary internet crawling, credential brute force, automatic destructive requests or project-code execution during static scanning.
 
