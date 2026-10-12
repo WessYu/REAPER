@@ -58,6 +58,49 @@ function isIpLiteral(hostname: string): boolean {
   return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.includes(":");
 }
 
+function isLoopbackAddress(address: string): boolean {
+  const normalized = address.toLowerCase();
+  if (normalized === "::1") return true;
+  if (/^127(?:\.\d{1,3}){3}$/.test(normalized)) return true;
+  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  return mapped ? isLoopbackAddress(mapped[1]!) : false;
+}
+
+function isPrivateAddress(address: string): boolean {
+  const normalized = address.toLowerCase();
+  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isPrivateAddress(mapped[1]!);
+  const ipv4 = normalized.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipv4) {
+    const a = Number(ipv4[1]);
+    const b = Number(ipv4[2]);
+    return (
+      a === 0 ||
+      a === 10 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+  if (normalized === "::") return true;
+  const first = Number.parseInt(normalized.split(":")[0] || "0", 16);
+  return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+}
+
+function assertNetworkScope(
+  addresses: string[],
+  config: AttackConfig,
+): void {
+  const privateNonLoopback = addresses.filter(
+    (address) => isPrivateAddress(address) && !isLoopbackAddress(address),
+  );
+  if (privateNonLoopback.length && config.allowPrivateNetwork !== true)
+    throw new Error(
+      "Attack target resolves to a private/link-local network; set attack.allowPrivateNetwork=true only for explicitly authorized internal assessments.",
+    );
+}
+
 async function resolvedAddresses(target: URL): Promise<string[]> {
   if (isIpLiteral(target.hostname)) return [target.hostname.toLowerCase()];
   const values = await lookup(target.hostname, { all: true, verbatim: true });
@@ -556,6 +599,8 @@ export async function runAttack(
     confirmed: [],
     audit: [],
   };
+  const baselineAddresses = await resolvedAddresses(parsed);
+  assertNetworkScope(baselineAddresses, attack);
   const context: AttackContext = {
     target: parsed,
     config: attack,
@@ -565,7 +610,7 @@ export async function runAttack(
     nextRequestAt: 0,
     pacing: Promise.resolve(),
     consecutiveServerErrors: 0,
-    baselineAddresses: await resolvedAddresses(parsed),
+    baselineAddresses,
     signal: options.signal,
   };
 
