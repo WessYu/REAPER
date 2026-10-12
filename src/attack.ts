@@ -302,7 +302,9 @@ function consumeBudget(
     throw new Error(`Attack request budget exceeded (${maximum}).`);
   if (method && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
     context.mutationCount++;
-    const mutationMaximum = context.config.maxMutationRequests ?? 20;
+    const mutationMaximum =
+      context.config.maxMutationRequests ??
+      (context.config.scope.environment === "production" ? 3 : 20);
     if (context.mutationCount > mutationMaximum)
       throw new Error(
         `Attack mutation budget exceeded (${mutationMaximum}).`,
