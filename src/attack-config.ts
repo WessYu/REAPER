@@ -173,6 +173,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   const allowed = new Set([
     "scope",
     "maxRequests",
+    "maxMutationRequests",
     "timeoutMs",
     "rateLimitPerSecond",
     "maxServerErrors",
@@ -238,6 +239,11 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     );
 
   positiveInteger(config.maxRequests, "attack.maxRequests", 500);
+  positiveInteger(
+    config.maxMutationRequests,
+    "attack.maxMutationRequests",
+    50,
+  );
   positiveInteger(config.timeoutMs, "attack.timeoutMs", 30000);
   positiveInteger(config.rateLimitPerSecond, "attack.rateLimitPerSecond", 20);
   positiveInteger(config.maxServerErrors, "attack.maxServerErrors", 20);

@@ -157,6 +157,7 @@ export interface AttackScenario {
 export interface AttackConfig {
   scope: AttackScope;
   maxRequests?: number;
+  maxMutationRequests?: number;
   timeoutMs?: number;
   rateLimitPerSecond?: number;
   maxServerErrors?: number;
@@ -216,6 +217,7 @@ export interface AttackSummary {
   configHash: string;
   startedAt: string;
   requestCount: number;
+  mutationCount: number;
   serverErrors: number;
   auditHash: string;
   scenarios: AttackScenarioResult[];

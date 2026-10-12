@@ -24,6 +24,7 @@ interface AttackContext {
   variables: Map<string, string>;
   signal?: AbortSignal;
   requestCount: number;
+  mutationCount: number;
   serverErrors: number;
   nextRequestAt: number;
   sequence: number;
@@ -257,11 +258,22 @@ async function pace(context: AttackContext): Promise<void> {
   context.nextRequestAt = Date.now() + Math.ceil(1000 / rate);
 }
 
-function consumeBudget(context: AttackContext): void {
+function consumeBudget(
+  context: AttackContext,
+  method: AttackStep["method"],
+): void {
   context.requestCount++;
   const maximum = context.config.maxRequests ?? 100;
   if (context.requestCount > maximum)
     throw new Error(`Attack request budget exceeded (${maximum}).`);
+  if (method && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    context.mutationCount++;
+    const mutationMaximum = context.config.maxMutationRequests ?? 20;
+    if (context.mutationCount > mutationMaximum)
+      throw new Error(
+        `Attack mutation budget exceeded (${mutationMaximum}).`,
+      );
+  }
 }
 
 function checkCircuitBreaker(context: AttackContext): void {
@@ -289,7 +301,7 @@ async function executeRequest(
 
   await pace(context);
   if (context.signal?.aborted) return undefined;
-  consumeBudget(context);
+  consumeBudget(context, method);
 
   const renderedPath = interpolatePath(step.path, context.variables);
   const url = new URL(renderedPath, context.target);
@@ -787,6 +799,7 @@ export async function attack(
         .digest("hex"),
       startedAt: new Date().toISOString(),
       requestCount: 0,
+      mutationCount: 0,
       serverErrors: 0,
       auditHash: "",
       scenarios: [],
@@ -801,6 +814,7 @@ export async function attack(
     variables: new Map(),
     signal: options.signal,
     requestCount: 0,
+    mutationCount: 0,
     serverErrors: 0,
     nextRequestAt: 0,
     sequence: 0,
@@ -834,6 +848,7 @@ export async function attack(
 
   result.findings.sort((a, b) => a.id.localeCompare(b.id));
   attackSummary.requestCount = context.requestCount;
+  attackSummary.mutationCount = context.mutationCount;
   attackSummary.serverErrors = context.serverErrors;
   attackSummary.auditHash = context.lastAuditHash;
   result.metrics.durationMs = Math.round(performance.now() - start);
