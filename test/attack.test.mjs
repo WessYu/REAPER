@@ -919,3 +919,63 @@ test("explicit confirmation statuses can narrow successful bypass evidence", asy
     await once(instance, "close");
   }
 });
+
+test("authorization matrix can require response proof tied to each foreign resource", async () => {
+  const { instance, origin } = await server((req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.statusCode = 200;
+    if (req.url === "/orders/order-b")
+      res.end(JSON.stringify({ id: "wrong-order", owner: "user-b" }));
+    else res.end(JSON.stringify({ id: "order-a", owner: "user-a" }));
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  process.env.REAPER_ATTACK_USER_B = "user-b-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "matrix-proof",
+          environment: "staging",
+        },
+        rateLimitPerSecond: 20,
+        identities: {
+          userA: { tokenEnv: "REAPER_ATTACK_USER_A" },
+          userB: { tokenEnv: "REAPER_ATTACK_USER_B" },
+        },
+        matrices: [
+          {
+            id: "proof-orders",
+            title: "Cross-user order proof matrix",
+            dimension: "ownership",
+            path: "/orders/{{RESOURCE_ID}}",
+            actors: ["userA", "userB"],
+            resources: [
+              { id: "order-a", owner: "userA" },
+              { id: "order-b", owner: "userB" },
+            ],
+            deniedStatuses: [403, 404],
+            jsonEquals: {
+              id: "{{RESOURCE_ID}}",
+              owner: "{{RESOURCE_OWNER}}",
+            },
+          },
+        ],
+      },
+    });
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].resource, "proof-orders:order-a:owner:userA");
+    assert.ok(
+      result.diagnostics.some((item) =>
+        /response proof did not match/.test(item.message),
+      ),
+    );
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    delete process.env.REAPER_ATTACK_USER_B;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
