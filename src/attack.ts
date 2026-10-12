@@ -338,9 +338,28 @@ async function requestStep(
     graphEdge(context.result, routeId, resourceId, "targets");
   }
 
+  const proof = step.expect?.jsonEquals;
   let parsed: unknown;
+  if (
+    (step.capture && Object.keys(step.capture).length) ||
+    (proof && Object.keys(proof).length)
+  ) {
+    try {
+      parsed = await limitedJson(response.clone());
+    } catch (error) {
+      if (proof && Object.keys(proof).length) {
+        context.result.diagnostics.push({
+          message: `Attack scenario ${scenario.id} step "${step.name}" could not validate JSON response proof: ${error instanceof Error ? error.message : "unknown error"}`,
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
+
   if (step.capture && Object.keys(step.capture).length) {
-    parsed = await limitedJson(response.clone());
+    if (parsed === undefined)
+      throw new Error("Attack capture expected a JSON response.");
     for (const [name, capturePath] of Object.entries(step.capture)) {
       const value = jsonPath(parsed, capturePath);
       if (!["string", "number", "boolean"].includes(typeof value))
@@ -351,14 +370,38 @@ async function requestStep(
     }
   }
 
-  let outcome: "passed" | "confirmed" | "cleanup" = cleanup
+  const proofPaths = proof ? Object.keys(proof) : [];
+  const proofMatched =
+    proofPaths.length === 0 ||
+    (parsed !== undefined &&
+      proofPaths.every((proofPath) => {
+        const expected = proof![proofPath];
+        const resolvedExpected =
+          typeof expected === "string"
+            ? interpolate(expected, context.variables)
+            : expected;
+        return Object.is(jsonPath(parsed, proofPath), resolvedExpected);
+      }));
+
+  let outcome: "passed" | "confirmed" | "inconclusive" | "cleanup" = cleanup
     ? "cleanup"
     : "passed";
   const denied = step.expect?.deniedStatuses;
   const allowed = step.expect?.allowedStatuses;
   if (denied && response.status >= 500) {
+    outcome = "inconclusive";
     context.result.diagnostics.push({
       message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}; server errors cannot confirm an authorization bypass.`,
+    });
+  } else if (
+    denied &&
+    !denied.includes(response.status) &&
+    proofPaths.length > 0 &&
+    !proofMatched
+  ) {
+    outcome = "inconclusive";
+    context.result.diagnostics.push({
+      message: `Attack scenario ${scenario.id} step "${step.name}" violated the denial status policy but its configured JSON response proof did not match; the bypass remains unconfirmed.`,
     });
   } else if (denied && !denied.includes(response.status)) {
     const resource = step.resource
@@ -386,6 +429,11 @@ async function requestStep(
           `Expected denial statuses: ${denied.join(", ")}`,
           `Observed HTTP status: ${response.status}`,
           ...(resource ? [`Known test resource: ${resource}`] : []),
+          ...(proofPaths.length
+            ? [
+                `Response proof matched JSON paths: ${proofPaths.join(", ")}`,
+              ]
+            : []),
         ],
         dataFlow: [],
         recommendation:
@@ -403,8 +451,14 @@ async function requestStep(
     graphEdge(context.result, routeId, findingId, "confirms");
     outcome = "confirmed";
   } else if (allowed && !allowed.includes(response.status)) {
+    outcome = "inconclusive";
     context.result.diagnostics.push({
       message: `Attack scenario ${scenario.id} step "${step.name}" expected an allowed status (${allowed.join(", ")}) but received ${response.status}.`,
+    });
+  } else if (allowed && proofPaths.length > 0 && !proofMatched) {
+    outcome = "inconclusive";
+    context.result.diagnostics.push({
+      message: `Attack scenario ${scenario.id} step "${step.name}" matched its allowed status policy but its configured JSON response proof did not match.`,
     });
   }
 

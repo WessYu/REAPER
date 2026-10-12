@@ -545,3 +545,176 @@ test("authorization matrices are capped and require configured owners", () => {
     /owner/,
   );
 });
+
+test("JSON response proof upgrades a status violation only when expected data is present", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.statusCode = 200;
+    res.end(
+      JSON.stringify({
+        order: { id: "order-b", owner: "user-b", secret: "do-not-log" },
+      }),
+    );
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-PROOF",
+          environment: "staging",
+        },
+        identities: { userA: { tokenEnv: "REAPER_ATTACK_USER_A" } },
+        scenarios: [
+          {
+            id: "response-proof",
+            title: "Foreign order response proof",
+            dimension: "ownership",
+            steps: [
+              {
+                name: "read foreign order",
+                path: "/orders/order-b",
+                actor: "userA",
+                resource: "order:order-b:owner:user-b",
+                expect: {
+                  deniedStatuses: [403, 404],
+                  jsonEquals: {
+                    "order.id": "order-b",
+                    "order.owner": "user-b",
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].confidence, "CONFIRMED");
+    assert.ok(
+      result.findings[0].evidence.includes(
+        "Response proof matched JSON paths: order.id, order.owner",
+      ),
+    );
+    assert.ok(!JSON.stringify(result).includes("do-not-log"));
+    assert.ok(!JSON.stringify(result).includes("user-a-token"));
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("mismatched JSON response proof keeps a status anomaly inconclusive", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.statusCode = 200;
+    res.end(JSON.stringify({ order: { id: "different-order" } }));
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-PROOF",
+          environment: "staging",
+        },
+        identities: { userA: { tokenEnv: "REAPER_ATTACK_USER_A" } },
+        scenarios: [
+          {
+            id: "response-proof-mismatch",
+            title: "Foreign order response proof mismatch",
+            dimension: "ownership",
+            steps: [
+              {
+                name: "read foreign order",
+                path: "/orders/order-b",
+                actor: "userA",
+                resource: "order:order-b:owner:user-b",
+                expect: {
+                  deniedStatuses: [403, 404],
+                  jsonEquals: { "order.id": "order-b" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.findings.length, 0);
+    assert.equal(result.attack.confirmed.length, 0);
+    assert.equal(result.attack.audit[0].outcome, "inconclusive");
+    assert.ok(
+      result.diagnostics.some((item) =>
+        /response proof did not match/.test(item.message),
+      ),
+    );
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("JSON response proof can reference previously captured non-secret variables", async () => {
+  const { instance, origin } = await server((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/fixture") {
+      res.statusCode = 200;
+      res.end(JSON.stringify({ id: "order-b" }));
+      return;
+    }
+    res.statusCode = 200;
+    res.end(JSON.stringify({ id: "order-b" }));
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-PROOF",
+          environment: "staging",
+        },
+        identities: { userA: { tokenEnv: "REAPER_ATTACK_USER_A" } },
+        scenarios: [
+          {
+            id: "captured-response-proof",
+            title: "Captured resource response proof",
+            dimension: "ownership",
+            steps: [
+              {
+                name: "capture fixture id",
+                path: "/fixture",
+                capture: { FOREIGN_ID: "id" },
+                expect: { allowedStatuses: [200] },
+              },
+              {
+                name: "read foreign resource",
+                path: "/orders/{{FOREIGN_ID}}",
+                actor: "userA",
+                resource: "order:{{FOREIGN_ID}}:owner:userB",
+                expect: {
+                  deniedStatuses: [403, 404],
+                  jsonEquals: { id: "{{FOREIGN_ID}}" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].confidence, "CONFIRMED");
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
