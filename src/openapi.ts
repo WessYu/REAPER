@@ -67,10 +67,7 @@ function parameters(
 export function planOpenApi(document: unknown): OpenApiPlan {
   const root = object(document);
   if (!root) throw new Error("OpenAPI document must be an object.");
-  if (
-    typeof root.openapi !== "string" &&
-    typeof root.swagger !== "string"
-  )
+  if (typeof root.openapi !== "string" && typeof root.swagger !== "string")
     throw new Error("Document does not declare an OpenAPI/Swagger version.");
   const paths = object(root.paths);
   if (!paths) throw new Error("OpenAPI document does not contain paths.");
@@ -123,8 +120,7 @@ export function planOpenApi(document: unknown): OpenApiPlan {
     }
   }
   operations.sort(
-    (a, b) =>
-      a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
+    (a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
   );
   const info = object(root.info);
   return {

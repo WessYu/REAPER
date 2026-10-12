@@ -134,16 +134,16 @@ signup flow or credentials.
 
 Active-security findings use CONFIRMED confidence only when an explicitly configured stateful scenario observes a result outside the declared security expectation. The engine does not infer exploitability from status codes alone unless the scenario declares the intended denial or invariant.
 
-| Rule              | Confirmed evidence                                                     | Severity / confidence |
-| ----------------- | ---------------------------------------------------------------------- | --------------------- |
-| REAPER-ATTACK-001 | Cross-user object/BOLA scenario receives a non-denied result           | HIGH / CONFIRMED      |
-| REAPER-ATTACK-002 | Cross-tenant scenario violates the declared tenant boundary            | CRITICAL / CONFIRMED  |
-| REAPER-ATTACK-003 | Lower-privilege identity violates an explicit privilege boundary       | CRITICAL / CONFIRMED  |
-| REAPER-ATTACK-004 | Generic authorization scenario violates its configured expectation     | HIGH / CONFIRMED      |
-| REAPER-ATTACK-005 | Session scenario violates the configured session expectation           | HIGH / CONFIRMED      |
-| REAPER-ATTACK-006 | CORS scenario violates configured status/header expectations           | HIGH / CONFIRMED      |
-| REAPER-ATTACK-007 | CSRF scenario violates its explicitly configured security expectation  | HIGH / CONFIRMED      |
-| REAPER-ATTACK-008 | Business-security scenario violates status/header/JSON invariants      | HIGH / CONFIRMED      |
+| Rule              | Confirmed evidence                                                    | Severity / confidence |
+| ----------------- | --------------------------------------------------------------------- | --------------------- |
+| REAPER-ATTACK-001 | Cross-user object/BOLA scenario receives a non-denied result          | HIGH / CONFIRMED      |
+| REAPER-ATTACK-002 | Cross-tenant scenario violates the declared tenant boundary           | CRITICAL / CONFIRMED  |
+| REAPER-ATTACK-003 | Lower-privilege identity violates an explicit privilege boundary      | CRITICAL / CONFIRMED  |
+| REAPER-ATTACK-004 | Generic authorization scenario violates its configured expectation    | HIGH / CONFIRMED      |
+| REAPER-ATTACK-005 | Session scenario violates the configured session expectation          | HIGH / CONFIRMED      |
+| REAPER-ATTACK-006 | CORS scenario violates configured status/header expectations          | HIGH / CONFIRMED      |
+| REAPER-ATTACK-007 | CSRF scenario violates its explicitly configured security expectation | HIGH / CONFIRMED      |
+| REAPER-ATTACK-008 | Business-security scenario violates status/header/JSON invariants     | HIGH / CONFIRMED      |
 
 A source/database report can be supplied to active mode. Matching authorization, tenant, RLS, privilege or Supabase evidence is attached to the active path without converting unrelated static observations into confirmed vulnerabilities. The combined graph preserves the source route → query → resource evidence and adds principal/request/runtime correlation.
 

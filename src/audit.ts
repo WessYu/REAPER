@@ -16,9 +16,7 @@ function eventHash(previousHash: string, event: AttackAuditEvent): string {
     .digest("hex");
 }
 
-export function verifyAttackAudit(
-  result: ScanResult,
-): AttackAuditVerification {
+export function verifyAttackAudit(result: ScanResult): AttackAuditVerification {
   if (!result.attack)
     return {
       valid: false,

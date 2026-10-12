@@ -10,7 +10,12 @@ test("OpenAPI planner models read and mutation surface without sending requests"
     paths: {
       "/orders/{id}": {
         parameters: [
-          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
         ],
         get: {
           operationId: "getOrder",

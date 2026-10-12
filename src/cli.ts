@@ -207,7 +207,8 @@ async function main(): Promise<void> {
     if (!attackConfig.attack)
       throw new Error("Config does not define an attack section.");
     await output(
-      JSON.stringify(previewAttackExecution(attackConfig.attack), null, 2) + "\n",
+      JSON.stringify(previewAttackExecution(attackConfig.attack), null, 2) +
+        "\n",
     );
     return;
   }
@@ -222,7 +223,8 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "graphql-plan") {
-    if (!arg) throw new Error("graphql-plan requires an introspection JSON path.");
+    if (!arg)
+      throw new Error("graphql-plan requires an introspection JSON path.");
     await output(JSON.stringify(planGraphql(await json(arg)), null, 2) + "\n");
     return;
   }
@@ -233,7 +235,9 @@ async function main(): Promise<void> {
   }
   if (command === "attack-plan") {
     if (!arg) throw new Error("attack-plan requires a source report path.");
-    await output(JSON.stringify(buildAttackPlan(await saved(arg)), null, 2) + "\n");
+    await output(
+      JSON.stringify(buildAttackPlan(await saved(arg)), null, 2) + "\n",
+    );
     return;
   }
   if (command === "attack") {
@@ -323,7 +327,9 @@ async function main(): Promise<void> {
   }
   if (command === "evidence") {
     if (!arg) throw new Error("evidence requires a REAPER report path.");
-    await output(JSON.stringify(buildEvidenceBundle(await saved(arg)), null, 2) + "\n");
+    await output(
+      JSON.stringify(buildEvidenceBundle(await saved(arg)), null, 2) + "\n",
+    );
     return;
   }
   if (command === "audit-verify") {

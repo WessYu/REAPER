@@ -18,9 +18,10 @@ export interface AttackPlan {
   candidates: AttackPlanCandidate[];
 }
 
-function routeParts(
-  route: string | undefined,
-): { method?: string; pathTemplate?: string } {
+function routeParts(route: string | undefined): {
+  method?: string;
+  pathTemplate?: string;
+} {
   if (!route) return {};
   const match = route.match(/^([A-Z]+)\s+(.+)$/);
   if (!match) return { pathTemplate: route };
@@ -116,7 +117,9 @@ export interface IdentityMatrixEntry {
   dimensions: Array<"ownership" | "tenant" | "privilege">;
 }
 
-export function buildIdentityMatrix(config: AttackConfig): IdentityMatrixEntry[] {
+export function buildIdentityMatrix(
+  config: AttackConfig,
+): IdentityMatrixEntry[] {
   const entries: IdentityMatrixEntry[] = [];
   const identities = Object.entries(config.identities);
   for (const [attackerName, attacker] of identities)
@@ -208,13 +211,17 @@ export function previewAttackExecution(
   const mutations = steps.filter((step) => step.mutating).length;
   const warnings: string[] = [];
   if (config.scope.environment === "production")
-    warnings.push("Production scope: review authorization and expiry before execution.");
+    warnings.push(
+      "Production scope: review authorization and expiry before execution.",
+    );
   if (mutations)
     warnings.push(
       `${mutations} configured mutating request(s); cleanup and mutation budgets must be reviewed.`,
     );
-  if (!(config.scope.pathPrefixes?.length))
-    warnings.push("No pathPrefixes are configured; the exact-origin boundary is the path scope.");
+  if (!config.scope.pathPrefixes?.length)
+    warnings.push(
+      "No pathPrefixes are configured; the exact-origin boundary is the path scope.",
+    );
   return {
     environment: config.scope.environment,
     authorizationId: config.scope.authorizationId,

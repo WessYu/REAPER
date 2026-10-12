@@ -68,9 +68,7 @@ function operationFields(
   operation: GraphqlFieldPlan["operation"],
 ): GraphqlFieldPlan[] {
   if (!parentType || !Array.isArray(types)) return [];
-  const type = types
-    .map(record)
-    .find((item) => item?.name === parentType);
+  const type = types.map(record).find((item) => item?.name === parentType);
   if (!type || !Array.isArray(type.fields)) return [];
   const fields: GraphqlFieldPlan[] = [];
   for (const raw of type.fields) {

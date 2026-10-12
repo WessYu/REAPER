@@ -237,10 +237,7 @@ function cookieFor(
   return undefined;
 }
 
-function headerValue(
-  value: string,
-  variables: Map<string, string>,
-): string {
+function headerValue(value: string, variables: Map<string, string>): string {
   if (value.startsWith("$env:")) {
     const name = value.slice("$env:".length);
     const resolved = process.env[name];
@@ -306,9 +303,7 @@ function consumeBudget(
       context.config.maxMutationRequests ??
       (context.config.scope.environment === "production" ? 3 : 20);
     if (context.mutationCount > mutationMaximum)
-      throw new Error(
-        `Attack mutation budget exceeded (${mutationMaximum}).`,
-      );
+      throw new Error(`Attack mutation budget exceeded (${mutationMaximum}).`);
   }
 }
 
@@ -428,20 +423,11 @@ function sourceFindingFor(
     );
   const candidates = sourceReport.findings.filter((item) => {
     if (item.status === "suppressed") return false;
-    if (
-      scenario.kind === "bola" &&
-      item.ruleId !== "REAPER-AUTH-001"
-    )
+    if (scenario.kind === "bola" && item.ruleId !== "REAPER-AUTH-001")
       return false;
-    if (
-      scenario.kind === "tenant" &&
-      item.ruleId !== "REAPER-TENANT-001"
-    )
+    if (scenario.kind === "tenant" && item.ruleId !== "REAPER-TENANT-001")
       return false;
-    if (
-      scenario.kind === "privilege" &&
-      item.category !== "Privileges"
-    )
+    if (scenario.kind === "privilege" && item.category !== "Privileges")
       return false;
     return true;
   });
@@ -454,8 +440,7 @@ function sourceFindingFor(
     ) ??
     candidates.find(
       (item) =>
-        scenario.resource !== undefined &&
-        item.resource === scenario.resource,
+        scenario.resource !== undefined && item.resource === scenario.resource,
     ) ??
     candidates.find((item) => item.route === route)
   );
@@ -501,7 +486,9 @@ function staticRouteFor(
   return sourceReport.graph.nodes.find(
     (node) =>
       node.kind === "route" &&
-      [active, preferred].filter(Boolean).includes(normalizeRouteLabel(node.label)),
+      [active, preferred]
+        .filter(Boolean)
+        .includes(normalizeRouteLabel(node.label)),
   );
 }
 
@@ -644,8 +631,7 @@ function activeFinding(
         : [401, 403, 404])
     ).join(", ")}`,
     ...Object.entries(scenario.expect?.headers ?? {}).map(
-      ([name, expected]) =>
-        `Expected response header ${name}: ${expected}`,
+      ([name, expected]) => `Expected response header ${name}: ${expected}`,
     ),
     ...(scenario.expect?.absentHeaders ?? []).map(
       (name) => `Expected response header absent: ${name}`,
@@ -786,7 +772,8 @@ async function runScenario(
     const statusMatches = expected.includes(response.status);
     const headersMatch = Object.entries(scenario.expect?.headers ?? {}).every(
       ([name, expectedValue]) =>
-        response.headers.get(name)?.toLowerCase() === expectedValue.toLowerCase(),
+        response.headers.get(name)?.toLowerCase() ===
+        expectedValue.toLowerCase(),
     );
     const absentHeadersMatch = (scenario.expect?.absentHeaders ?? []).every(
       (name) => response.headers.get(name) === null,
@@ -795,9 +782,9 @@ async function runScenario(
       ([path, expectedValue]) =>
         Object.is(jsonPath(responseJson, path), expectedValue),
     );
-    const absentJsonMatches = (
-      scenario.expect?.absentJsonPaths ?? []
-    ).every((path) => jsonPath(responseJson, path) === undefined);
+    const absentJsonMatches = (scenario.expect?.absentJsonPaths ?? []).every(
+      (path) => jsonPath(responseJson, path) === undefined,
+    );
 
     if (
       statusMatches &&

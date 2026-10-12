@@ -98,8 +98,7 @@ export async function createCallbackCollector(
     wait(token: string, timeoutMs = 5000) {
       const existing = observed.find((event) => event.token === token);
       if (existing) return Promise.resolve({ ...existing });
-      if (!labels.has(token))
-        throw new Error("Unknown callback token.");
+      if (!labels.has(token)) throw new Error("Unknown callback token.");
       if (
         !Number.isSafeInteger(timeoutMs) ||
         timeoutMs < 1 ||

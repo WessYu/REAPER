@@ -63,7 +63,9 @@ test("mutation budget stops stateful scenarios before excessive side effects", a
     assert.equal(mutations, 1);
     assert.equal(result.attack.mutationCount, 2);
     assert.ok(
-      result.diagnostics.some((item) => /mutation budget exceeded/.test(item.message)),
+      result.diagnostics.some((item) =>
+        /mutation budget exceeded/.test(item.message),
+      ),
     );
   } finally {
     server.close();

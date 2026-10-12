@@ -342,11 +342,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   }
 
   positiveInteger(config.maxRequests, "attack.maxRequests", 500);
-  positiveInteger(
-    config.maxMutationRequests,
-    "attack.maxMutationRequests",
-    50,
-  );
+  positiveInteger(config.maxMutationRequests, "attack.maxMutationRequests", 50);
   positiveInteger(config.maxUploadBytes, "attack.maxUploadBytes", 1048576);
   positiveInteger(config.timeoutMs, "attack.timeoutMs", 30000);
   positiveInteger(config.rateLimitPerSecond, "attack.rateLimitPerSecond", 20);
@@ -369,17 +365,13 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     config.maxMutationRequests !== undefined &&
     Number(config.maxMutationRequests) > 5
   )
-    throw new Error(
-      "Production attack.maxMutationRequests cannot exceed 5.",
-    );
+    throw new Error("Production attack.maxMutationRequests cannot exceed 5.");
   if (
     scope.environment === "production" &&
     config.rateLimitPerSecond !== undefined &&
     Number(config.rateLimitPerSecond) > 5
   )
-    throw new Error(
-      "Production attack.rateLimitPerSecond cannot exceed 5.",
-    );
+    throw new Error("Production attack.rateLimitPerSecond cannot exceed 5.");
 
   if (
     !config.identities ||
@@ -544,7 +536,9 @@ export function validateAttackConfig(value: unknown): AttackConfig {
             sensitive.has(name.toLowerCase()) ||
             typeof expectedValue !== "string"
           )
-            throw new Error(`${label}.expect.headers contains an invalid header.`);
+            throw new Error(
+              `${label}.expect.headers contains an invalid header.`,
+            );
         }
       }
       if (

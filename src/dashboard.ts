@@ -77,14 +77,22 @@ code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}section{margin-t
 <div class="card"><div class="muted">High</div><div class="value">${counts.get("HIGH") ?? 0}</div></div>
 <div class="card"><div class="muted">Routes</div><div class="value">${result.metrics.routes}</div></div>
 <div class="card"><div class="muted">Data sinks</div><div class="value">${result.metrics.sinks}</div></div>
-${attack ? `<div class="card"><div class="muted">Active scenarios</div><div class="value">${attack.scenarios.length}</div></div>
+${
+  attack
+    ? `<div class="card"><div class="muted">Active scenarios</div><div class="value">${attack.scenarios.length}</div></div>
 <div class="card"><div class="muted">Confirmed active</div><div class="value">${attackConfirmed}</div></div>
-<div class="card"><div class="muted">Active requests</div><div class="value">${attack.requestCount}</div></div>` : ""}
+<div class="card"><div class="muted">Active requests</div><div class="value">${attack.requestCount}</div></div>`
+    : ""
+}
 </div>
-${attack ? `<section><h2>Active security run</h2>
+${
+  attack
+    ? `<section><h2>Active security run</h2>
 <p>Environment: <strong>${escapeHtml(attack.environment)}</strong> · authorization: <code>${escapeHtml(attack.authorizationId ?? "local/unspecified")}</code></p>
 <p>Config SHA-256: <code>${escapeHtml(attack.configHash)}</code><br>Audit chain: <code>${escapeHtml(attack.auditHash || "no requests")}</code></p>
-<table><thead><tr><th>#</th><th>Phase</th><th>Scenario</th><th>Identity</th><th>Request</th><th>Status</th><th>Duration</th></tr></thead><tbody>${attackRows || '<tr><td colspan="7">No active requests.</td></tr>'}</tbody></table></section>` : ""}
+<table><thead><tr><th>#</th><th>Phase</th><th>Scenario</th><th>Identity</th><th>Request</th><th>Status</th><th>Duration</th></tr></thead><tbody>${attackRows || '<tr><td colspan="7">No active requests.</td></tr>'}</tbody></table></section>`
+    : ""
+}
 <section><h2>Findings</h2><table><thead><tr><th>Severity</th><th>Rule</th><th>Finding</th><th>Route</th><th>Resource</th><th>Location</th></tr></thead><tbody>${rows || '<tr><td colspan="6">No findings.</td></tr>'}</tbody></table></section>
 <section><h2>Observed access graph</h2><ul>${graph || "<li>No graph edges.</li>"}</ul></section>
 </body>

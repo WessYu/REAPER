@@ -93,9 +93,7 @@ test("dashboard renders active-security provenance without secret material", () 
       requestCount: 1,
       serverErrors: 0,
       auditHash: "b".repeat(64),
-      scenarios: [
-        { name: "foreign order", kind: "bola", status: "passed" },
-      ],
+      scenarios: [{ name: "foreign order", kind: "bola", status: "passed" }],
       audit: [
         {
           sequence: 1,
@@ -119,4 +117,3 @@ test("dashboard renders active-security provenance without secret material", () 
   assert.match(html, /foreign order/);
   assert.doesNotMatch(html, /Bearer|token-/);
 });
-

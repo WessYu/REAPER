@@ -83,4 +83,3 @@ test("evidence signatures verify against an explicit trusted Ed25519 key", () =>
   signed.bundle.payload.root = "/tampered";
   assert.equal(verifySignedEvidence(signed, publicPem).valid, false);
 });
-

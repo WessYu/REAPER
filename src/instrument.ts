@@ -7,10 +7,7 @@ interface TraceContext {
 const storage = new AsyncLocalStorage<TraceContext>();
 
 function header(
-  headers:
-    | Headers
-    | Record<string, string | string[] | undefined>
-    | undefined,
+  headers: Headers | Record<string, string | string[] | undefined> | undefined,
   name: string,
 ): string | undefined {
   if (!headers) return undefined;
@@ -25,10 +22,7 @@ function header(
 }
 
 function traceIdFrom(
-  headers:
-    | Headers
-    | Record<string, string | string[] | undefined>
-    | undefined,
+  headers: Headers | Record<string, string | string[] | undefined> | undefined,
 ): string | undefined {
   const value = header(headers, "x-reaper-trace-id");
   return value &&
@@ -44,10 +38,7 @@ export function currentReaperTraceId(): string | undefined {
 }
 
 export function runWithReaperTrace<T>(
-  headers:
-    | Headers
-    | Record<string, string | string[] | undefined>
-    | undefined,
+  headers: Headers | Record<string, string | string[] | undefined> | undefined,
   fn: () => T,
 ): T {
   const traceId = traceIdFrom(headers);

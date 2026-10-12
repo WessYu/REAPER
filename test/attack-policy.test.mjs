@@ -16,7 +16,10 @@ async function server(handler) {
 test("CORS active scenario confirms an unexpected credentialed origin response", async () => {
   const { instance, origin } = await server((req, res) => {
     assert.equal(req.headers.origin, "https://attacker.example.test");
-    res.setHeader("access-control-allow-origin", "https://attacker.example.test");
+    res.setHeader(
+      "access-control-allow-origin",
+      "https://attacker.example.test",
+    );
     res.setHeader("access-control-allow-credentials", "true");
     res.statusCode = 200;
     res.end();

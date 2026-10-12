@@ -132,7 +132,9 @@ export function signEvidenceBundle(
   if (privateKey.asymmetricKeyType !== "ed25519")
     throw new Error("Evidence signing requires an Ed25519 private key.");
   const publicKey = createPublicKey(privateKey);
-  const publicPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+  const publicPem = publicKey
+    .export({ type: "spki", format: "pem" })
+    .toString();
   const signature = sign(
     null,
     Buffer.from(bundle.digest.value, "utf8"),

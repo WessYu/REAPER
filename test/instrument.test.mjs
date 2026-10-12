@@ -8,13 +8,10 @@ import {
 
 test("runtime trace context propagates through async work without accepting arbitrary IDs", async () => {
   const traceId = "123e4567-e89b-42d3-a456-426614174000";
-  await runWithReaperTrace(
-    { "x-reaper-trace-id": traceId },
-    async () => {
-      await Promise.resolve();
-      assert.equal(currentReaperTraceId(), traceId);
-    },
-  );
+  await runWithReaperTrace({ "x-reaper-trace-id": traceId }, async () => {
+    await Promise.resolve();
+    assert.equal(currentReaperTraceId(), traceId);
+  });
   assert.equal(currentReaperTraceId(), undefined);
   runWithReaperTrace(
     { "x-reaper-trace-id": "attacker-controlled-freeform" },

@@ -64,7 +64,10 @@ test("attack planner converts ownership and tenant findings into reviewable cand
   const plan = buildAttackPlan(report);
   assert.equal(plan.candidates.length, 2);
   assert.equal(plan.candidates[0].pathTemplate, "/api/orders/{{RESOURCE_ID}}");
-  assert.equal(plan.candidates[1].pathTemplate, "/api/invoices/{{RESOURCE_ID}}");
+  assert.equal(
+    plan.candidates[1].pathTemplate,
+    "/api/invoices/{{RESOURCE_ID}}",
+  );
   assert.ok(plan.candidates.every((item) => item.prerequisites.length > 0));
 });
 
@@ -135,4 +138,3 @@ test("active execution preview exposes every configured request without executin
   );
   assert.ok(preview.warnings.some((warning) => /mutating/.test(warning)));
 });
-
