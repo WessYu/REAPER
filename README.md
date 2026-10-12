@@ -14,7 +14,7 @@
   <img src="./assets/reaper-banner.svg" width="100%" alt="REAPER — Data Access Security Engine" />
 </p>
 
-REAPER traces request input into supported database calls and reports authorization, tenant-isolation, SQL, migration, secret and database-posture risks. It can combine source analysis with read-only PostgreSQL evidence and can run explicitly configured, bounded authorization assertions against authorized targets.
+REAPER traces request input into supported database calls and reports authorization, tenant-isolation, SQL, migration, secret and database-posture risks. It can combine source analysis with read-only PostgreSQL evidence, run bounded authorization assertions, and execute explicitly scoped stateful active-security scenarios against systems the operator is authorized to test.
 
 The current `main` branch is **0.2.0 development**. The latest published npm release is **0.1.1**. Static/catalog findings identify patterns worth investigating, not proof that an application is exploitable. Runtime findings are only marked CONFIRMED when an explicitly configured authorization assertion observes a status different from its declared security expectation. A clean report does not establish security. There is no AI dependency, telemetry or automatic database repair.
 
@@ -86,7 +86,10 @@ This proof is rendered from the actual output of GitHub Actions run **#177** on 
 | Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                                                                                                                     |
 | Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                                                                                                                |
 | Verification    | Authorized assertions, bounded OpenAPI GET/HEAD discovery/probing, optional synthetic-user provisioning and setup/teardown, budgets, rate limits, timeouts and cancellation                                             |
-| Platform        | Self-contained HTML dashboard, localhost-only REST service and programmatic Rule SDK                                                                                                                                    |
+| Active security | Explicitly scoped stateful identity scenarios for BOLA, tenant isolation, privilege, session, CORS, CSRF and business invariants; setup/attack/cleanup, synthetic multipart bodies, trace IDs and regression generation |
+| API planning    | Passive OpenAPI and GraphQL introspection planners plus static-finding attack-plan candidates and identity matrices                                                                                                      |
+| Evidence        | Source/runtime graph correlation, SHA-256-chained active audit events, content-addressed evidence bundles and active-run dashboard provenance                                                                            |
+| Platform        | Self-contained HTML dashboard, localhost-only REST service, loopback callback collector, runtime trace instrumentation and programmatic Rule SDK                                                                         |
 | Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                                                                                                                      |
 | Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                                                                                                            |
 
@@ -173,6 +176,16 @@ reaper cfg ./application --format dot --output control-flow.dot
 reaper score combined.json
 reaper discover http://localhost:3000 --config reaper.config.ts
 reaper verify http://localhost:3000 --config reaper.config.ts --fail-on high
+reaper attack-plan combined.json
+reaper attack-matrix --config reaper.config.ts
+reaper openapi-plan openapi.json
+reaper graphql-plan introspection.json
+reaper attack http://localhost:3000 --config reaper.config.ts --input combined.json --fail-on high
+reaper regression attack-report.json --config reaper.config.ts --output reaper.attack.regression.mjs
+reaper audit-verify attack-report.json
+reaper evidence attack-report.json --output reaper-evidence.json
+reaper evidence-verify reaper-evidence.json
+reaper callback ssrf-canary --port 7338
 reaper dashboard combined.json --output reaper-dashboard.html
 reaper serve ./application --port 7337
 reaper baseline scan.json --output baseline.json
@@ -220,6 +233,91 @@ Only connect to databases you are authorized to inspect. Start with a dedicated 
 REAPER can optionally discover GET/HEAD operations from an allowlisted target's OpenAPI document and, when `probeDiscovered: true`, issue bounded safe probes to non-templated discovered GET/HEAD routes. Assertions remain operator-defined. Synthetic scenario setup/teardown can use POST, PUT, PATCH or DELETE only when `verify.allowMutations: true` is explicitly configured. `syntheticUsers` can provision 2–4 test identities from an explicitly configured signup template, capture token/ID JSON paths in memory, expose `USER_1_TOKEN`/ `USER_1_ID`-style variables to assertions, and clean the identities up through an explicitly configured DELETE path. Token values are not copied into findings.
 
 Redirect following is disabled. Concurrency, request rate, total request budget, response-capture size and per-request timeout are bounded, and Ctrl+C cancellation is propagated through the scenario. A runtime finding means a security property that **you explicitly declared** did not produce the expected HTTP status. REAPER does not brute-force credentials, crawl arbitrary internet targets or invent destructive requests.
+
+## Authorized active security
+
+`reaper attack` is a separate, opt-in mode for adversarial validation of declared security boundaries. It does not autonomously crawl the public internet, invent credentials or choose destructive actions. The operator supplies identities, exact target scope, scenario steps and expected security outcomes.
+
+A stateful scenario can create synthetic state as one identity, attempt access as another, verify status/header/JSON invariants, and clean up the synthetic state. Supported scenario classes are BOLA/object ownership, tenant isolation, vertical privilege, generic authorization, session, CORS, CSRF and business-security invariants.
+
+Remote targets require an exact origin in `attack.scope.allowedTargets` plus an `authorizationId`. Production mode additionally requires an expiring scope, `allowProduction: true`, and separate `allowProductionMutations: true` consent before mutation is permitted. Request budgets, mutation budgets, rate limits, timeouts, cancellation and a 5xx circuit breaker remain enforced.
+
+```ts
+// reaper.config.ts
+export default {
+  attack: {
+    scope: {
+      authorized: true,
+      authorizationId: "ENG-CHANGE-1234",
+      expiresAt: "2026-10-13T00:00:00.000Z",
+      environment: "staging",
+      allowedTargets: ["https://preview.example.com"],
+      pathPrefixes: ["/api/"],
+    },
+    maxRequests: 40,
+    maxMutationRequests: 8,
+    rateLimitPerSecond: 3,
+    timeoutMs: 5000,
+    maxServerErrors: 3,
+    allowMutations: true,
+    identities: {
+      userA: {
+        authEnv: "REAPER_USER_A_TOKEN",
+        role: "user",
+        privilegeLevel: 10,
+        tenant: "tenant-a",
+      },
+      userB: {
+        authEnv: "REAPER_USER_B_TOKEN",
+        role: "user",
+        privilegeLevel: 10,
+        tenant: "tenant-b",
+      },
+    },
+    scenarios: [
+      {
+        name: "cross-user order access",
+        kind: "bola",
+        attackerIdentity: "userA",
+        ownerIdentity: "userB",
+        resource: "order",
+        setup: [
+          {
+            name: "create owner order",
+            path: "/api/orders",
+            method: "POST",
+            identity: "userB",
+            body: { label: "reaper-synthetic" },
+            expectStatus: 201,
+            capture: { RESOURCE_ID: "id" },
+          },
+        ],
+        attack: {
+          name: "read foreign order",
+          path: "/api/orders/{{RESOURCE_ID}}",
+          method: "GET",
+        },
+        cleanup: [
+          {
+            name: "delete owner order",
+            path: "/api/orders/{{RESOURCE_ID}}",
+            method: "DELETE",
+            identity: "userB",
+            expectStatus: 204,
+          },
+        ],
+        denyStatuses: [401, 403, 404],
+      },
+    ],
+  },
+};
+```
+
+When `--input` points to a source/database report, active evidence is correlated with matching static findings and the existing route → query → resource graph. Each active request receives an `x-reaper-trace-id`; applications can propagate that ID through the exported runtime trace helper. Audit events are hash-chained, and `reaper audit-verify` detects report tampering. `reaper regression` converts confirmed scenarios into a repeatable CI security regression without embedding bearer tokens or cookies.
+
+Synthetic multipart uploads accept only configured inline/environment content and have a byte budget; REAPER does not read arbitrary local file paths for upload testing. The built-in callback collector binds to loopback only and records bounded callback metadata without Authorization, Cookie or request-body capture. It is useful for local/CI canaries, not a hosted internet OAST service.
+
+See [active security](docs/active-security.md) for the operator model and boundaries.
 
 ## TypeScript API
 
@@ -277,8 +375,12 @@ The dashboard, localhost REST service and Rule SDK are implemented support surfa
 - RLS reasoning recognizes common identity, tenant, role-only and constant patterns, bounded AND/OR composition and PostgreSQL permissive/restrictive interaction. It does not theorem-prove arbitrary SQL functions, subqueries or procedural policy helpers.
 - PostgreSQL view dependencies, trigger metadata and SECURITY DEFINER function definitions are inspected, including dynamic-SQL review. Full transitive privilege composition, trigger-body semantics and extension-specific authorization models remain conservative. Column grants are collected but are not yet fully correlated with selected fields.
 - Prisma has the deepest authorization semantics. Drizzle and Knex are represented in the data-access graph, but their ownership/tenant reasoning is not yet as rich as Prisma's.
-- OpenAPI discovery/probing is intentionally limited to GET/HEAD operations from configured documentation endpoints and skips templated paths during automatic probes. Synthetic identity creation is template-driven; REAPER does not guess signup flows, MFA/CAPTCHA handling, credentials or destructive cleanup semantics.
+- OpenAPI discovery/probing is intentionally limited to GET/HEAD operations from configured documentation endpoints and skips templated paths during automatic probes. OpenAPI and GraphQL planners model supplied schemas/introspection but do not automatically execute mutation or fuzzing campaigns.
+- Active security is scenario-driven, not autonomous exploitation. It does not generate credential attacks, unrestricted injection payloads, arbitrary destructive workflows, browser-executed XSS proofs or WebSocket protocol attacks. Browser automation, hosted OAST, deeper realtime testing and framework-specific active adapters remain future work.
+- Synthetic identity creation is template-driven; REAPER does not guess signup flows, MFA/CAPTCHA handling or credentials. Multipart testing uses bounded synthetic content and never reads arbitrary local upload paths.
+- The loopback callback collector is intentionally local/CI-only. It is not a public callback infrastructure and cannot by itself confirm callbacks from remote networks.
 - The localhost REST service is intentionally small and unauthenticated because it binds only to `127.0.0.1`; it is not a hosted multi-user service.
+- Programmatic Rule SDK rules still execute inside the caller's process. A hardened third-party plugin sandbox, enterprise control plane/SSO/RBAC and signed-release infrastructure are not claimed as implemented.
 - The numerical score is a triage aid. A clean scan or a high score is not authorization assurance.
 
 The next work should focus on precision, framework-specific authorization adapters and deeper data-layer correlation rather than adding unsupported breadth. See [rules](docs/rules.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md).
