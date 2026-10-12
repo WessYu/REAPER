@@ -531,12 +531,16 @@ async function runMatrix(
   matrix: AttackMatrix,
 ): Promise<void> {
   const previousResourceId = context.variables.get("RESOURCE_ID");
+  const previousResourceOwner = context.variables.get("RESOURCE_OWNER");
+  const previousActor = context.variables.get("ACTOR");
   try {
     for (const actor of matrix.actors) {
+      context.variables.set("ACTOR", actor);
       for (const resource of matrix.resources) {
         if (actor === resource.owner) continue;
         const resourceId = interpolate(resource.id, context.variables);
         context.variables.set("RESOURCE_ID", resourceId);
+        context.variables.set("RESOURCE_OWNER", resource.owner);
         const scenario: AttackScenario = {
           id: `${matrix.id}.${actor}.vs.${resource.owner}`,
           title: matrix.title,
@@ -552,7 +556,11 @@ async function runMatrix(
           resource:
             resource.label ??
             `${matrix.id}:${resourceId}:owner:${resource.owner}`,
-          expect: { deniedStatuses: matrix.deniedStatuses },
+          expect: {
+            deniedStatuses: matrix.deniedStatuses,
+            confirmStatuses: matrix.confirmStatuses,
+            jsonEquals: matrix.jsonEquals,
+          },
         };
         try {
           await requestStep(context, scenario, step, false);
@@ -578,6 +586,11 @@ async function runMatrix(
     if (previousResourceId === undefined)
       context.variables.delete("RESOURCE_ID");
     else context.variables.set("RESOURCE_ID", previousResourceId);
+    if (previousResourceOwner === undefined)
+      context.variables.delete("RESOURCE_OWNER");
+    else context.variables.set("RESOURCE_OWNER", previousResourceOwner);
+    if (previousActor === undefined) context.variables.delete("ACTOR");
+    else context.variables.set("ACTOR", previousActor);
   }
 }
 
