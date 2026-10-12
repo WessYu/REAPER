@@ -110,6 +110,8 @@ export interface AttackScope {
 export interface AttackIdentity {
   authEnv?: string;
   authVar?: string;
+  cookieEnv?: string;
+  cookieVar?: string;
   role?: string;
   tenant?: string;
 }
@@ -118,15 +120,25 @@ export interface AttackStep {
   path: string;
   method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
   identity?: string;
+  headers?: Record<string, string>;
   body?: VerifyJson;
   expectStatus?: number;
   capture?: Record<string, string>;
+}
+export interface AttackExpectation {
+  statuses?: number[];
+  headers?: Record<string, string>;
+  absentHeaders?: string[];
 }
 export type AttackScenarioKind =
   | "bola"
   | "tenant"
   | "privilege"
-  | "authorization";
+  | "authorization"
+  | "session"
+  | "cors"
+  | "csrf"
+  | "business";
 export interface AttackScenario {
   name: string;
   kind: AttackScenarioKind;
@@ -136,6 +148,7 @@ export interface AttackScenario {
   attack: AttackStep;
   cleanup?: AttackStep[];
   denyStatuses?: number[];
+  expect?: AttackExpectation;
   resource?: string;
   sourceFindingId?: string;
 }

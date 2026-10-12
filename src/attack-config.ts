@@ -53,6 +53,7 @@ function validateStep(
     "path",
     "method",
     "identity",
+    "headers",
     "body",
     "expectStatus",
     "capture",
@@ -79,6 +80,29 @@ function validateStep(
     (typeof step.identity !== "string" || !identities.has(step.identity))
   )
     throw new Error(`${label}.identity must reference a configured identity.`);
+  if (step.headers !== undefined) {
+    if (
+      !step.headers ||
+      typeof step.headers !== "object" ||
+      Array.isArray(step.headers)
+    )
+      throw new Error(`${label}.headers must be an object.`);
+    const blocked = new Set([
+      "authorization",
+      "cookie",
+      "host",
+      "content-length",
+      "proxy-authorization",
+    ]);
+    for (const [name, headerValue] of Object.entries(
+      step.headers as Record<string, unknown>,
+    )) {
+      if (!/^[A-Za-z0-9-]+$/.test(name) || blocked.has(name.toLowerCase()))
+        throw new Error(`${label}.headers contains a blocked header: ${name}`);
+      if (typeof headerValue !== "string")
+        throw new Error(`${label}.headers values must be strings.`);
+    }
+  }
   if (step.body !== undefined && !jsonLiteral(step.body))
     throw new Error(`${label}.body must be literal JSON.`);
   if (
@@ -111,7 +135,14 @@ function validateIdentity(value: unknown, label: string): AttackIdentity {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error(`${label} must be an object.`);
   const identity = value as Record<string, unknown>;
-  const allowed = new Set(["authEnv", "authVar", "role", "tenant"]);
+  const allowed = new Set([
+    "authEnv",
+    "authVar",
+    "cookieEnv",
+    "cookieVar",
+    "role",
+    "tenant",
+  ]);
   for (const key of Object.keys(identity))
     if (!allowed.has(key)) throw new Error(`Unknown ${label} key: ${key}`);
   if (identity.authEnv !== undefined && !envName(identity.authEnv))
@@ -120,6 +151,12 @@ function validateIdentity(value: unknown, label: string): AttackIdentity {
     throw new Error(`${label}.authVar must be a captured variable name.`);
   if (identity.authEnv !== undefined && identity.authVar !== undefined)
     throw new Error(`${label} cannot set both authEnv and authVar.`);
+  if (identity.cookieEnv !== undefined && !envName(identity.cookieEnv))
+    throw new Error(`${label}.cookieEnv must be an environment variable name.`);
+  if (identity.cookieVar !== undefined && !envName(identity.cookieVar))
+    throw new Error(`${label}.cookieVar must be a captured variable name.`);
+  if (identity.cookieEnv !== undefined && identity.cookieVar !== undefined)
+    throw new Error(`${label} cannot set both cookieEnv and cookieVar.`);
   for (const key of ["role", "tenant"])
     if (
       identity[key] !== undefined &&
@@ -231,6 +268,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       "attack",
       "cleanup",
       "denyStatuses",
+      "expect",
       "resource",
       "sourceFindingId",
     ]);
@@ -305,6 +343,74 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       )
         throw new Error(`${label}.denyStatuses must contain HTTP statuses.`);
     }
+    if (scenario.expect !== undefined) {
+      if (
+        !scenario.expect ||
+        typeof scenario.expect !== "object" ||
+        Array.isArray(scenario.expect)
+      )
+        throw new Error(`${label}.expect must be an object.`);
+      const expectation = scenario.expect as Record<string, unknown>;
+      for (const key of Object.keys(expectation))
+        if (!["statuses", "headers", "absentHeaders"].includes(key))
+          throw new Error(`Unknown ${label}.expect key: ${key}`);
+      if (
+        expectation.statuses !== undefined &&
+        (!Array.isArray(expectation.statuses) ||
+          !expectation.statuses.length ||
+          !expectation.statuses.every(
+            (status) =>
+              Number.isSafeInteger(status) &&
+              Number(status) >= 100 &&
+              Number(status) <= 599,
+          ))
+      )
+        throw new Error(`${label}.expect.statuses must contain HTTP statuses.`);
+      const sensitive = new Set([
+        "authorization",
+        "cookie",
+        "set-cookie",
+        "proxy-authorization",
+      ]);
+      if (expectation.headers !== undefined) {
+        if (
+          !expectation.headers ||
+          typeof expectation.headers !== "object" ||
+          Array.isArray(expectation.headers)
+        )
+          throw new Error(`${label}.expect.headers must be an object.`);
+        for (const [name, expectedValue] of Object.entries(
+          expectation.headers as Record<string, unknown>,
+        )) {
+          if (
+            !/^[A-Za-z0-9-]+$/.test(name) ||
+            sensitive.has(name.toLowerCase()) ||
+            typeof expectedValue !== "string"
+          )
+            throw new Error(`${label}.expect.headers contains an invalid header.`);
+        }
+      }
+      if (
+        expectation.absentHeaders !== undefined &&
+        (!strings(expectation.absentHeaders) ||
+          expectation.absentHeaders.some(
+            (name) =>
+              !/^[A-Za-z0-9-]+$/.test(name) ||
+              sensitive.has(name.toLowerCase()),
+          ))
+      )
+        throw new Error(
+          `${label}.expect.absentHeaders must contain non-sensitive header names.`,
+        );
+    }
+    if (
+      ["session", "cors", "csrf", "business"].includes(String(scenario.kind)) &&
+      scenario.expect === undefined &&
+      (scenario.attack as Record<string, unknown>).expectStatus === undefined
+    )
+      throw new Error(
+        `${label} requires expect or attack.expectStatus for this scenario kind.`,
+      );
     for (const key of ["resource", "sourceFindingId"])
       if (
         scenario[key] !== undefined &&

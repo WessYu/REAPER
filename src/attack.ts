@@ -200,6 +200,44 @@ function tokenFor(
   return undefined;
 }
 
+function cookieFor(
+  identity: AttackIdentity | undefined,
+  variables: Map<string, string>,
+): string | undefined {
+  if (!identity) return undefined;
+  if (identity.cookieEnv) {
+    const cookie = process.env[identity.cookieEnv];
+    if (!cookie)
+      throw new Error(
+        `Missing environment variable ${identity.cookieEnv} for attack identity.`,
+      );
+    return cookie;
+  }
+  if (identity.cookieVar) {
+    const cookie = variables.get(identity.cookieVar);
+    if (!cookie)
+      throw new Error(
+        `Missing captured variable ${identity.cookieVar} for attack identity.`,
+      );
+    return cookie;
+  }
+  return undefined;
+}
+
+function headerValue(
+  value: string,
+  variables: Map<string, string>,
+): string {
+  if (value.startsWith("$env:")) {
+    const name = value.slice("$env:".length);
+    const resolved = process.env[name];
+    if (resolved === undefined)
+      throw new Error(`Missing environment variable ${name}.`);
+    return resolved;
+  }
+  return interpolate(value, variables);
+}
+
 async function pace(context: AttackContext): Promise<void> {
   const rate = context.config.rateLimitPerSecond ?? 5;
   const wait = Math.max(0, context.nextRequestAt - Date.now());
@@ -257,11 +295,15 @@ async function executeRequest(
     ? context.config.identities[identityName]
     : undefined;
   const token = tokenFor(identity, context.variables);
+  const cookie = cookieFor(identity, context.variables);
   const headers = new Headers({
     accept: "application/json, text/plain;q=0.5",
     "user-agent": "REAPER/0.2.0 authorized-active-security",
   });
   if (token) headers.set("authorization", `Bearer ${token}`);
+  if (cookie) headers.set("cookie", cookie);
+  for (const [name, value] of Object.entries(step.headers ?? {}))
+    headers.set(name, headerValue(value, context.variables));
 
   let body: string | undefined;
   if (step.body !== undefined) {
@@ -369,22 +411,28 @@ function activeFinding(
   const owner = scenario.ownerIdentity
     ? context.config.identities[scenario.ownerIdentity]
     : undefined;
-  const ruleId =
-    scenario.kind === "bola"
-      ? "REAPER-ATTACK-001"
-      : scenario.kind === "tenant"
-        ? "REAPER-ATTACK-002"
-        : scenario.kind === "privilege"
-          ? "REAPER-ATTACK-003"
-          : "REAPER-ATTACK-004";
-  const title =
-    scenario.kind === "bola"
-      ? "Cross-user object access confirmed"
-      : scenario.kind === "tenant"
-        ? "Cross-tenant data access confirmed"
-        : scenario.kind === "privilege"
-          ? "Privilege boundary violation confirmed"
-          : "Authorization expectation violated";
+  const ruleIds: Record<AttackScenario["kind"], string> = {
+    bola: "REAPER-ATTACK-001",
+    tenant: "REAPER-ATTACK-002",
+    privilege: "REAPER-ATTACK-003",
+    authorization: "REAPER-ATTACK-004",
+    session: "REAPER-ATTACK-005",
+    cors: "REAPER-ATTACK-006",
+    csrf: "REAPER-ATTACK-007",
+    business: "REAPER-ATTACK-008",
+  };
+  const titles: Record<AttackScenario["kind"], string> = {
+    bola: "Cross-user object access confirmed",
+    tenant: "Cross-tenant data access confirmed",
+    privilege: "Privilege boundary violation confirmed",
+    authorization: "Authorization expectation violated",
+    session: "Session security expectation violated",
+    cors: "Cross-origin policy expectation violated",
+    csrf: "Cross-site request protection expectation violated",
+    business: "Business security invariant violated",
+  };
+  const ruleId = ruleIds[scenario.kind];
+  const title = titles[scenario.kind];
   const severity =
     scenario.kind === "tenant" || scenario.kind === "privilege"
       ? "CRITICAL"
@@ -405,12 +453,20 @@ function activeFinding(
     ...(attacker?.tenant ? [`Attacker tenant: ${attacker.tenant}`] : []),
     ...(owner?.tenant ? [`Owner tenant: ${owner.tenant}`] : []),
     `Observed HTTP status: ${status}`,
-    `Expected denial statuses: ${(
+    `Expected statuses: ${(
+      scenario.expect?.statuses ??
       scenario.denyStatuses ??
       (scenario.attack.expectStatus !== undefined
         ? [scenario.attack.expectStatus]
         : [401, 403, 404])
     ).join(", ")}`,
+    ...Object.entries(scenario.expect?.headers ?? {}).map(
+      ([name, expected]) =>
+        `Expected response header ${name}: ${expected}`,
+    ),
+    ...(scenario.expect?.absentHeaders ?? []).map(
+      (name) => `Expected response header absent: ${name}`,
+    ),
     ...(source
       ? [
           `Correlated static finding: ${source.id} at ${source.file}:${source.line}`,
@@ -534,13 +590,22 @@ async function runScenario(
 
     context.result.metrics.sinks++;
     await response.body?.cancel();
-    const expected =
+      const expected =
+      scenario.expect?.statuses ??
       scenario.denyStatuses ??
       (scenario.attack.expectStatus !== undefined
         ? [scenario.attack.expectStatus]
         : [401, 403, 404]);
+    const statusMatches = expected.includes(response.status);
+    const headersMatch = Object.entries(scenario.expect?.headers ?? {}).every(
+      ([name, expectedValue]) =>
+        response.headers.get(name)?.toLowerCase() === expectedValue.toLowerCase(),
+    );
+    const absentHeadersMatch = (scenario.expect?.absentHeaders ?? []).every(
+      (name) => response.headers.get(name) === null,
+    );
 
-    if (expected.includes(response.status)) {
+    if (statusMatches && headersMatch && absentHeadersMatch) {
       addGraph(context, scenario);
       return { name: scenario.name, kind: scenario.kind, status: "passed" };
     }
@@ -558,6 +623,21 @@ async function runScenario(
       response.status,
       sourceReport,
     );
+    for (const [name, expectedValue] of Object.entries(
+      scenario.expect?.headers ?? {},
+    )) {
+      const observed = response.headers.get(name);
+      confirmed.evidence.push(
+        `Observed response header ${name}: ${observed ?? "<absent>"}; expected: ${expectedValue}`,
+      );
+    }
+    for (const name of scenario.expect?.absentHeaders ?? []) {
+      const observed = response.headers.get(name);
+      if (observed !== null)
+        confirmed.evidence.push(
+          `Observed response header ${name}: ${observed}; expected absent`,
+        );
+    }
     context.result.findings.push(confirmed);
     addGraph(context, scenario, confirmed.id);
     return {
