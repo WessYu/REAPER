@@ -767,4 +767,3 @@ test("attack authorization expiry is validated and required for production", () 
     /expiresAt/,
   );
 });
-

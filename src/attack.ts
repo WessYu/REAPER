@@ -430,9 +430,7 @@ async function requestStep(
           `Observed HTTP status: ${response.status}`,
           ...(resource ? [`Known test resource: ${resource}`] : []),
           ...(proofPaths.length
-            ? [
-                `Response proof matched JSON paths: ${proofPaths.join(", ")}`,
-              ]
+            ? [`Response proof matched JSON paths: ${proofPaths.join(", ")}`]
             : []),
         ],
         dataFlow: [],
