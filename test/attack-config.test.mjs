@@ -96,3 +96,45 @@ test("attack config rejects unscoped mutation and unknown identities", () => {
     /attackerIdentity/,
   );
 });
+
+test("production attack mode requires expiring authorization and separate mutation consent", () => {
+  const production = {
+    ...valid,
+    scope: {
+      authorized: true,
+      environment: "production",
+      allowedTargets: ["https://prod.example.test"],
+      allowProduction: true,
+      authorizationId: "CHANGE-1234",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    },
+  };
+  assert.throws(
+    () => validateAttackConfig(production),
+    /allowProductionMutations/,
+  );
+  assert.doesNotThrow(() =>
+    validateAttackConfig({
+      ...production,
+      scope: {
+        ...production.scope,
+        allowProductionMutations: true,
+      },
+      maxMutationRequests: 3,
+      rateLimitPerSecond: 2,
+    }),
+  );
+  assert.throws(
+    () =>
+      validateAttackConfig({
+        ...production,
+        scope: {
+          ...production.scope,
+          allowProductionMutations: true,
+        },
+        maxMutationRequests: 6,
+      }),
+    /cannot exceed 5/,
+  );
+});
+
