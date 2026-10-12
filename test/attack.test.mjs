@@ -1192,3 +1192,88 @@ test("cleanup uses its reserved request budget", async () => {
     await once(instance, "close");
   }
 });
+
+
+test("cleanup still runs after external cancellation", async () => {
+  const controller = new AbortController();
+  const deleted = [];
+  const { instance, origin } = await server((req, res) => {
+    if (req.method === "POST" && req.url === "/resource") {
+      res.statusCode = 201;
+      res.end("{}");
+      return;
+    }
+    if (req.method === "GET" && req.url === "/wait") {
+      setTimeout(() => {
+        if (!res.writableEnded) {
+          res.statusCode = 200;
+          res.end("{}");
+        }
+      }, 200);
+      return;
+    }
+    if (req.method === "DELETE" && req.url === "/resource") {
+      deleted.push(req.url);
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  try {
+    setTimeout(() => controller.abort(), 30);
+    const result = await runAttack(
+      origin,
+      {
+        attack: {
+          allowedTargets: [origin],
+          authorization: {
+            acknowledged: true,
+            reference: "SEC-CANCEL-CLEANUP",
+            environment: "staging",
+          },
+          allowMutations: true,
+          maxRequests: 3,
+          maxCleanupRequests: 2,
+          scenarios: [
+            {
+              id: "cancel-cleanup",
+              title: "Cancellation preserves cleanup",
+              dimension: "business-logic",
+              steps: [
+                {
+                  name: "create",
+                  path: "/resource",
+                  method: "POST",
+                  expect: { allowedStatuses: [201] },
+                },
+                {
+                  name: "wait",
+                  path: "/wait",
+                  expect: { allowedStatuses: [200] },
+                },
+              ],
+              cleanup: [
+                {
+                  name: "delete",
+                  path: "/resource",
+                  method: "DELETE",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { signal: controller.signal },
+    );
+    assert.deepEqual(deleted, ["/resource"]);
+    assert.equal(result.attack.cleanupFailures, 0);
+    assert.equal(result.attack.cleanupRequests, 1);
+    assert.ok(result.diagnostics.some((item) => /cancel/i.test(item.message)));
+  } finally {
+    instance.closeAllConnections?.();
+    instance.close();
+    await once(instance, "close");
+  }
+});
