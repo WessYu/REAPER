@@ -113,9 +113,18 @@ export interface AttackAuthorization {
   expiresAt?: string;
 }
 
+export interface AttackIdentityCookie {
+  name: string;
+  valueEnv?: string;
+  valueVar?: string;
+}
+
 export interface AttackIdentity {
   tokenEnv?: string;
   tokenVar?: string;
+  cookie?: AttackIdentityCookie;
+  headerEnvs?: Record<string, string>;
+  headerVars?: Record<string, string>;
 }
 
 export interface AttackExpectation {
@@ -133,6 +142,7 @@ export interface AttackStep {
   body?: VerifyJson;
   expect?: AttackExpectation;
   capture?: Record<string, string>;
+  captureCookies?: Record<string, string>;
   resource?: string;
 }
 
