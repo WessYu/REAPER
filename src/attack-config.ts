@@ -1,0 +1,343 @@
+import type {
+  AttackConfig,
+  AttackIdentity,
+  AttackScenario,
+  AttackStep,
+  VerifyJson,
+} from "./model.js";
+
+function strings(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "string" && item.length > 0)
+  );
+}
+
+function positiveInteger(
+  value: unknown,
+  label: string,
+  maximum: number,
+): void {
+  if (
+    value !== undefined &&
+    (!Number.isSafeInteger(value) ||
+      Number(value) < 1 ||
+      Number(value) > maximum)
+  )
+    throw new Error(`${label} must be an integer between 1 and ${maximum}.`);
+}
+
+function jsonLiteral(input: unknown): input is VerifyJson {
+  if (
+    input === null ||
+    typeof input === "string" ||
+    typeof input === "number" ||
+    typeof input === "boolean"
+  )
+    return true;
+  if (Array.isArray(input)) return input.every(jsonLiteral);
+  if (typeof input === "object")
+    return Object.values(input as Record<string, unknown>).every(jsonLiteral);
+  return false;
+}
+
+function envName(value: unknown): boolean {
+  return typeof value === "string" && /^[A-Z_][A-Z0-9_]*$/i.test(value);
+}
+
+function validateStep(
+  value: unknown,
+  label: string,
+  identities: Set<string>,
+): AttackStep {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`${label} must be an object.`);
+  const step = value as Record<string, unknown>;
+  const allowed = new Set([
+    "name",
+    "path",
+    "method",
+    "identity",
+    "body",
+    "expectStatus",
+    "capture",
+  ]);
+  for (const key of Object.keys(step))
+    if (!allowed.has(key)) throw new Error(`Unknown ${label} key: ${key}`);
+  if (typeof step.name !== "string" || !step.name.trim())
+    throw new Error(`${label}.name must be non-empty.`);
+  if (
+    typeof step.path !== "string" ||
+    !step.path.startsWith("/") ||
+    step.path.startsWith("//")
+  )
+    throw new Error(`${label}.path must be an origin-relative path.`);
+  if (
+    step.method !== undefined &&
+    !["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(
+      String(step.method),
+    )
+  )
+    throw new Error(`${label}.method is invalid.`);
+  if (
+    step.identity !== undefined &&
+    (typeof step.identity !== "string" || !identities.has(step.identity))
+  )
+    throw new Error(`${label}.identity must reference a configured identity.`);
+  if (step.body !== undefined && !jsonLiteral(step.body))
+    throw new Error(`${label}.body must be literal JSON.`);
+  if (
+    step.expectStatus !== undefined &&
+    (!Number.isSafeInteger(step.expectStatus) ||
+      Number(step.expectStatus) < 100 ||
+      Number(step.expectStatus) > 599)
+  )
+    throw new Error(`${label}.expectStatus must be an HTTP status.`);
+  if (step.capture !== undefined) {
+    if (
+      !step.capture ||
+      typeof step.capture !== "object" ||
+      Array.isArray(step.capture) ||
+      !Object.entries(step.capture as Record<string, unknown>).every(
+        ([name, path]) =>
+          /^[A-Z_][A-Z0-9_]*$/i.test(name) &&
+          typeof path === "string" &&
+          path.length > 0,
+      )
+    )
+      throw new Error(
+        `${label}.capture must map variable names to JSON paths.`,
+      );
+  }
+  return step as unknown as AttackStep;
+}
+
+function validateIdentity(value: unknown, label: string): AttackIdentity {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`${label} must be an object.`);
+  const identity = value as Record<string, unknown>;
+  const allowed = new Set(["authEnv", "authVar", "role", "tenant"]);
+  for (const key of Object.keys(identity))
+    if (!allowed.has(key)) throw new Error(`Unknown ${label} key: ${key}`);
+  if (identity.authEnv !== undefined && !envName(identity.authEnv))
+    throw new Error(`${label}.authEnv must be an environment variable name.`);
+  if (identity.authVar !== undefined && !envName(identity.authVar))
+    throw new Error(`${label}.authVar must be a captured variable name.`);
+  if (identity.authEnv !== undefined && identity.authVar !== undefined)
+    throw new Error(`${label} cannot set both authEnv and authVar.`);
+  for (const key of ["role", "tenant"])
+    if (
+      identity[key] !== undefined &&
+      (typeof identity[key] !== "string" || !String(identity[key]).trim())
+    )
+      throw new Error(`${label}.${key} must be a non-empty string.`);
+  return identity as unknown as AttackIdentity;
+}
+
+export function validateAttackConfig(value: unknown): AttackConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("attack must be an object.");
+  const config = value as Record<string, unknown>;
+  const allowed = new Set([
+    "scope",
+    "maxRequests",
+    "timeoutMs",
+    "rateLimitPerSecond",
+    "maxServerErrors",
+    "allowMutations",
+    "identities",
+    "scenarios",
+  ]);
+  for (const key of Object.keys(config))
+    if (!allowed.has(key)) throw new Error(`Unknown attack key: ${key}`);
+
+  if (!config.scope || typeof config.scope !== "object" || Array.isArray(config.scope))
+    throw new Error("attack.scope must be an object.");
+  const scope = config.scope as Record<string, unknown>;
+  const scopeAllowed = new Set([
+    "authorized",
+    "environment",
+    "allowedTargets",
+    "pathPrefixes",
+    "allowProduction",
+  ]);
+  for (const key of Object.keys(scope))
+    if (!scopeAllowed.has(key))
+      throw new Error(`Unknown attack.scope key: ${key}`);
+  if (scope.authorized !== true)
+    throw new Error("attack.scope.authorized must be explicitly true.");
+  if (
+    !["local", "preview", "staging", "production"].includes(
+      String(scope.environment),
+    )
+  )
+    throw new Error("attack.scope.environment is invalid.");
+  if (
+    scope.allowedTargets !== undefined &&
+    !strings(scope.allowedTargets)
+  )
+    throw new Error("attack.scope.allowedTargets must be a string array.");
+  if (scope.pathPrefixes !== undefined && !strings(scope.pathPrefixes))
+    throw new Error("attack.scope.pathPrefixes must be a string array.");
+  if (
+    scope.allowProduction !== undefined &&
+    typeof scope.allowProduction !== "boolean"
+  )
+    throw new Error("attack.scope.allowProduction must be boolean.");
+  if (scope.environment === "production" && scope.allowProduction !== true)
+    throw new Error(
+      "Production attack scenarios require attack.scope.allowProduction=true.",
+    );
+
+  positiveInteger(config.maxRequests, "attack.maxRequests", 500);
+  positiveInteger(config.timeoutMs, "attack.timeoutMs", 30000);
+  positiveInteger(
+    config.rateLimitPerSecond,
+    "attack.rateLimitPerSecond",
+    20,
+  );
+  positiveInteger(config.maxServerErrors, "attack.maxServerErrors", 20);
+  if (
+    config.allowMutations !== undefined &&
+    typeof config.allowMutations !== "boolean"
+  )
+    throw new Error("attack.allowMutations must be boolean.");
+
+  if (
+    !config.identities ||
+    typeof config.identities !== "object" ||
+    Array.isArray(config.identities)
+  )
+    throw new Error("attack.identities must be an object.");
+  const identities = new Set(Object.keys(config.identities));
+  if (!identities.size) throw new Error("attack.identities cannot be empty.");
+  for (const [name, identity] of Object.entries(
+    config.identities as Record<string, unknown>,
+  )) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(name))
+      throw new Error(`Invalid attack identity name: ${name}`);
+    validateIdentity(identity, `attack.identities.${name}`);
+  }
+
+  if (!Array.isArray(config.scenarios) || config.scenarios.length < 1)
+    throw new Error("attack.scenarios must be a non-empty array.");
+  if (config.scenarios.length > 100)
+    throw new Error("attack.scenarios cannot exceed 100 entries.");
+
+  for (let index = 0; index < config.scenarios.length; index++) {
+    const raw = config.scenarios[index];
+    const label = `attack.scenarios[${index}]`;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      throw new Error(`${label} must be an object.`);
+    const scenario = raw as Record<string, unknown>;
+    const scenarioAllowed = new Set([
+      "name",
+      "kind",
+      "attackerIdentity",
+      "ownerIdentity",
+      "setup",
+      "attack",
+      "cleanup",
+      "denyStatuses",
+      "resource",
+      "sourceFindingId",
+    ]);
+    for (const key of Object.keys(scenario))
+      if (!scenarioAllowed.has(key))
+        throw new Error(`Unknown ${label} key: ${key}`);
+    if (typeof scenario.name !== "string" || !scenario.name.trim())
+      throw new Error(`${label}.name must be non-empty.`);
+    if (
+      !["bola", "tenant", "privilege", "authorization"].includes(
+        String(scenario.kind),
+      )
+    )
+      throw new Error(`${label}.kind is invalid.`);
+    if (
+      typeof scenario.attackerIdentity !== "string" ||
+      !identities.has(scenario.attackerIdentity)
+    )
+      throw new Error(
+        `${label}.attackerIdentity must reference a configured identity.`,
+      );
+    if (
+      scenario.ownerIdentity !== undefined &&
+      (typeof scenario.ownerIdentity !== "string" ||
+        !identities.has(scenario.ownerIdentity))
+    )
+      throw new Error(
+        `${label}.ownerIdentity must reference a configured identity.`,
+      );
+    if (
+      ["bola", "tenant"].includes(String(scenario.kind)) &&
+      scenario.ownerIdentity === undefined
+    )
+      throw new Error(`${label}.ownerIdentity is required for this kind.`);
+    if (
+      scenario.ownerIdentity !== undefined &&
+      scenario.ownerIdentity === scenario.attackerIdentity
+    )
+      throw new Error(
+        `${label} attackerIdentity and ownerIdentity must differ.`,
+      );
+    for (const phase of ["setup", "cleanup"]) {
+      const steps = scenario[phase];
+      if (steps === undefined) continue;
+      if (!Array.isArray(steps))
+        throw new Error(`${label}.${phase} must be an array.`);
+      if (steps.length > 20)
+        throw new Error(`${label}.${phase} cannot exceed 20 steps.`);
+      steps.forEach((step, stepIndex) =>
+        validateStep(
+          step,
+          `${label}.${phase}[${stepIndex}]`,
+          identities,
+        ),
+      );
+    }
+    validateStep(scenario.attack, `${label}.attack`, identities);
+    if (
+      (scenario.attack as Record<string, unknown>).identity !== undefined &&
+      (scenario.attack as Record<string, unknown>).identity !==
+        scenario.attackerIdentity
+    )
+      throw new Error(
+        `${label}.attack.identity must match attackerIdentity when provided.`,
+      );
+    if (scenario.denyStatuses !== undefined) {
+      if (
+        !Array.isArray(scenario.denyStatuses) ||
+        !scenario.denyStatuses.length ||
+        !scenario.denyStatuses.every(
+          (status) =>
+            Number.isSafeInteger(status) &&
+            Number(status) >= 100 &&
+            Number(status) <= 599,
+        )
+      )
+        throw new Error(`${label}.denyStatuses must contain HTTP statuses.`);
+    }
+    for (const key of ["resource", "sourceFindingId"])
+      if (
+        scenario[key] !== undefined &&
+        (typeof scenario[key] !== "string" || !String(scenario[key]).trim())
+      )
+        throw new Error(`${label}.${key} must be a non-empty string.`);
+
+    const mutating = [
+      ...(Array.isArray(scenario.setup) ? scenario.setup : []),
+      scenario.attack,
+      ...(Array.isArray(scenario.cleanup) ? scenario.cleanup : []),
+    ].some((step) =>
+      ["POST", "PUT", "PATCH", "DELETE"].includes(
+        String((step as Record<string, unknown>).method ?? "GET"),
+      ),
+    );
+    if (mutating && config.allowMutations !== true)
+      throw new Error(
+        `${label} contains mutating requests but attack.allowMutations is not true.`,
+      );
+  }
+
+  return config as unknown as AttackConfig;
+}

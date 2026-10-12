@@ -9,7 +9,8 @@ export type Category =
   | "Supabase"
   | "Migrations"
   | "Secrets & Crypto"
-  | "Runtime Verification";
+  | "Runtime Verification"
+  | "Active Security";
 export interface Location {
   file: string;
   line: number;
@@ -98,6 +99,60 @@ export interface VerifyConfig {
   teardown?: VerifyLifecycleRequest[];
   assertions: VerifyAssertion[];
 }
+export type AttackEnvironment =
+  | "local"
+  | "preview"
+  | "staging"
+  | "production";
+export interface AttackScope {
+  authorized: boolean;
+  environment: AttackEnvironment;
+  allowedTargets?: string[];
+  pathPrefixes?: string[];
+  allowProduction?: boolean;
+}
+export interface AttackIdentity {
+  authEnv?: string;
+  authVar?: string;
+  role?: string;
+  tenant?: string;
+}
+export interface AttackStep {
+  name: string;
+  path: string;
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+  identity?: string;
+  body?: VerifyJson;
+  expectStatus?: number;
+  capture?: Record<string, string>;
+}
+export type AttackScenarioKind =
+  | "bola"
+  | "tenant"
+  | "privilege"
+  | "authorization";
+export interface AttackScenario {
+  name: string;
+  kind: AttackScenarioKind;
+  attackerIdentity: string;
+  ownerIdentity?: string;
+  setup?: AttackStep[];
+  attack: AttackStep;
+  cleanup?: AttackStep[];
+  denyStatuses?: number[];
+  resource?: string;
+  sourceFindingId?: string;
+}
+export interface AttackConfig {
+  scope: AttackScope;
+  maxRequests?: number;
+  timeoutMs?: number;
+  rateLimitPerSecond?: number;
+  maxServerErrors?: number;
+  allowMutations?: boolean;
+  identities: Record<string, AttackIdentity>;
+  scenarios: AttackScenario[];
+}
 export interface MiddlewareContract {
   establishes: string[];
 }
@@ -109,6 +164,7 @@ export interface Config {
   maxFiles?: number;
   maxFileBytes?: number;
   verify?: VerifyConfig;
+  attack?: AttackConfig;
 }
 export interface Diagnostic extends Partial<Location> {
   message: string;

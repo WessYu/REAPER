@@ -1,3 +1,4 @@
+import { validateAttackConfig } from "./attack-config.js";
 import ts from "typescript";
 import { readFile } from "node:fs/promises";
 import type { Config } from "./model.js";
@@ -57,6 +58,7 @@ export function validateConfig(value: unknown): Config {
     "maxFiles",
     "maxFileBytes",
     "verify",
+    "attack",
   ]);
   for (const key of Object.keys(config))
     if (!allowed.has(key)) throw new Error(`Unknown config key: ${key}`);
@@ -427,6 +429,9 @@ export function validateConfig(value: unknown): Config {
         throw new Error("verify assertion dimension is invalid.");
     }
   }
+  if (config.attack !== undefined)
+    validateAttackConfig(config.attack);
+
   if (config.resources !== undefined) {
     if (
       !config.resources ||
