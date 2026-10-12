@@ -227,9 +227,11 @@ Redirect following is disabled. Concurrency, request rate, total request budget,
 
 `reaper attack` is a stateful authorization-focused validation mode. It is intentionally configuration-driven rather than an unrestricted crawler or exploit framework.
 
-Every attack run requires an exact target origin, an explicit authorization acknowledgement/reference, a bounded request budget and configured scenarios. Production runs cannot enable mutations. Nonproduction scenarios that mutate state must declare cleanup steps. Redirects are not followed, target DNS resolution is checked for changes during the run, consecutive server errors open a circuit breaker, and authentication values loaded from environment/captured variables are not written into findings.
+Every attack run requires an exact target origin, an explicit authorization acknowledgement/reference, a bounded request budget and configured scenarios or authorization matrices. Production runs cannot enable mutations and production authorization must have an expiry. Nonproduction scenarios that mutate state must declare cleanup steps. Non-loopback private/link-local targets require a separate `allowPrivateNetwork` opt-in. Redirects are not followed, target DNS resolution is checked for changes during the run, consecutive server errors open a circuit breaker, and authentication values loaded from environment/captured variables are not written into findings.
 
-For ownership, tenant and vertical-authorization confirmation, a denial expectation must identify both a configured actor and a known test resource. A `REAPER-ATTACK-001` finding is marked CONFIRMED only when the explicitly configured denial policy is violated at runtime.
+Stateful flows can capture JSON values and session cookies, then reuse them through bearer, cookie or secret-backed header identities. Ownership/tenant matrices can systematically test each configured actor against foreign-owned test resources. For ownership, tenant and vertical-authorization confirmation, a denial expectation must identify both a configured actor and a known test resource. HTTP 5xx, redirects and ambiguous 4xx responses remain inconclusive by default: confirmation defaults to HTTP 2xx unless `confirmStatuses` narrows that set. Optional `jsonEquals` response proof can additionally require the returned JSON to match known resource identity/ownership fields before a `REAPER-ATTACK-001` finding becomes CONFIRMED.
+
+A saved source/database report can be supplied with `--input`. REAPER then correlates the confirmed runtime route with matching source graph routes, reachable data resources and related static/catalog findings; this adds evidence but does not replace the runtime proof.
 
 ```ts
 export default {
@@ -239,6 +241,7 @@ export default {
       acknowledged: true,
       reference: "SEC-1842 / approved preview assessment",
       environment: "preview",
+      expiresAt: "2026-10-13T12:00:00.000Z",
     },
     maxRequests: 40,
     timeoutMs: 5000,
@@ -258,7 +261,14 @@ export default {
             path: "/api/orders/{{USER_B_ORDER_ID}}",
             actor: "userA",
             resource: "order:{{USER_B_ORDER_ID}}:owner:userB",
-            expect: { deniedStatuses: [403, 404] },
+            expect: {
+              deniedStatuses: [403, 404],
+              confirmStatuses: [200],
+              jsonEquals: {
+                id: "{{USER_B_ORDER_ID}}",
+                ownerId: "{{USER_B_ID}}",
+              },
+            },
           },
         ],
       },
@@ -267,7 +277,17 @@ export default {
 };
 ```
 
-The example assumes `USER_B_ORDER_ID` was captured by an earlier explicitly configured step. REAPER does not invent users, credentials, ownership or destructive requests. See [offensive safety contract](docs/offensive-safety-contract.md).
+The example assumes `USER_B_ORDER_ID` and `USER_B_ID` were captured by earlier explicitly configured setup steps. For broader BOLA/tenant coverage, `attack.matrices` accepts configured actors plus owned test resources and executes only foreign actor/resource combinations. Matrix paths use `{{RESOURCE_ID}}`; optional proof expressions can also reference `{{RESOURCE_OWNER}}` and `{{ACTOR}}`.
+
+Session-based applications can capture a named `Set-Cookie` value with `captureCookies` and attach it through an identity `cookie.valueVar`. API keys or other request credentials can be sourced from named environment variables through `headerEnvs`; protocol-sensitive headers such as Host, Authorization and Cookie cannot be injected through that generic header map.
+
+To correlate runtime evidence back to an earlier source/database report:
+
+```sh
+reaper attack https://preview.example.com --config reaper.config.ts --input combined.json --format json
+```
+
+REAPER does not invent users, credentials, ownership or destructive requests. See [offensive safety contract](docs/offensive-safety-contract.md).
 
 ## TypeScript API
 
