@@ -5,11 +5,12 @@ function normalizedRoute(value: string | undefined): string | undefined {
   const match = value.trim().match(/^([A-Z]+)\s+(.+)$/i);
   if (!match) return undefined;
   const method = match[1]!.toUpperCase();
-  const path = match[2]!
-    .replace(/\{\{[A-Za-z_][A-Za-z0-9_]*\}\}/g, "*")
-    .replace(/:[A-Za-z_][A-Za-z0-9_]*/g, "*")
-    .replace(/\{[A-Za-z_][A-Za-z0-9_]*\}/g, "*")
-    .replace(/\/+$/, "") || "/";
+  const path =
+    match[2]!
+      .replace(/\{\{[A-Za-z_][A-Za-z0-9_]*\}\}/g, "*")
+      .replace(/:[A-Za-z_][A-Za-z0-9_]*/g, "*")
+      .replace(/\{[A-Za-z_][A-Za-z0-9_]*\}/g, "*")
+      .replace(/\/+$/, "") || "/";
   return `${method} ${path}`;
 }
 
