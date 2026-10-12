@@ -21,6 +21,10 @@ import { createCallbackCollector } from "./callback.js";
 import { verifyAttackAudit } from "./audit.js";
 import { planOpenApi } from "./openapi.js";
 import { planGraphql } from "./graphql.js";
+import {
+  buildEvidenceBundle,
+  verifyEvidenceBundle,
+} from "./evidence.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
@@ -52,6 +56,8 @@ reaper openapi-plan <json> Model API operations without sending requests
 reaper graphql-plan <json> Model GraphQL introspection without sending requests
 reaper attack-matrix      Show ownership/tenant identity pairs from config
 reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
+reaper evidence <json>    Build a content-addressed evidence bundle
+reaper evidence-verify <json> Verify an evidence bundle digest
 reaper audit-verify <json> Verify the tamper-evident active audit chain
 reaper callback [label]   Start a loopback-only canary callback collector
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
@@ -260,6 +266,18 @@ async function main(): Promise<void> {
     if (result.diagnostics.length) process.exitCode = 2;
     else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
       process.exitCode = 1;
+    return;
+  }
+  if (command === "evidence-verify") {
+    if (!arg) throw new Error("evidence-verify requires a bundle path.");
+    const verified = verifyEvidenceBundle(await json(arg));
+    await output(JSON.stringify(verified, null, 2) + "\n");
+    if (!verified.valid) process.exitCode = 1;
+    return;
+  }
+  if (command === "evidence") {
+    if (!arg) throw new Error("evidence requires a REAPER report path.");
+    await output(JSON.stringify(buildEvidenceBundle(await saved(arg)), null, 2) + "\n");
     return;
   }
   if (command === "audit-verify") {
