@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { finding } from "./findings.js";
 import { validateAttackConfig } from "./attack-config.js";
@@ -61,6 +62,14 @@ function targetAllowed(target: URL, config: AttackConfig): boolean {
       return false;
     }
   });
+}
+
+function assertScopeFresh(config: AttackConfig): void {
+  if (
+    config.scope.expiresAt &&
+    Date.parse(config.scope.expiresAt) <= Date.now()
+  )
+    throw new Error("Attack scope authorization has expired.");
 }
 
 function pathAllowed(pathname: string, config: AttackConfig): boolean {
@@ -345,10 +354,55 @@ async function executeRequest(
   }
 }
 
+function sourceFindingFor(
+  scenario: AttackScenario,
+  sourceReport: ScanResult | undefined,
+): Finding | undefined {
+  if (!sourceReport) return undefined;
+  if (scenario.sourceFindingId)
+    return sourceReport.findings.find(
+      (item) => item.id === scenario.sourceFindingId,
+    );
+  const candidates = sourceReport.findings.filter((item) => {
+    if (item.status === "suppressed") return false;
+    if (
+      scenario.kind === "bola" &&
+      item.ruleId !== "REAPER-AUTH-001"
+    )
+      return false;
+    if (
+      scenario.kind === "tenant" &&
+      item.ruleId !== "REAPER-TENANT-001"
+    )
+      return false;
+    if (
+      scenario.kind === "privilege" &&
+      item.category !== "Privileges"
+    )
+      return false;
+    return true;
+  });
+  const route = `${scenario.attack.method ?? "GET"} ${scenario.attack.path}`;
+  return (
+    candidates.find(
+      (item) =>
+        item.route === route &&
+        (!scenario.resource || item.resource === scenario.resource),
+    ) ??
+    candidates.find(
+      (item) =>
+        scenario.resource !== undefined &&
+        item.resource === scenario.resource,
+    ) ??
+    candidates.find((item) => item.route === route)
+  );
+}
+
 function addGraph(
   context: AttackContext,
   scenario: AttackScenario,
   findingId?: string,
+  sourceFinding?: Finding,
 ): void {
   const principalId = `principal:${scenario.attackerIdentity}`;
   const requestId = `request:${scenario.name}`;
@@ -376,6 +430,12 @@ function addGraph(
       kind: "finding" as const,
       label: findingId,
     });
+  if (sourceFinding)
+    nodes.push({
+      id: `finding:${sourceFinding.id}`,
+      kind: "finding" as const,
+      label: `${sourceFinding.ruleId} ${sourceFinding.file}:${sourceFinding.line}`,
+    });
   for (const node of nodes)
     if (!context.result.graph.nodes.some((item) => item.id === node.id))
       context.result.graph.nodes.push(node);
@@ -388,6 +448,12 @@ function addGraph(
       from: requestId,
       to: `finding:${findingId}`,
       relation: "observed" as const,
+    });
+  if (sourceFinding)
+    edges.push({
+      from: `finding:${sourceFinding.id}`,
+      to: requestId,
+      relation: "correlates" as const,
     });
   for (const edge of edges)
     if (
@@ -606,14 +672,24 @@ async function runScenario(
     );
 
     if (statusMatches && headersMatch && absentHeadersMatch) {
-      addGraph(context, scenario);
+      addGraph(
+        context,
+        scenario,
+        undefined,
+        sourceFindingFor(scenario, sourceReport),
+      );
       return { name: scenario.name, kind: scenario.kind, status: "passed" };
     }
     if (response.status >= 500) {
       context.result.diagnostics.push({
         message: `Scenario "${scenario.name}" received HTTP ${response.status}; no authorization vulnerability was confirmed.`,
       });
-      addGraph(context, scenario);
+      addGraph(
+        context,
+        scenario,
+        undefined,
+        sourceFindingFor(scenario, sourceReport),
+      );
       return { name: scenario.name, kind: scenario.kind, status: "incomplete" };
     }
 
@@ -639,7 +715,12 @@ async function runScenario(
         );
     }
     context.result.findings.push(confirmed);
-    addGraph(context, scenario, confirmed.id);
+    addGraph(
+      context,
+      scenario,
+      confirmed.id,
+      sourceFindingFor(scenario, sourceReport),
+    );
     return {
       name: scenario.name,
       kind: scenario.kind,
@@ -663,6 +744,11 @@ export async function attack(
     "scope" in configValue
       ? validateAttackConfig(configValue)
       : validateAttackConfig(configValue.attack);
+  assertScopeFresh(attackConfig);
+  if (!loopback(target.hostname) && !attackConfig.scope.authorizationId)
+    throw new Error(
+      "Remote attack targets require attack.scope.authorizationId for auditability.",
+    );
   if (!targetAllowed(target, attackConfig))
     throw new Error(
       "Attack target is blocked. Remote origins require an exact attack.scope.allowedTargets entry.",
@@ -685,6 +771,10 @@ export async function attack(
     attack: {
       target: target.origin,
       environment: attackConfig.scope.environment,
+      authorizationId: attackConfig.scope.authorizationId,
+      configHash: createHash("sha256")
+        .update(JSON.stringify(attackConfig))
+        .digest("hex"),
       startedAt: new Date().toISOString(),
       requestCount: 0,
       serverErrors: 0,

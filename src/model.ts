@@ -102,6 +102,8 @@ export interface VerifyConfig {
 export type AttackEnvironment = "local" | "preview" | "staging" | "production";
 export interface AttackScope {
   authorized: boolean;
+  authorizationId?: string;
+  expiresAt?: string;
   environment: AttackEnvironment;
   allowedTargets?: string[];
   pathPrefixes?: string[];
@@ -208,6 +210,8 @@ export interface AttackScenarioResult {
 export interface AttackSummary {
   target: string;
   environment: AttackEnvironment;
+  authorizationId?: string;
+  configHash: string;
   startedAt: string;
   requestCount: number;
   serverErrors: number;

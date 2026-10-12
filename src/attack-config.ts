@@ -192,6 +192,8 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   const scope = config.scope as Record<string, unknown>;
   const scopeAllowed = new Set([
     "authorized",
+    "authorizationId",
+    "expiresAt",
     "environment",
     "allowedTargets",
     "pathPrefixes",
@@ -202,6 +204,19 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       throw new Error(`Unknown attack.scope key: ${key}`);
   if (scope.authorized !== true)
     throw new Error("attack.scope.authorized must be explicitly true.");
+  if (
+    scope.authorizationId !== undefined &&
+    (typeof scope.authorizationId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(scope.authorizationId))
+  )
+    throw new Error("attack.scope.authorizationId is invalid.");
+  if (scope.expiresAt !== undefined) {
+    if (
+      typeof scope.expiresAt !== "string" ||
+      !Number.isFinite(Date.parse(scope.expiresAt))
+    )
+      throw new Error("attack.scope.expiresAt must be an ISO date-time.");
+  }
   if (
     !["local", "preview", "staging", "production"].includes(
       String(scope.environment),
