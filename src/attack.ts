@@ -24,6 +24,7 @@ interface AttackContext {
   result: ScanResult;
   variables: Map<string, string>;
   requestCount: number;
+  cleanupRequestCount: number;
   nextRequestAt: number;
   pacing: Promise<void>;
   consecutiveServerErrors: number;
@@ -382,7 +383,10 @@ function responseCookie(
   return undefined;
 }
 
-async function pace(context: AttackContext): Promise<boolean> {
+async function pace(
+  context: AttackContext,
+  cleanup = false,
+): Promise<boolean> {
   let release!: () => void;
   const previous = context.pacing;
   context.pacing = new Promise<void>((resolve) => {
@@ -390,11 +394,11 @@ async function pace(context: AttackContext): Promise<boolean> {
   });
   await previous;
   try {
-    if (context.signal?.aborted) return false;
+    if (!cleanup && context.signal?.aborted) return false;
     const rate = context.config.rateLimitPerSecond ?? 3;
     const wait = Math.max(0, context.nextRequestAt - Date.now());
     if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-    if (context.signal?.aborted) return false;
+    if (!cleanup && context.signal?.aborted) return false;
     context.nextRequestAt = Date.now() + Math.ceil(1000 / rate);
     return true;
   } finally {
@@ -402,7 +406,16 @@ async function pace(context: AttackContext): Promise<boolean> {
   }
 }
 
-function consumeBudget(context: AttackContext): void {
+function consumeBudget(context: AttackContext, cleanup = false): void {
+  if (cleanup) {
+    context.cleanupRequestCount++;
+    const maxCleanup = context.config.maxCleanupRequests ?? 100;
+    if (context.cleanupRequestCount > maxCleanup)
+      throw new Error(
+        `Attack cleanup request budget exceeded (${maxCleanup}).`,
+      );
+    return;
+  }
   context.requestCount++;
   const max = context.config.maxRequests ?? 100;
   if (context.requestCount > max)
@@ -473,8 +486,8 @@ async function requestStep(
   step: AttackStep,
   cleanup: boolean,
 ): Promise<void> {
-  if (!(await pace(context))) throw new Error("Attack run cancelled.");
-  consumeBudget(context);
+  if (!(await pace(context, cleanup))) throw new Error("Attack run cancelled.");
+  consumeBudget(context, cleanup);
   await assertStableResolution(context);
 
   const started = performance.now();
@@ -512,9 +525,10 @@ async function requestStep(
     () => controller.abort(),
     context.config.timeoutMs ?? 5000,
   );
-  const signal = context.signal
-    ? AbortSignal.any([controller.signal, context.signal])
-    : controller.signal;
+  const signal =
+    !cleanup && context.signal
+      ? AbortSignal.any([controller.signal, context.signal])
+      : controller.signal;
 
   let response: Response;
   try {
@@ -809,6 +823,7 @@ export async function runAttack(
     startedAt,
     completedAt: startedAt,
     requests: 0,
+    cleanupRequests: 0,
     cleanupFailures: 0,
     confirmed: [],
     audit: [],
@@ -821,6 +836,7 @@ export async function runAttack(
     result,
     variables: new Map<string, string>(),
     requestCount: 0,
+    cleanupRequestCount: 0,
     nextRequestAt: 0,
     pacing: Promise.resolve(),
     consecutiveServerErrors: 0,
@@ -887,7 +903,9 @@ export async function runAttack(
 
   result.metrics.durationMs = Math.round(performance.now() - started);
   result.metrics.memoryBytes = process.memoryUsage().rss;
-  result.attack.requests = context.requestCount;
+  result.attack.requests =
+    context.requestCount + context.cleanupRequestCount;
+  result.attack.cleanupRequests = context.cleanupRequestCount;
   result.attack.completedAt = new Date().toISOString();
   return result;
 }
