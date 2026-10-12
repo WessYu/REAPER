@@ -9,7 +9,8 @@ export type Category =
   | "Supabase"
   | "Migrations"
   | "Secrets & Crypto"
-  | "Runtime Verification";
+  | "Runtime Verification"
+  | "Offensive Validation";
 export interface Location {
   file: string;
   line: number;
@@ -98,6 +99,83 @@ export interface VerifyConfig {
   teardown?: VerifyLifecycleRequest[];
   assertions: VerifyAssertion[];
 }
+export type AttackDimension =
+  | "ownership"
+  | "tenant"
+  | "vertical"
+  | "session"
+  | "business-logic";
+
+export interface AttackAuthorization {
+  acknowledged: true;
+  reference: string;
+  environment: "local" | "preview" | "staging" | "production";
+}
+
+export interface AttackIdentity {
+  tokenEnv?: string;
+  tokenVar?: string;
+}
+
+export interface AttackExpectation {
+  deniedStatuses?: number[];
+  allowedStatuses?: number[];
+}
+
+export interface AttackStep {
+  name: string;
+  path: string;
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+  actor?: string;
+  body?: VerifyJson;
+  expect?: AttackExpectation;
+  capture?: Record<string, string>;
+  resource?: string;
+}
+
+export interface AttackScenario {
+  id: string;
+  title: string;
+  dimension: AttackDimension;
+  severity?: Severity;
+  steps: AttackStep[];
+  cleanup?: AttackStep[];
+}
+
+export interface AttackConfig {
+  allowedTargets: string[];
+  authorization: AttackAuthorization;
+  maxRequests?: number;
+  timeoutMs?: number;
+  rateLimitPerSecond?: number;
+  maxConsecutiveServerErrors?: number;
+  allowMutations?: boolean;
+  identities?: Record<string, AttackIdentity>;
+  scenarios: AttackScenario[];
+}
+
+export interface AttackAuditEvent {
+  scenarioId: string;
+  step: string;
+  actor?: string;
+  method: string;
+  path: string;
+  status?: number;
+  durationMs: number;
+  outcome: "passed" | "confirmed" | "error" | "cleanup";
+}
+
+export interface AttackRunMetadata {
+  target: string;
+  authorizationReference: string;
+  environment: AttackAuthorization["environment"];
+  startedAt: string;
+  completedAt: string;
+  requests: number;
+  confirmed: Array<{ scenarioId: string; findingId: string }>;
+  audit: AttackAuditEvent[];
+}
+
 export interface MiddlewareContract {
   establishes: string[];
 }
@@ -109,19 +187,20 @@ export interface Config {
   maxFiles?: number;
   maxFileBytes?: number;
   verify?: VerifyConfig;
+  attack?: AttackConfig;
 }
 export interface Diagnostic extends Partial<Location> {
   message: string;
 }
 export interface GraphNode {
   id: string;
-  kind: "route" | "query" | "resource";
+  kind: "route" | "query" | "resource" | "principal" | "finding";
   label: string;
 }
 export interface GraphEdge {
   from: string;
   to: string;
-  relation: "calls" | "accesses";
+  relation: "calls" | "accesses" | "acts-as" | "targets" | "confirms";
 }
 export interface ScanResult {
   version: "0.2.0";
@@ -137,6 +216,7 @@ export interface ScanResult {
     memoryBytes: number;
   };
   coverage: { source: boolean; database: boolean; runtime: boolean };
+  attack?: AttackRunMetadata;
 }
 export const severities: Severity[] = [
   "CRITICAL",
