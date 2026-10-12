@@ -55,6 +55,7 @@ function validateStep(
     "identity",
     "headers",
     "body",
+    "multipart",
     "expectStatus",
     "capture",
   ]);
@@ -106,6 +107,79 @@ function validateStep(
   }
   if (step.body !== undefined && !jsonLiteral(step.body))
     throw new Error(`${label}.body must be literal JSON.`);
+  if (step.body !== undefined && step.multipart !== undefined)
+    throw new Error(`${label} cannot set both body and multipart.`);
+  if (step.multipart !== undefined) {
+    if (
+      !step.multipart ||
+      typeof step.multipart !== "object" ||
+      Array.isArray(step.multipart)
+    )
+      throw new Error(`${label}.multipart must be an object.`);
+    const multipart = step.multipart as Record<string, unknown>;
+    for (const key of Object.keys(multipart))
+      if (!["fields", "files"].includes(key))
+        throw new Error(`Unknown ${label}.multipart key: ${key}`);
+    if (multipart.fields !== undefined) {
+      if (
+        !multipart.fields ||
+        typeof multipart.fields !== "object" ||
+        Array.isArray(multipart.fields) ||
+        !Object.entries(multipart.fields as Record<string, unknown>).every(
+          ([name, fieldValue]) =>
+            /^[A-Za-z0-9_.-]{1,80}$/.test(name) &&
+            typeof fieldValue === "string",
+        )
+      )
+        throw new Error(
+          `${label}.multipart.fields must map safe field names to strings.`,
+        );
+    }
+    if (multipart.files !== undefined) {
+      if (!Array.isArray(multipart.files) || multipart.files.length > 8)
+        throw new Error(`${label}.multipart.files cannot exceed 8 files.`);
+      for (const [index, file] of multipart.files.entries()) {
+        if (!file || typeof file !== "object" || Array.isArray(file))
+          throw new Error(
+            `${label}.multipart.files[${index}] must be an object.`,
+          );
+        const item = file as Record<string, unknown>;
+        for (const key of Object.keys(item))
+          if (!["field", "filename", "content", "contentType"].includes(key))
+            throw new Error(
+              `Unknown ${label}.multipart.files[${index}] key: ${key}`,
+            );
+        if (
+          typeof item.field !== "string" ||
+          !/^[A-Za-z0-9_.-]{1,80}$/.test(item.field)
+        )
+          throw new Error(
+            `${label}.multipart.files[${index}].field is invalid.`,
+          );
+        if (
+          typeof item.filename !== "string" ||
+          item.filename.length < 1 ||
+          item.filename.length > 160 ||
+          /[\\/\0]/.test(item.filename)
+        )
+          throw new Error(
+            `${label}.multipart.files[${index}].filename is invalid.`,
+          );
+        if (typeof item.content !== "string")
+          throw new Error(
+            `${label}.multipart.files[${index}].content must be a string.`,
+          );
+        if (
+          item.contentType !== undefined &&
+          (typeof item.contentType !== "string" ||
+            !/^[A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+$/.test(item.contentType))
+        )
+          throw new Error(
+            `${label}.multipart.files[${index}].contentType is invalid.`,
+          );
+      }
+    }
+  }
   if (
     step.expectStatus !== undefined &&
     (!Number.isSafeInteger(step.expectStatus) ||
@@ -175,6 +249,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     "scope",
     "maxRequests",
     "maxMutationRequests",
+    "maxUploadBytes",
     "timeoutMs",
     "rateLimitPerSecond",
     "maxServerErrors",
@@ -245,6 +320,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     "attack.maxMutationRequests",
     50,
   );
+  positiveInteger(config.maxUploadBytes, "attack.maxUploadBytes", 1048576);
   positiveInteger(config.timeoutMs, "attack.timeoutMs", 30000);
   positiveInteger(config.rateLimitPerSecond, "attack.rateLimitPerSecond", 20);
   positiveInteger(config.maxServerErrors, "attack.maxServerErrors", 20);
