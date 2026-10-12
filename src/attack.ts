@@ -769,8 +769,13 @@ async function runScenario(
       return { name: scenario.name, kind: scenario.kind, status: "incomplete" };
 
     context.result.metrics.sinks++;
-    await response.body?.cancel();
-      const expected =
+    const needsJson =
+      Object.keys(scenario.expect?.json ?? {}).length > 0 ||
+      (scenario.expect?.absentJsonPaths?.length ?? 0) > 0;
+    const responseJson = needsJson
+      ? await boundedJson(response)
+      : (await response.body?.cancel(), undefined);
+    const expected =
       scenario.expect?.statuses ??
       scenario.denyStatuses ??
       (scenario.attack.expectStatus !== undefined
@@ -784,8 +789,21 @@ async function runScenario(
     const absentHeadersMatch = (scenario.expect?.absentHeaders ?? []).every(
       (name) => response.headers.get(name) === null,
     );
+    const jsonMatches = Object.entries(scenario.expect?.json ?? {}).every(
+      ([path, expectedValue]) =>
+        Object.is(jsonPath(responseJson, path), expectedValue),
+    );
+    const absentJsonMatches = (
+      scenario.expect?.absentJsonPaths ?? []
+    ).every((path) => jsonPath(responseJson, path) === undefined);
 
-    if (statusMatches && headersMatch && absentHeadersMatch) {
+    if (
+      statusMatches &&
+      headersMatch &&
+      absentHeadersMatch &&
+      jsonMatches &&
+      absentJsonMatches
+    ) {
       addGraph(
         context,
         scenario,
@@ -830,6 +848,14 @@ async function runScenario(
           `Observed response header ${name}: ${observed}; expected absent`,
         );
     }
+    if (!jsonMatches)
+      confirmed.evidence.push(
+        "Observed JSON response did not satisfy the configured primitive-value invariant.",
+      );
+    if (!absentJsonMatches)
+      confirmed.evidence.push(
+        "Observed JSON response contained a path configured to remain absent.",
+      );
     context.result.findings.push(confirmed);
     addGraph(
       context,
