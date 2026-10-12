@@ -422,6 +422,16 @@ function consumeBudget(context: AttackContext, cleanup = false): void {
     throw new Error(`Attack request budget exceeded (${max}).`);
 }
 
+function assertAuthorizationActive(
+  context: AttackContext,
+  cleanup: boolean,
+): void {
+  if (cleanup) return;
+  const expiresAt = context.config.authorization.expiresAt;
+  if (expiresAt && Date.parse(expiresAt) <= Date.now())
+    throw new Error("Attack authorization expired during the run.");
+}
+
 async function limitedJson(response: Response): Promise<unknown> {
   const maxBytes = 65536;
   const declared = Number(response.headers.get("content-length") ?? "0");
@@ -487,6 +497,7 @@ async function requestStep(
   cleanup: boolean,
 ): Promise<void> {
   if (!(await pace(context, cleanup))) throw new Error("Attack run cancelled.");
+  assertAuthorizationActive(context, cleanup);
   consumeBudget(context, cleanup);
   await assertStableResolution(context);
 
