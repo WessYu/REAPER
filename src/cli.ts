@@ -14,6 +14,8 @@ import { calculateScore, renderScore } from "./score.js";
 import { renderGraph } from "./graph.js";
 import { renderExplanation } from "./explain.js";
 import { verify } from "./verify.js";
+import { attack } from "./attack.js";
+import { renderAttackRegression } from "./regression.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
@@ -39,6 +41,8 @@ reaper graph <json>      Render report graph as JSON or DOT
 reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
+reaper attack <target>    Run bounded stateful active-security scenarios
+reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
 reaper serve [path]       Start a localhost-only REST service and dashboard
@@ -54,6 +58,7 @@ reaper doctor           Check runtime version
 
 Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
 Runtime verification is authorization-scoped: localhost or exact allowlist, bounded discovery, explicit assertions and opt-in synthetic setup/teardown.
+Active attack mode additionally requires attack.scope.authorized=true, an environment classification, strict target/path scope, request budgets, a circuit breaker and explicit mutation opt-in.
 `;
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -151,6 +156,38 @@ async function main(): Promise<void> {
     const { discoverRoutes } = await import("./verify.js");
     const endpoints = await discoverRoutes(arg, verifyConfig);
     await output(JSON.stringify(endpoints, null, 2) + "\n");
+    return;
+  }
+  if (command === "attack") {
+    if (!arg) throw new Error("attack requires a target URL.");
+    if (!values.config)
+      throw new Error(
+        "attack requires --config with an explicit attack scope and scenarios.",
+      );
+    const attackConfig = await readConfig(values.config);
+    if (!attackConfig.attack)
+      throw new Error("Config does not define an attack section.");
+    const sourceReport = values.input ? await saved(values.input) : undefined;
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    process.once("SIGINT", cancel);
+    const result = await attack(arg, attackConfig, {
+      signal: controller.signal,
+      sourceReport,
+    }).finally(() => process.removeListener("SIGINT", cancel));
+    await output(report(result, format));
+    if (result.diagnostics.length) process.exitCode = 2;
+    else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
+      process.exitCode = 1;
+    return;
+  }
+  if (command === "regression") {
+    if (!arg) throw new Error("regression requires an attack report path.");
+    if (!values.config)
+      throw new Error("regression requires the attack config used for the run.");
+    const attackConfig = await readConfig(values.config);
+    const result = await saved(arg);
+    await output(renderAttackRegression(attackConfig, result));
     return;
   }
   if (command === "verify") {
