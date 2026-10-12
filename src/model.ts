@@ -143,6 +143,8 @@ export interface AttackExpectation {
   statuses?: number[];
   headers?: Record<string, string>;
   absentHeaders?: string[];
+  json?: Record<string, string | number | boolean | null>;
+  absentJsonPaths?: string[];
 }
 export type AttackScenarioKind =
   | "bola"
