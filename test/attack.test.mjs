@@ -828,3 +828,95 @@ test("loopback targets remain available without private-network opt-in", async (
     await once(instance, "close");
   }
 });
+
+test("non-success statuses outside a denial list remain inconclusive by default", async () => {
+  for (const status of [302, 400, 401, 422]) {
+    const { instance, origin } = await server((_req, res) => {
+      res.statusCode = status;
+      res.end();
+    });
+    process.env.REAPER_ATTACK_USER_A = "user-a-token";
+    try {
+      const result = await runAttack(origin, {
+        attack: {
+          allowedTargets: [origin],
+          authorization: {
+            acknowledged: true,
+            reference: "SEC-STATUS",
+            environment: "staging",
+          },
+          identities: { userA: { tokenEnv: "REAPER_ATTACK_USER_A" } },
+          scenarios: [
+            {
+              id: `status-${status}`,
+              title: "Non-success status is inconclusive",
+              dimension: "ownership",
+              steps: [
+                {
+                  name: "foreign read",
+                  path: "/foreign",
+                  actor: "userA",
+                  resource: "foreign:resource",
+                  expect: { deniedStatuses: [403, 404] },
+                },
+              ],
+            },
+          ],
+        },
+      });
+      assert.equal(result.findings.length, 0);
+      assert.equal(result.attack.audit[0].outcome, "inconclusive");
+    } finally {
+      delete process.env.REAPER_ATTACK_USER_A;
+      instance.close();
+      await once(instance, "close");
+    }
+  }
+});
+
+test("explicit confirmation statuses can narrow successful bypass evidence", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.statusCode = 204;
+    res.end();
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-STATUS",
+          environment: "staging",
+        },
+        identities: { userA: { tokenEnv: "REAPER_ATTACK_USER_A" } },
+        scenarios: [
+          {
+            id: "narrow-confirm",
+            title: "Only HTTP 200 confirms",
+            dimension: "ownership",
+            steps: [
+              {
+                name: "foreign read",
+                path: "/foreign",
+                actor: "userA",
+                resource: "foreign:resource",
+                expect: {
+                  deniedStatuses: [403, 404],
+                  confirmStatuses: [200],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.findings.length, 0);
+    assert.equal(result.attack.audit[0].outcome, "inconclusive");
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
