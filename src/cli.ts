@@ -17,6 +17,7 @@ import { verify } from "./verify.js";
 import { attack } from "./attack.js";
 import { renderAttackRegression } from "./regression.js";
 import { buildAttackPlan } from "./attack-plan.js";
+import { createCallbackCollector } from "./callback.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
 import { createReaperServer } from "./server.js";
@@ -45,6 +46,7 @@ reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run bounded stateful active-security scenarios
 reaper attack-plan <json> Build active-test candidates from static findings
 reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
+reaper callback [label]   Start a loopback-only canary callback collector
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
 reaper serve [path]       Start a localhost-only REST service and dashboard
@@ -143,6 +145,21 @@ async function main(): Promise<void> {
     process.once("SIGINT", close);
     process.once("SIGTERM", close);
     await new Promise<void>((resolve) => server.server.once("close", resolve));
+    return;
+  }
+  if (command === "callback") {
+    const port = values.port ? Number(values.port) : 0;
+    if (!Number.isSafeInteger(port) || port < 0 || port > 65535)
+      throw new Error("--port must be a valid TCP port.");
+    const collector = await createCallbackCollector({ port });
+    const issued = collector.issue(arg ?? "manual");
+    process.stdout.write(
+      `REAPER loopback callback: ${issued.url}\nToken: ${issued.token}\nPress Ctrl+C to stop.\n`,
+    );
+    const close = () => collector.close();
+    process.once("SIGINT", close);
+    process.once("SIGTERM", close);
+    await collector.closed;
     return;
   }
   if (command === "doctor") {
