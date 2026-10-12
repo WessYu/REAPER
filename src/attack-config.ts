@@ -283,6 +283,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     "allowedTargets",
     "pathPrefixes",
     "allowProduction",
+    "allowProductionMutations",
   ]);
   for (const key of Object.keys(scope))
     if (!scopeAllowed.has(key))
@@ -317,10 +318,28 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     typeof scope.allowProduction !== "boolean"
   )
     throw new Error("attack.scope.allowProduction must be boolean.");
-  if (scope.environment === "production" && scope.allowProduction !== true)
-    throw new Error(
-      "Production attack scenarios require attack.scope.allowProduction=true.",
-    );
+  if (
+    scope.allowProductionMutations !== undefined &&
+    typeof scope.allowProductionMutations !== "boolean"
+  )
+    throw new Error("attack.scope.allowProductionMutations must be boolean.");
+  if (scope.environment === "production") {
+    if (scope.allowProduction !== true)
+      throw new Error(
+        "Production attack scenarios require attack.scope.allowProduction=true.",
+      );
+    if (
+      typeof scope.authorizationId !== "string" ||
+      !scope.authorizationId.trim()
+    )
+      throw new Error(
+        "Production attack scenarios require attack.scope.authorizationId.",
+      );
+    if (typeof scope.expiresAt !== "string")
+      throw new Error(
+        "Production attack scenarios require attack.scope.expiresAt.",
+      );
+  }
 
   positiveInteger(config.maxRequests, "attack.maxRequests", 500);
   positiveInteger(
@@ -337,6 +356,30 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     typeof config.allowMutations !== "boolean"
   )
     throw new Error("attack.allowMutations must be boolean.");
+  if (
+    scope.environment === "production" &&
+    config.allowMutations === true &&
+    scope.allowProductionMutations !== true
+  )
+    throw new Error(
+      "Production mutations require attack.scope.allowProductionMutations=true.",
+    );
+  if (
+    scope.environment === "production" &&
+    config.maxMutationRequests !== undefined &&
+    Number(config.maxMutationRequests) > 5
+  )
+    throw new Error(
+      "Production attack.maxMutationRequests cannot exceed 5.",
+    );
+  if (
+    scope.environment === "production" &&
+    config.rateLimitPerSecond !== undefined &&
+    Number(config.rateLimitPerSecond) > 5
+  )
+    throw new Error(
+      "Production attack.rateLimitPerSecond cannot exceed 5.",
+    );
 
   if (
     !config.identities ||
