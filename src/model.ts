@@ -117,6 +117,16 @@ export interface AttackIdentity {
   role?: string;
   tenant?: string;
 }
+export interface AttackMultipartFile {
+  field: string;
+  filename: string;
+  content: string;
+  contentType?: string;
+}
+export interface AttackMultipart {
+  fields?: Record<string, string>;
+  files?: AttackMultipartFile[];
+}
 export interface AttackStep {
   name: string;
   path: string;
@@ -124,6 +134,7 @@ export interface AttackStep {
   identity?: string;
   headers?: Record<string, string>;
   body?: VerifyJson;
+  multipart?: AttackMultipart;
   expectStatus?: number;
   capture?: Record<string, string>;
 }
@@ -158,6 +169,7 @@ export interface AttackConfig {
   scope: AttackScope;
   maxRequests?: number;
   maxMutationRequests?: number;
+  maxUploadBytes?: number;
   timeoutMs?: number;
   rateLimitPerSecond?: number;
   maxServerErrors?: number;
