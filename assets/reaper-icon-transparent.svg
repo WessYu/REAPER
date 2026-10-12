@@ -7,6 +7,6 @@
     </clipPath>
   </defs>
   <g clip-path="url(#frame)">
-    <image href="reaper-icon.png" x="0" y="0" width="128" height="128"/>
+    <image href="reaper-icon.webp" x="0" y="0" width="128" height="128"/>
   </g>
 </svg>
