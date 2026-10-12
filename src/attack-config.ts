@@ -186,6 +186,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     "allowedTargets",
     "authorization",
     "maxRequests",
+    "maxCleanupRequests",
     "timeoutMs",
     "rateLimitPerSecond",
     "maxConsecutiveServerErrors",
@@ -265,6 +266,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   const positive = (
     key:
       | "maxRequests"
+      | "maxCleanupRequests"
       | "timeoutMs"
       | "rateLimitPerSecond"
       | "maxConsecutiveServerErrors",
@@ -278,6 +280,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       throw new Error(`attack.${key} must be between 1 and ${max}.`);
   };
   positive("maxRequests", 500);
+  positive("maxCleanupRequests", 200);
   positive("timeoutMs", 30000);
   positive("rateLimitPerSecond", 20);
   positive("maxConsecutiveServerErrors", 10);
