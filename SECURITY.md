@@ -58,6 +58,28 @@ exploitability.
 Only run verification against systems you own or are explicitly authorized to
 test.
 
+## Active security mode
+
+`reaper attack` is an explicit authorized-testing mode with stronger controls than normal runtime verification.
+
+The configuration must set `attack.scope.authorized: true`. Remote targets require an exact origin in `attack.scope.allowedTargets` and a non-empty `authorizationId`. The engine never follows redirects to a second origin. Optional path prefixes restrict requests further.
+
+Production is a separate trust boundary. Production runs require `allowProduction: true`, an authorization identifier and an expiry timestamp. Mutating production scenarios additionally require `allowProductionMutations: true`. Production mutation budgets are capped more tightly, and explicit rate/request/mutation budgets remain in force.
+
+Active scenarios are stateful but operator-defined: setup, attack and cleanup steps use exact paths and methods. Mutations are disabled unless `allowMutations: true`. A circuit breaker stops further work after the configured number of server errors. Ctrl+C cancellation propagates through the queue.
+
+Identity secrets are loaded from named environment variables or bounded in-memory captures. Bearer tokens, cookies and response bodies are not written into the active audit trail. Direct custom Authorization/Cookie headers are rejected so identity material stays on the controlled identity path. Synthetic multipart requests accept inline/environment content only, cap the number of files and total bytes, and never read arbitrary local file paths.
+
+Status, non-sensitive response-header and primitive JSON-path expectations can be used to test authorization, tenant isolation, session policy, CORS/CSRF assumptions and explicit business invariants. JSON bodies are only read when an expectation or capture requires them and are bounded before parsing.
+
+Each request carries a UUID `x-reaper-trace-id`. The exported runtime trace helper can propagate that identifier with AsyncLocalStorage so authorized test traffic can be correlated with application logs or instrumentation. Active audit events form a SHA-256 hash chain; `reaper audit-verify` validates the chain, and evidence bundles carry a separate deterministic SHA-256 digest.
+
+The callback collector binds only to `127.0.0.1`, accepts bounded GET/HEAD/POST callback metadata and deliberately omits Authorization, Cookie and body capture. It is a local/CI canary facility, not hosted OAST infrastructure.
+
+REAPER active mode does **not** claim autonomous exploitation. It does not brute-force credentials, generate unrestricted injection payloads, perform arbitrary destructive workflows, execute browser XSS payloads, attack unrelated networks, or bypass the configured scope.
+
+Only run active security against systems you own or are explicitly authorized to test.
+
 ## Local service
 
 `reaper serve` binds to `127.0.0.1` only. It is intentionally a local review
