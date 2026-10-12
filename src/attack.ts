@@ -428,10 +428,21 @@ async function requestStep(
     : "passed";
   const denied = step.expect?.deniedStatuses;
   const allowed = step.expect?.allowedStatuses;
+  const confirmStatuses =
+    step.expect?.confirmStatuses ?? Array.from({ length: 100 }, (_, i) => 200 + i);
   if (denied && response.status >= 500) {
     outcome = "inconclusive";
     context.result.diagnostics.push({
       message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}; server errors cannot confirm an authorization bypass.`,
+    });
+  } else if (
+    denied &&
+    !denied.includes(response.status) &&
+    !confirmStatuses.includes(response.status)
+  ) {
+    outcome = "inconclusive";
+    context.result.diagnostics.push({
+      message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}, which is outside both the denial policy and the confirmation-status policy; the result is inconclusive.`,
     });
   } else if (
     denied &&
@@ -467,6 +478,7 @@ async function requestStep(
           `Dimension: ${scenario.dimension}`,
           `Actor: ${step.actor ?? "anonymous"}`,
           `Expected denial statuses: ${denied.join(", ")}`,
+          `Confirmation statuses: ${confirmStatuses.join(", ")}`,
           `Observed HTTP status: ${response.status}`,
           ...(resource ? [`Known test resource: ${resource}`] : []),
           ...(proofPaths.length
