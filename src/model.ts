@@ -115,6 +115,7 @@ export interface AttackIdentity {
   cookieEnv?: string;
   cookieVar?: string;
   role?: string;
+  privilegeLevel?: number;
   tenant?: string;
 }
 export interface AttackMultipartFile {
