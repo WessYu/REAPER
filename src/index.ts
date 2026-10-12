@@ -23,3 +23,5 @@ export { createReaperServer } from "./server.js";
 
 export { buildProjectCfg, renderControlFlowGraph } from "./cfg.js";
 export type * from "./cfg.js";
+
+export { runAttack } from "./attack.js";

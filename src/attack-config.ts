@@ -298,6 +298,24 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       ),
     );
     if (
+      ["ownership", "tenant", "vertical"].includes(String(item.dimension))
+    ) {
+      for (const [stepIndex, rawStep] of (item.steps as unknown[]).entries()) {
+        const step = rawStep as Record<string, unknown>;
+        const expect = step.expect as Record<string, unknown> | undefined;
+        if (expect?.deniedStatuses !== undefined) {
+          if (typeof step.actor !== "string" || !identities.has(step.actor))
+            throw new Error(
+              `${stepLabel}.steps[${stepIndex}] requires a configured actor for confirmed authorization testing.`,
+            );
+          if (typeof step.resource !== "string" || step.resource.trim().length < 1)
+            throw new Error(
+              `${stepLabel}.steps[${stepIndex}] requires a known test resource for confirmed authorization testing.`,
+            );
+        }
+      }
+    }
+    if (
       attack.allowMutations === true &&
       authorization.environment !== "production" &&
       (item.steps as AttackStep[]).some((step) =>
