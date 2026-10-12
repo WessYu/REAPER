@@ -216,6 +216,7 @@ function validateIdentity(value: unknown, label: string): AttackIdentity {
     "cookieEnv",
     "cookieVar",
     "role",
+    "privilegeLevel",
     "tenant",
   ]);
   for (const key of Object.keys(identity))
@@ -238,6 +239,13 @@ function validateIdentity(value: unknown, label: string): AttackIdentity {
       (typeof identity[key] !== "string" || !String(identity[key]).trim())
     )
       throw new Error(`${label}.${key} must be a non-empty string.`);
+  if (
+    identity.privilegeLevel !== undefined &&
+    (!Number.isSafeInteger(identity.privilegeLevel) ||
+      Number(identity.privilegeLevel) < 0 ||
+      Number(identity.privilegeLevel) > 100)
+  )
+    throw new Error(`${label}.privilegeLevel must be between 0 and 100.`);
   return identity as unknown as AttackIdentity;
 }
 
