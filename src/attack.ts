@@ -11,6 +11,8 @@ import type {
   AttackStep,
   Config,
   Finding,
+  GraphEdge,
+  GraphNode,
   ScanResult,
   VerifyJson,
 } from "./model.js";
@@ -407,7 +409,7 @@ function addGraph(
   const principalId = `principal:${scenario.attackerIdentity}`;
   const requestId = `request:${scenario.name}`;
   const resourceId = `resource:${scenario.resource ?? scenario.attack.path}`;
-  const nodes = [
+  const nodes: GraphNode[] = [
     {
       id: principalId,
       kind: "principal" as const,
@@ -439,7 +441,7 @@ function addGraph(
   for (const node of nodes)
     if (!context.result.graph.nodes.some((item) => item.id === node.id))
       context.result.graph.nodes.push(node);
-  const edges = [
+  const edges: GraphEdge[] = [
     { from: principalId, to: requestId, relation: "tests" as const },
     { from: requestId, to: resourceId, relation: "accesses" as const },
   ];
@@ -782,6 +784,7 @@ export async function attack(
       audit: [],
     },
   };
+  const attackSummary = result.attack!;
   const context: AttackContext = {
     target,
     config: attackConfig,
@@ -805,12 +808,12 @@ export async function attack(
         scenario,
         options.sourceReport,
       );
-      result.attack.scenarios.push(scenarioResult);
+      attackSummary.scenarios.push(scenarioResult);
     } catch (error) {
       result.diagnostics.push({
         message: `Scenario "${scenario.name}" stopped: ${error instanceof Error ? error.message : "unknown error"}`,
       });
-      result.attack.scenarios.push({
+      attackSummary.scenarios.push({
         name: scenario.name,
         kind: scenario.kind,
         status: "incomplete",
@@ -820,8 +823,8 @@ export async function attack(
   }
 
   result.findings.sort((a, b) => a.id.localeCompare(b.id));
-  result.attack.requestCount = context.requestCount;
-  result.attack.serverErrors = context.serverErrors;
+  attackSummary.requestCount = context.requestCount;
+  attackSummary.serverErrors = context.serverErrors;
   result.metrics.durationMs = Math.round(performance.now() - start);
   result.metrics.memoryBytes = process.memoryUsage().rss;
   return result;
