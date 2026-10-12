@@ -158,6 +158,7 @@ export interface AttackScenario {
 export interface AttackMatrixResource {
   id: string;
   owner: string;
+  ownerValue?: string;
   label?: string;
 }
 

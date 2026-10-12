@@ -952,8 +952,8 @@ test("authorization matrix can require response proof tied to each foreign resou
             path: "/orders/{{RESOURCE_ID}}",
             actors: ["userA", "userB"],
             resources: [
-              { id: "order-a", owner: "userA" },
-              { id: "order-b", owner: "userB" },
+              { id: "order-a", owner: "userA", ownerValue: "user-a" },
+              { id: "order-b", owner: "userB", ownerValue: "user-b" },
             ],
             deniedStatuses: [403, 404],
             jsonEquals: {

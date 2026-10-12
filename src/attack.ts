@@ -634,7 +634,10 @@ async function runMatrix(
         if (actor === resource.owner) continue;
         const resourceId = interpolate(resource.id, context.variables);
         context.variables.set("RESOURCE_ID", resourceId);
-        context.variables.set("RESOURCE_OWNER", resource.owner);
+        context.variables.set(
+          "RESOURCE_OWNER",
+          interpolate(resource.ownerValue ?? resource.owner, context.variables),
+        );
         const scenario: AttackScenario = {
           id: `${matrix.id}.${actor}.vs.${resource.owner}`,
           title: matrix.title,

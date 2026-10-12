@@ -583,7 +583,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         );
       const resource = rawResource as Record<string, unknown>;
       for (const key of Object.keys(resource))
-        if (!["id", "owner", "label"].includes(key))
+        if (!["id", "owner", "ownerValue", "label"].includes(key))
           throw new Error(
             `Unknown ${label}.resources[${resourceIndex}] key: ${key}`,
           );
@@ -592,6 +592,14 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       if (typeof resource.owner !== "string" || !identities.has(resource.owner))
         throw new Error(
           `${label}.resources[${resourceIndex}].owner must reference a configured identity.`,
+        );
+      if (
+        resource.ownerValue !== undefined &&
+        (typeof resource.ownerValue !== "string" ||
+          resource.ownerValue.length < 1)
+      )
+        throw new Error(
+          `${label}.resources[${resourceIndex}].ownerValue must be non-empty.`,
         );
       if (
         resource.label !== undefined &&
