@@ -113,7 +113,7 @@ export function buildAttackPlan(result: ScanResult): AttackPlan {
 export interface IdentityMatrixEntry {
   attacker: string;
   owner: string;
-  dimensions: Array<"ownership" | "tenant">;
+  dimensions: Array<"ownership" | "tenant" | "privilege">;
 }
 
 export function buildIdentityMatrix(config: AttackConfig): IdentityMatrixEntry[] {
@@ -134,6 +134,12 @@ export function buildIdentityMatrix(config: AttackConfig): IdentityMatrixEntry[]
         attacker.tenant !== owner.tenant
       )
         dimensions.push("tenant");
+      if (
+        attacker.privilegeLevel !== undefined &&
+        owner.privilegeLevel !== undefined &&
+        attacker.privilegeLevel < owner.privilegeLevel
+      )
+        dimensions.push("privilege");
       if (dimensions.length)
         entries.push({
           attacker: attackerName,
