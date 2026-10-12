@@ -1103,7 +1103,6 @@ test("identity header configuration rejects protocol-sensitive headers", () => {
   );
 });
 
-
 test("attack mode hard-blocks link-local infrastructure even with private-network opt-in", async () => {
   await assert.rejects(
     runAttack("http://169.254.169.254", {
@@ -1128,7 +1127,6 @@ test("attack mode hard-blocks link-local infrastructure even with private-networ
     /blocked even when private-network testing is enabled/,
   );
 });
-
 
 test("cleanup uses its reserved request budget", async () => {
   const deleted = [];
@@ -1192,7 +1190,6 @@ test("cleanup uses its reserved request budget", async () => {
     await once(instance, "close");
   }
 });
-
 
 test("cleanup still runs after external cancellation", async () => {
   const controller = new AbortController();
@@ -1278,7 +1275,6 @@ test("cleanup still runs after external cancellation", async () => {
   }
 });
 
-
 test("authorization expiry stops later requests in a long-running scenario", async () => {
   let requests = 0;
   const { instance, origin } = await server((_req, res) => {
@@ -1321,7 +1317,11 @@ test("authorization expiry stops later requests in a long-running scenario", asy
       },
     });
     assert.equal(requests, 1);
-    assert.ok(result.diagnostics.some((item) => /expired during the run/.test(item.message)));
+    assert.ok(
+      result.diagnostics.some((item) =>
+        /expired during the run/.test(item.message),
+      ),
+    );
   } finally {
     instance.closeAllConnections?.();
     instance.close();

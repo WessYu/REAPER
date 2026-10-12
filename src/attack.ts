@@ -107,8 +107,7 @@ function isPrivateAddress(address: string): boolean {
 function assertNetworkScope(addresses: string[], config: AttackConfig): void {
   const forbidden = addresses.filter(
     (address) =>
-      isForbiddenInfrastructureAddress(address) &&
-      !isLoopbackAddress(address),
+      isForbiddenInfrastructureAddress(address) && !isLoopbackAddress(address),
   );
   if (forbidden.length)
     throw new Error(
@@ -383,10 +382,7 @@ function responseCookie(
   return undefined;
 }
 
-async function pace(
-  context: AttackContext,
-  cleanup = false,
-): Promise<boolean> {
+async function pace(context: AttackContext, cleanup = false): Promise<boolean> {
   let release!: () => void;
   const previous = context.pacing;
   context.pacing = new Promise<void>((resolve) => {
@@ -914,8 +910,7 @@ export async function runAttack(
 
   result.metrics.durationMs = Math.round(performance.now() - started);
   result.metrics.memoryBytes = process.memoryUsage().rss;
-  result.attack.requests =
-    context.requestCount + context.cleanupRequestCount;
+  result.attack.requests = context.requestCount + context.cleanupRequestCount;
   result.attack.cleanupRequests = context.cleanupRequestCount;
   result.attack.completedAt = new Date().toISOString();
   return result;
