@@ -767,3 +767,65 @@ test("attack authorization expiry is validated and required for production", () 
     /expiresAt/,
   );
 });
+
+test("attack mode requires explicit opt-in for non-loopback private targets", async () => {
+  await assert.rejects(
+    runAttack("http://10.1.2.3", {
+      attack: {
+        allowedTargets: ["http://10.1.2.3"],
+        authorization: {
+          acknowledged: true,
+          reference: "internal-test",
+          environment: "staging",
+        },
+        scenarios: [
+          {
+            id: "private-target",
+            title: "Internal target",
+            dimension: "session",
+            steps: [{ name: "read", path: "/" }],
+          },
+        ],
+      },
+    }),
+    /allowPrivateNetwork/,
+  );
+});
+
+test("loopback targets remain available without private-network opt-in", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.statusCode = 200;
+    res.end("ok");
+  });
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "local-test",
+          environment: "local",
+        },
+        scenarios: [
+          {
+            id: "loopback",
+            title: "Loopback target",
+            dimension: "session",
+            steps: [
+              {
+                name: "read",
+                path: "/",
+                expect: { allowedStatuses: [200] },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.diagnostics.length, 0);
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
