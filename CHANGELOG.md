@@ -2,6 +2,16 @@
 
 ## 0.2.0 — unreleased
 
+- Added an authorization-focused active-security engine with explicit target scope, identity matrices, stateful setup/attack/cleanup flows and CONFIRMED BOLA, tenant, privilege, session, CORS, CSRF, authorization and business-invariant findings.
+- Added remote authorization IDs, expiring scopes, stricter production gates, separate production-mutation consent, request/mutation/rate/timeout budgets, cancellation and a 5xx circuit breaker.
+- Added bearer/cookie identity handling through environment or bounded captures without persisting secret values, plus bounded synthetic multipart uploads that never read arbitrary local files.
+- Added status, response-header and primitive JSON-path expectations for explicit runtime security invariants.
+- Added active/static/database graph correlation, per-request UUID trace IDs, AsyncLocalStorage trace instrumentation and source-finding correlation.
+- Added SHA-256-chained active audit events, audit verification, deterministic evidence bundles and dashboard/terminal active-run provenance.
+- Added attack-plan generation from static authorization findings, ownership/tenant/privilege identity matrices and CI regression generation for confirmed scenarios.
+- Added passive OpenAPI and GraphQL surface planners that model supplied specifications without automatically executing mutations or fuzzing.
+- Added a loopback-only canary callback collector for local/CI observation with bounded metadata and no Authorization, Cookie or body capture.
+- Added production-dependency audit and CycloneDX SBOM generation to CI.
 - Expanded bounded control-flow analysis across loops, try/catch/finally and switch with conservative environment merges.
 - Added shared-object/property mutation tracking, deeper alias propagation, `.bind`/`.call`/`.apply`, common `Object.assign`/`Object.defineProperty` and `Reflect.get`/`Reflect.set` modeling, and array mutation tracking for supported values.
 - Added sequentially resolved Express/Fastify route middleware analysis plus literal contracts for opaque middleware that establishes trusted request principals.
