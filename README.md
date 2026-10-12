@@ -86,6 +86,7 @@ This proof is rendered from the actual output of GitHub Actions run **#177** on 
 | Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                                                                                                                     |
 | Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                                                                                                                |
 | Verification    | Authorized assertions, bounded OpenAPI GET/HEAD discovery/probing, optional synthetic-user provisioning and setup/teardown, budgets, rate limits, timeouts and cancellation                                             |
+| Attack          | Explicitly authorized stateful adversarial scenarios with identity switching, captured variables, known-resource authorization checks, cleanup, audit trail, circuit breaker and DNS-change stop                       |
 | Platform        | Self-contained HTML dashboard, localhost-only REST service and programmatic Rule SDK                                                                                                                                    |
 | Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                                                                                                                      |
 | Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                                                                                                            |
@@ -173,6 +174,7 @@ reaper cfg ./application --format dot --output control-flow.dot
 reaper score combined.json
 reaper discover http://localhost:3000 --config reaper.config.ts
 reaper verify http://localhost:3000 --config reaper.config.ts --fail-on high
+reaper attack https://preview.example.com --config reaper.config.ts --fail-on high
 reaper dashboard combined.json --output reaper-dashboard.html
 reaper serve ./application --port 7337
 reaper baseline scan.json --output baseline.json
@@ -220,6 +222,52 @@ Only connect to databases you are authorized to inspect. Start with a dedicated 
 REAPER can optionally discover GET/HEAD operations from an allowlisted target's OpenAPI document and, when `probeDiscovered: true`, issue bounded safe probes to non-templated discovered GET/HEAD routes. Assertions remain operator-defined. Synthetic scenario setup/teardown can use POST, PUT, PATCH or DELETE only when `verify.allowMutations: true` is explicitly configured. `syntheticUsers` can provision 2–4 test identities from an explicitly configured signup template, capture token/ID JSON paths in memory, expose `USER_1_TOKEN`/ `USER_1_ID`-style variables to assertions, and clean the identities up through an explicitly configured DELETE path. Token values are not copied into findings.
 
 Redirect following is disabled. Concurrency, request rate, total request budget, response-capture size and per-request timeout are bounded, and Ctrl+C cancellation is propagated through the scenario. A runtime finding means a security property that **you explicitly declared** did not produce the expected HTTP status. REAPER does not brute-force credentials, crawl arbitrary internet targets or invent destructive requests.
+
+## Authorized adversarial validation
+
+`reaper attack` is a stateful authorization-focused validation mode. It is intentionally configuration-driven rather than an unrestricted crawler or exploit framework.
+
+Every attack run requires an exact target origin, an explicit authorization acknowledgement/reference, a bounded request budget and configured scenarios. Production runs cannot enable mutations. Nonproduction scenarios that mutate state must declare cleanup steps. Redirects are not followed, target DNS resolution is checked for changes during the run, consecutive server errors open a circuit breaker, and authentication values loaded from environment/captured variables are not written into findings.
+
+For ownership, tenant and vertical-authorization confirmation, a denial expectation must identify both a configured actor and a known test resource. A `REAPER-ATTACK-001` finding is marked CONFIRMED only when the explicitly configured denial policy is violated at runtime.
+
+```ts
+export default {
+  attack: {
+    allowedTargets: ["https://preview.example.com"],
+    authorization: {
+      acknowledged: true,
+      reference: "SEC-1842 / approved preview assessment",
+      environment: "preview",
+    },
+    maxRequests: 40,
+    timeoutMs: 5000,
+    rateLimitPerSecond: 3,
+    maxConsecutiveServerErrors: 3,
+    identities: {
+      userA: { tokenEnv: "REAPER_USER_A_TOKEN" },
+    },
+    scenarios: [
+      {
+        id: "cross-user-order",
+        title: "User A must not read User B order",
+        dimension: "ownership",
+        steps: [
+          {
+            name: "cross-user read",
+            path: "/api/orders/{{USER_B_ORDER_ID}}",
+            actor: "userA",
+            resource: "order:{{USER_B_ORDER_ID}}:owner:userB",
+            expect: { deniedStatuses: [403, 404] },
+          },
+        ],
+      },
+    ],
+  },
+};
+```
+
+The example assumes `USER_B_ORDER_ID` was captured by an earlier explicitly configured step. REAPER does not invent users, credentials, ownership or destructive requests. See [offensive safety contract](docs/offensive-safety-contract.md).
 
 ## TypeScript API
 

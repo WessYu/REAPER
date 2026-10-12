@@ -130,6 +130,22 @@ in-memory variables, use those identities in authorization assertions, and
 invoke an explicitly configured DELETE cleanup path. REAPER never guesses the
 signup flow or credentials.
 
+## Offensive validation
+
+### REAPER-ATTACK-001
+
+`REAPER-ATTACK-001` is emitted only by the explicitly authorized stateful
+attack runner when a configured denial policy for a known test resource is
+violated. Ownership, tenant and vertical scenarios require a configured actor
+and resource context before confirmation. The finding records the scenario,
+dimension, actor label, expected denial statuses, observed status and known
+resource identifier, but never authentication tokens or response bodies.
+
+Attack mode is exact-origin allowlisted, budgeted, rate-limited, timeout-bounded,
+redirect-disabled and guarded by DNS-change detection plus a consecutive-server-
+error circuit breaker. Production mutation is rejected; nonproduction mutation
+requires declared cleanup.
+
 ## Rule SDK
 
 The programmatic API can pass `rules` to `scan()`. A custom rule receives a

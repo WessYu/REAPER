@@ -55,8 +55,27 @@ A CONFIRMED runtime finding means a configured security assertion observed an
 unexpected HTTP status. It does not by itself prove data disclosure or general
 exploitability.
 
-Only run verification against systems you own or are explicitly authorized to
-test.
+## Authorized attack mode
+
+`reaper attack` requires an exact-origin allowlist plus an explicit authorization
+acknowledgement and reference. Production attack scenarios cannot enable
+mutations. In nonproduction environments, a scenario that mutates state must
+declare cleanup steps.
+
+The runner uses bounded request/rate/timeout controls, manual redirect handling,
+DNS-resolution change detection and a consecutive-5xx circuit breaker. Identity
+tokens come from named environment variables or explicitly captured in-memory
+variables and are never copied into findings or audit events.
+
+For ownership, tenant and vertical-authorization findings, REAPER requires a
+configured actor and a known synthetic/test resource before an unexpected denial
+status can become `REAPER-ATTACK-001 / CONFIRMED`. This is still an
+operator-declared adversarial assertion, not automatic proof of arbitrary data
+disclosure.
+
+Only run verification or attack mode against systems you own or are explicitly
+authorized to test. See `docs/offensive-safety-contract.md` for the intended
+commercial execution boundaries.
 
 ## Local service
 

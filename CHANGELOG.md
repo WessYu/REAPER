@@ -12,6 +12,8 @@
 - Added explicit synthetic setup/teardown scenarios plus optional two-to-four-user provisioning from configured signup/cleanup templates, with mutation opt-in, bounded JSON capture and in-memory token/ID variables.
 - Added an explicit project control-flow graph exporter (JSON/DOT), a self-contained HTML dashboard and localhost-only REST review service.
 - Added a programmatic Rule SDK with deterministic finding emission.
+- Added an explicitly authorized stateful attack runner with identity switching, variable capture, exact-origin scope, known-resource authorization confirmation, cleanup requirements, audit events, rate/request/time budgets, DNS-change detection and a server-error circuit breaker.
+- Added `REAPER-ATTACK-001` for confirmed violations of operator-declared denial policies in ownership, tenant and vertical-authorization scenarios.
 - Expanded tests for middleware, alias/property mutation, Storage, RLS classification, views, triggers, discovery, synthetic lifecycle, dashboard, REST service and custom rules.
 - Kept runtime and database boundaries conservative: no arbitrary internet crawling, credential brute force, automatic destructive requests or project-code execution during static scanning.
 
