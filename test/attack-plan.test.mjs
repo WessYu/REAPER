@@ -68,9 +68,9 @@ test("identity matrix distinguishes same-role ownership from cross-tenant pairs"
   const entries = buildIdentityMatrix({
     scope: { authorized: true, environment: "local" },
     identities: {
-      userA: { role: "user", tenant: "a" },
-      userB: { role: "user", tenant: "b" },
-      admin: { role: "admin", tenant: "a" },
+      userA: { role: "user", privilegeLevel: 10, tenant: "a" },
+      userB: { role: "user", privilegeLevel: 10, tenant: "b" },
+      admin: { role: "admin", privilegeLevel: 90, tenant: "a" },
     },
     scenarios: [],
   });
@@ -78,10 +78,8 @@ test("identity matrix distinguishes same-role ownership from cross-tenant pairs"
     (entry) => entry.attacker === "userA" && entry.owner === "userB",
   );
   assert.deepEqual(pair.dimensions, ["ownership", "tenant"]);
-  assert.equal(
-    entries.some(
-      (entry) => entry.attacker === "userA" && entry.owner === "admin",
-    ),
-    false,
+  const vertical = entries.find(
+    (entry) => entry.attacker === "userA" && entry.owner === "admin",
   );
+  assert.deepEqual(vertical.dimensions, ["privilege"]);
 });
