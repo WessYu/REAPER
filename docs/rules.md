@@ -130,6 +130,27 @@ in-memory variables, use those identities in authorization assertions, and
 invoke an explicitly configured DELETE cleanup path. REAPER never guesses the
 signup flow or credentials.
 
+## Active security findings
+
+Active-security findings use CONFIRMED confidence only when an explicitly configured stateful scenario observes a result outside the declared security expectation. The engine does not infer exploitability from status codes alone unless the scenario declares the intended denial or invariant.
+
+| Rule              | Confirmed evidence                                                     | Severity / confidence |
+| ----------------- | ---------------------------------------------------------------------- | --------------------- |
+| REAPER-ATTACK-001 | Cross-user object/BOLA scenario receives a non-denied result           | HIGH / CONFIRMED      |
+| REAPER-ATTACK-002 | Cross-tenant scenario violates the declared tenant boundary            | CRITICAL / CONFIRMED  |
+| REAPER-ATTACK-003 | Lower-privilege identity violates an explicit privilege boundary       | CRITICAL / CONFIRMED  |
+| REAPER-ATTACK-004 | Generic authorization scenario violates its configured expectation     | HIGH / CONFIRMED      |
+| REAPER-ATTACK-005 | Session scenario violates the configured session expectation           | HIGH / CONFIRMED      |
+| REAPER-ATTACK-006 | CORS scenario violates configured status/header expectations           | HIGH / CONFIRMED      |
+| REAPER-ATTACK-007 | CSRF scenario violates its explicitly configured security expectation  | HIGH / CONFIRMED      |
+| REAPER-ATTACK-008 | Business-security scenario violates status/header/JSON invariants      | HIGH / CONFIRMED      |
+
+A source/database report can be supplied to active mode. Matching authorization, tenant, RLS, privilege or Supabase evidence is attached to the active path without converting unrelated static observations into confirmed vulnerabilities. The combined graph preserves the source route → query → resource evidence and adds principal/request/runtime correlation.
+
+Active scenario execution is target- and path-scoped, mutation-gated and bounded by request, mutation, rate, timeout and server-error budgets. Production requires additional authorization metadata and separate mutation consent. Tokens, cookies and captured response bodies are omitted from findings and audit records.
+
+OpenAPI and GraphQL planning commands are passive: they model supplied schemas/introspection and do not send mutation/fuzzing traffic. The loopback callback collector is local/CI-only and is not a public OAST service.
+
 ## Rule SDK
 
 The programmatic API can pass `rules` to `scan()`. A custom rule receives a
