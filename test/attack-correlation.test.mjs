@@ -1,9 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  correlateAttackSource,
-  normalizeAttackRoute,
-} from "../dist/index.js";
+import { correlateAttackSource, normalizeAttackRoute } from "../dist/index.js";
 
 const baseResult = (root) => ({
   version: "0.2.0",
@@ -99,9 +96,7 @@ test("attack/source correlation normalizes route parameters and carries data res
       "Correlated static/catalog finding: REAPER-AUTH-001",
     ),
   );
-  assert.ok(
-    result.graph.nodes.some((node) => node.id === "resource:order"),
-  );
+  assert.ok(result.graph.nodes.some((node) => node.id === "resource:order"));
 });
 
 test("attack route normalization treats common parameter syntaxes equivalently", () => {
