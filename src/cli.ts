@@ -16,7 +16,11 @@ import { renderExplanation } from "./explain.js";
 import { verify } from "./verify.js";
 import { attack } from "./attack.js";
 import { renderAttackRegression } from "./regression.js";
-import { buildAttackPlan, buildIdentityMatrix } from "./attack-plan.js";
+import {
+  buildAttackPlan,
+  buildIdentityMatrix,
+  previewAttackExecution,
+} from "./attack-plan.js";
 import { createCallbackCollector } from "./callback.js";
 import { verifyAttackAudit } from "./audit.js";
 import { planOpenApi } from "./openapi.js";
@@ -52,6 +56,7 @@ reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run bounded stateful active-security scenarios
 reaper attack-plan <json> Build active-test candidates from static findings
+reaper attack-preview     Review configured active requests without sending them
 reaper openapi-plan <json> Model API operations without sending requests
 reaper graphql-plan <json> Model GraphQL introspection without sending requests
 reaper attack-matrix      Show ownership/tenant identity pairs from config
@@ -188,6 +193,16 @@ async function main(): Promise<void> {
     const { discoverRoutes } = await import("./verify.js");
     const endpoints = await discoverRoutes(arg, verifyConfig);
     await output(JSON.stringify(endpoints, null, 2) + "\n");
+    return;
+  }
+  if (command === "attack-preview") {
+    if (!values.config) throw new Error("attack-preview requires --config.");
+    const attackConfig = await readConfig(values.config);
+    if (!attackConfig.attack)
+      throw new Error("Config does not define an attack section.");
+    await output(
+      JSON.stringify(previewAttackExecution(attackConfig.attack), null, 2) + "\n",
+    );
     return;
   }
   if (command === "attack-matrix") {
