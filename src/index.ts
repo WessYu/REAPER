@@ -29,3 +29,12 @@ export {
   correlateAttackSource,
   normalizeAttackRoute,
 } from "./attack-correlation.js";
+
+export {
+  attestReport,
+  canonicalReport,
+  reportDigest,
+  validateAttestation,
+  verifyReportAttestation,
+} from "./attestation.js";
+export type { ReportAttestation } from "./attestation.js";

@@ -10,6 +10,8 @@ test("version, help, invalid commands and flags", () => {
   assert.equal(run("--version").stdout, "0.2.0\n");
   assert.match(run("--help").stdout, /reaper scan/);
   assert.match(run("--help").stdout, /reaper attack/);
+  assert.match(run("--help").stdout, /reaper attest/);
+  assert.match(run("--help").stdout, /verify-attestation/);
   assert.equal(run("verify").status, 2);
   assert.equal(run("attack").status, 2);
   assert.equal(run("scan", "--unknown").status, 2);

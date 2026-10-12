@@ -38,6 +38,8 @@ reaper explain <id> --input <json>
 reaper graph <json>      Render report graph as JSON or DOT
 reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
+reaper attest <json>     Sign a saved report with an Ed25519 key
+reaper verify-attestation <json> --input <attestation>
 reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run authorized stateful adversarial scenarios
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
@@ -51,7 +53,9 @@ reaper doctor           Check runtime version
 --fail-on <severity>     Exit 1 on new findings at/above threshold
 --baseline <file>        JSON array of accepted fingerprints
 --db-env <name>          Environment variable holding database URL
---input <json>            Saved source report for attack correlation / explain input
+--input <json>            Saved source report, attestation, or explain input
+--key-env <name>          Env var containing an Ed25519 private key
+--public-key-env <name>   Env var containing an Ed25519 public key
 --help | --version
 
 Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
@@ -72,6 +76,8 @@ async function main(): Promise<void> {
       baseline: { type: "string" },
       "db-env": { type: "string" },
       input: { type: "string" },
+      "key-env": { type: "string" },
+      "public-key-env": { type: "string" },
       port: { type: "string" },
     },
   });
@@ -238,6 +244,38 @@ async function main(): Promise<void> {
   if (command === "score") {
     const scored = calculateScore(await saved(arg));
     await output(renderScore(scored, format));
+    return;
+  }
+  if (command === "attest") {
+    const keyEnv = values["key-env"];
+    if (!keyEnv) throw new Error("attest requires --key-env.");
+    const privateKey = process.env[keyEnv];
+    if (!privateKey)
+      throw new Error(`Environment variable ${keyEnv} is not set.`);
+    const { attestReport } = await import("./attestation.js");
+    await output(
+      JSON.stringify(attestReport(await saved(arg), privateKey), null, 2) +
+        "\n",
+    );
+    return;
+  }
+  if (command === "verify-attestation") {
+    const keyEnv = values["public-key-env"];
+    if (!keyEnv)
+      throw new Error("verify-attestation requires --public-key-env.");
+    const publicKey = process.env[keyEnv];
+    if (!publicKey)
+      throw new Error(`Environment variable ${keyEnv} is not set.`);
+    if (!values.input)
+      throw new Error("verify-attestation requires --input <attestation>.");
+    const { verifyReportAttestation } = await import("./attestation.js");
+    const valid = verifyReportAttestation(
+      await saved(arg),
+      await json(values.input),
+      publicKey,
+    );
+    await output(JSON.stringify({ valid }, null, 2) + "\n");
+    if (!valid) process.exitCode = 1;
     return;
   }
   if (command === "explain") {
