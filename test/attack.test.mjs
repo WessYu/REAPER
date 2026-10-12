@@ -1128,3 +1128,67 @@ test("attack mode hard-blocks link-local infrastructure even with private-networ
     /blocked even when private-network testing is enabled/,
   );
 });
+
+
+test("cleanup uses its reserved request budget", async () => {
+  const deleted = [];
+  const { instance, origin } = await server((req, res) => {
+    if (req.method === "POST" && req.url === "/resource") {
+      res.statusCode = 201;
+      res.end("{}");
+      return;
+    }
+    if (req.method === "DELETE" && req.url === "/resource") {
+      deleted.push(req.url);
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-CLEANUP-BUDGET",
+          environment: "staging",
+        },
+        allowMutations: true,
+        maxRequests: 1,
+        maxCleanupRequests: 2,
+        scenarios: [
+          {
+            id: "cleanup-budget",
+            title: "Cleanup remains available",
+            dimension: "business-logic",
+            steps: [
+              {
+                name: "create",
+                path: "/resource",
+                method: "POST",
+                expect: { allowedStatuses: [201] },
+              },
+            ],
+            cleanup: [
+              {
+                name: "delete",
+                path: "/resource",
+                method: "DELETE",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.deepEqual(deleted, ["/resource"]);
+    assert.equal(result.attack.cleanupFailures, 0);
+    assert.equal(result.attack.cleanupRequests, 1);
+    assert.equal(result.attack.requests, 2);
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
