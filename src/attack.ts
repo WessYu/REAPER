@@ -205,6 +205,78 @@ function identityToken(
   return undefined;
 }
 
+function requiredSecret(
+  envName: string | undefined,
+  variableName: string | undefined,
+  variables: Map<string, string>,
+  label: string,
+): string | undefined {
+  if (envName) {
+    const value = process.env[envName];
+    if (!value) throw new Error(`Missing environment variable ${envName} for ${label}.`);
+    return value;
+  }
+  if (variableName) {
+    const value = variables.get(variableName);
+    if (!value) throw new Error(`Missing captured variable ${variableName} for ${label}.`);
+    return value;
+  }
+  return undefined;
+}
+
+function applyIdentityHeaders(
+  headers: Headers,
+  identity: AttackIdentity | undefined,
+  variables: Map<string, string>,
+): void {
+  if (!identity) return;
+  const token = identityToken(identity, variables);
+  if (token) headers.set("authorization", `Bearer ${token}`);
+
+  if (identity.cookie) {
+    const value = requiredSecret(
+      identity.cookie.valueEnv,
+      identity.cookie.valueVar,
+      variables,
+      "identity cookie",
+    );
+    if (value) headers.set("cookie", `${identity.cookie.name}=${value}`);
+  }
+
+  for (const [header, envName] of Object.entries(identity.headerEnvs ?? {})) {
+    const value = process.env[envName];
+    if (!value) throw new Error(`Missing environment variable ${envName} for header ${header}.`);
+    headers.set(header, value);
+  }
+  for (const [header, variableName] of Object.entries(
+    identity.headerVars ?? {},
+  )) {
+    const value = variables.get(variableName);
+    if (!value)
+      throw new Error(
+        `Missing captured variable ${variableName} for header ${header}.`,
+      );
+    headers.set(header, value);
+  }
+}
+
+function responseCookie(response: Response, cookieName: string): string | undefined {
+  const headers = response.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const values = headers.getSetCookie?.() ?? [];
+  const fallback = response.headers.get("set-cookie");
+  if (!values.length && fallback) values.push(fallback);
+  for (const line of values) {
+    const first = line.split(";", 1)[0] ?? "";
+    const separator = first.indexOf("=");
+    if (separator < 1) continue;
+    if (first.slice(0, separator).trim() !== cookieName) continue;
+    return first.slice(separator + 1);
+  }
+  return undefined;
+}
+
 async function pace(context: AttackContext): Promise<boolean> {
   let release!: () => void;
   const previous = context.pacing;
@@ -322,8 +394,7 @@ async function requestStep(
   const identity = step.actor
     ? context.config.identities?.[step.actor]
     : undefined;
-  const token = identityToken(identity, context.variables);
-  if (token) headers.set("authorization", `Bearer ${token}`);
+  applyIdentityHeaders(headers, identity, context.variables);
 
   let body: string | undefined;
   if (step.body !== undefined) {
@@ -353,6 +424,19 @@ async function requestStep(
     clearTimeout(timeout);
   }
   context.result.metrics.sinks++;
+
+  if (step.captureCookies && Object.keys(step.captureCookies).length) {
+    for (const [variableName, cookieName] of Object.entries(
+      step.captureCookies,
+    )) {
+      const value = responseCookie(response, cookieName);
+      if (!value)
+        throw new Error(
+          `Attack cookie capture ${variableName} failed for cookie ${cookieName}.`,
+        );
+      context.variables.set(variableName, value);
+    }
+  }
 
   if (response.status >= 500) context.consecutiveServerErrors++;
   else context.consecutiveServerErrors = 0;
