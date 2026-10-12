@@ -130,6 +130,39 @@ in-memory variables, use those identities in authorization assertions, and
 invoke an explicitly configured DELETE cleanup path. REAPER never guesses the
 signup flow or credentials.
 
+## Offensive validation
+
+### REAPER-ATTACK-001
+
+`REAPER-ATTACK-001` is emitted only by the explicitly authorized stateful
+attack runner when a configured denial policy for a known test resource is
+violated. Ownership, tenant and vertical scenarios require a configured actor
+and resource context before confirmation. By default only HTTP 2xx responses can
+confirm a denial-policy bypass; `confirmStatuses` may narrow that set. Server
+errors are always inconclusive. Optional `jsonEquals` proof requires selected
+JSON paths to equal operator-supplied scalar values before confirmation and only
+the matched path names, never response values/bodies, are added to evidence.
+
+Authorization matrices execute bounded foreign actor/resource combinations for
+ownership or tenant isolation. Matrix resources carry explicit owners and paths
+use `{{RESOURCE_ID}}`; proof expressions may additionally use
+`{{RESOURCE_OWNER}}` and `{{ACTOR}}`. This avoids calling an arbitrary 200
+response a BOLA finding when the operator can supply resource-level proof.
+
+Stateful scenarios may capture bounded JSON values and named Set-Cookie values.
+Identity credentials can then be supplied as Bearer tokens, named cookies or
+selected secret-backed headers. Secret values stay in environment/in-memory
+state and are excluded from findings and audit events.
+
+Attack mode is exact-origin allowlisted, budgeted, rate-limited, timeout-bounded,
+redirect-disabled and guarded by DNS-change detection plus a consecutive-server-
+error circuit breaker. Non-loopback private/link-local targets require explicit
+opt-in. Production mutation is rejected and production authorization requires an
+unexpired authorization window; nonproduction mutation requires declared
+cleanup. `--input <report.json>` can correlate a confirmed runtime route with
+the saved source graph, reachable data resources and related source/catalog rule
+IDs without upgrading unconfirmed runtime evidence.
+
 ## Rule SDK
 
 The programmatic API can pass `rules` to `scan()`. A custom rule receives a

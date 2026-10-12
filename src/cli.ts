@@ -39,6 +39,7 @@ reaper graph <json>      Render report graph as JSON or DOT
 reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
+reaper attack <target>    Run authorized stateful adversarial scenarios
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
 reaper serve [path]       Start a localhost-only REST service and dashboard
@@ -50,10 +51,12 @@ reaper doctor           Check runtime version
 --fail-on <severity>     Exit 1 on new findings at/above threshold
 --baseline <file>        JSON array of accepted fingerprints
 --db-env <name>          Environment variable holding database URL
+--input <json>            Saved source report for attack correlation / explain input
 --help | --version
 
 Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
 Runtime verification is authorization-scoped: localhost or exact allowlist, bounded discovery, explicit assertions and opt-in synthetic setup/teardown.
+Attack mode additionally requires an explicit target allowlist and authorization acknowledgement/reference.
 `;
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -151,6 +154,30 @@ async function main(): Promise<void> {
     const { discoverRoutes } = await import("./verify.js");
     const endpoints = await discoverRoutes(arg, verifyConfig);
     await output(JSON.stringify(endpoints, null, 2) + "\n");
+    return;
+  }
+  if (command === "attack") {
+    if (!arg) throw new Error("attack requires a target URL.");
+    if (!values.config)
+      throw new Error(
+        "attack requires --config with literal authorized attack scenarios.",
+      );
+    const attackConfig = await readConfig(values.config);
+    const { runAttack } = await import("./attack.js");
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    process.once("SIGINT", cancel);
+    let result = await runAttack(arg, attackConfig, {
+      signal: controller.signal,
+    }).finally(() => process.removeListener("SIGINT", cancel));
+    if (values.input) {
+      const { correlateAttackSource } = await import("./attack-correlation.js");
+      result = correlateAttackSource(result, await saved(values.input));
+    }
+    await output(report(result, format));
+    if (result.diagnostics.length) process.exitCode = 2;
+    else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
+      process.exitCode = 1;
     return;
   }
   if (command === "verify") {

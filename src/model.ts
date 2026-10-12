@@ -110,16 +110,28 @@ export interface AttackAuthorization {
   acknowledged: true;
   reference: string;
   environment: "local" | "preview" | "staging" | "production";
+  expiresAt?: string;
+}
+
+export interface AttackIdentityCookie {
+  name: string;
+  valueEnv?: string;
+  valueVar?: string;
 }
 
 export interface AttackIdentity {
   tokenEnv?: string;
   tokenVar?: string;
+  cookie?: AttackIdentityCookie;
+  headerEnvs?: Record<string, string>;
+  headerVars?: Record<string, string>;
 }
 
 export interface AttackExpectation {
   deniedStatuses?: number[];
   allowedStatuses?: number[];
+  confirmStatuses?: number[];
+  jsonEquals?: Record<string, string | number | boolean | null>;
 }
 
 export interface AttackStep {
@@ -130,6 +142,7 @@ export interface AttackStep {
   body?: VerifyJson;
   expect?: AttackExpectation;
   capture?: Record<string, string>;
+  captureCookies?: Record<string, string>;
   resource?: string;
 }
 
@@ -142,6 +155,27 @@ export interface AttackScenario {
   cleanup?: AttackStep[];
 }
 
+export interface AttackMatrixResource {
+  id: string;
+  owner: string;
+  ownerValue?: string;
+  label?: string;
+}
+
+export interface AttackMatrix {
+  id: string;
+  title: string;
+  dimension: "ownership" | "tenant";
+  severity?: Severity;
+  method?: "GET" | "HEAD";
+  path: string;
+  actors: string[];
+  resources: AttackMatrixResource[];
+  deniedStatuses: number[];
+  confirmStatuses?: number[];
+  jsonEquals?: Record<string, string | number | boolean | null>;
+}
+
 export interface AttackConfig {
   allowedTargets: string[];
   authorization: AttackAuthorization;
@@ -150,8 +184,10 @@ export interface AttackConfig {
   rateLimitPerSecond?: number;
   maxConsecutiveServerErrors?: number;
   allowMutations?: boolean;
+  allowPrivateNetwork?: boolean;
   identities?: Record<string, AttackIdentity>;
-  scenarios: AttackScenario[];
+  scenarios?: AttackScenario[];
+  matrices?: AttackMatrix[];
 }
 
 export interface AttackAuditEvent {
@@ -162,16 +198,25 @@ export interface AttackAuditEvent {
   path: string;
   status?: number;
   durationMs: number;
-  outcome: "passed" | "confirmed" | "error" | "cleanup";
+  outcome:
+    | "passed"
+    | "confirmed"
+    | "inconclusive"
+    | "error"
+    | "cleanup"
+    | "cleanup-error";
 }
 
 export interface AttackRunMetadata {
+  runId: string;
   target: string;
   authorizationReference: string;
+  authorizationExpiresAt?: string;
   environment: AttackAuthorization["environment"];
   startedAt: string;
   completedAt: string;
   requests: number;
+  cleanupFailures: number;
   confirmed: Array<{ scenarioId: string; findingId: string }>;
   audit: AttackAuditEvent[];
 }

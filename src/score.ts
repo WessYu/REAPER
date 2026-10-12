@@ -24,6 +24,7 @@ const categories: Category[] = [
   "Migrations",
   "Secrets & Crypto",
   "Runtime Verification",
+  "Offensive Validation",
 ];
 
 const severityPenalty: Record<Severity, number> = {
