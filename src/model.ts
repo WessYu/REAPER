@@ -170,6 +170,7 @@ export interface AttackConfig {
   rateLimitPerSecond?: number;
   maxConsecutiveServerErrors?: number;
   allowMutations?: boolean;
+  allowPrivateNetwork?: boolean;
   identities?: Record<string, AttackIdentity>;
   scenarios?: AttackScenario[];
   matrices?: AttackMatrix[];
