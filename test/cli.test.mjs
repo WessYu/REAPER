@@ -9,7 +9,9 @@ const run = (...args) =>
 test("version, help, invalid commands and flags", () => {
   assert.equal(run("--version").stdout, "0.2.0\n");
   assert.match(run("--help").stdout, /reaper scan/);
+  assert.match(run("--help").stdout, /reaper attack/);
   assert.equal(run("verify").status, 2);
+  assert.equal(run("attack").status, 2);
   assert.equal(run("scan", "--unknown").status, 2);
   assert.equal(run("scan", "--fail-on", "banana").status, 2);
 });
