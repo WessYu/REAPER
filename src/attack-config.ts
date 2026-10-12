@@ -93,6 +93,7 @@ function validateStep(
       "host",
       "content-length",
       "proxy-authorization",
+      "x-reaper-trace-id",
     ]);
     for (const [name, headerValue] of Object.entries(
       step.headers as Record<string, unknown>,
