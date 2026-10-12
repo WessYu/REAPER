@@ -184,7 +184,9 @@ async function main(): Promise<void> {
   if (command === "regression") {
     if (!arg) throw new Error("regression requires an attack report path.");
     if (!values.config)
-      throw new Error("regression requires the attack config used for the run.");
+      throw new Error(
+        "regression requires the attack config used for the run.",
+      );
     const attackConfig = await readConfig(values.config);
     const result = await saved(arg);
     await output(renderAttackRegression(attackConfig, result));

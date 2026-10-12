@@ -429,8 +429,7 @@ export function validateConfig(value: unknown): Config {
         throw new Error("verify assertion dimension is invalid.");
     }
   }
-  if (config.attack !== undefined)
-    validateAttackConfig(config.attack);
+  if (config.attack !== undefined) validateAttackConfig(config.attack);
 
   if (config.resources !== undefined) {
     if (

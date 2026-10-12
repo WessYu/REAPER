@@ -99,11 +99,7 @@ export interface VerifyConfig {
   teardown?: VerifyLifecycleRequest[];
   assertions: VerifyAssertion[];
 }
-export type AttackEnvironment =
-  | "local"
-  | "preview"
-  | "staging"
-  | "production";
+export type AttackEnvironment = "local" | "preview" | "staging" | "production";
 export interface AttackScope {
   authorized: boolean;
   environment: AttackEnvironment;
@@ -171,25 +167,13 @@ export interface Diagnostic extends Partial<Location> {
 }
 export interface GraphNode {
   id: string;
-  kind:
-    | "route"
-    | "query"
-    | "resource"
-    | "principal"
-    | "request"
-    | "finding";
+  kind: "route" | "query" | "resource" | "principal" | "request" | "finding";
   label: string;
 }
 export interface GraphEdge {
   from: string;
   to: string;
-  relation:
-    | "calls"
-    | "accesses"
-    | "tests"
-    | "owns"
-    | "correlates"
-    | "observed";
+  relation: "calls" | "accesses" | "tests" | "owns" | "correlates" | "observed";
 }
 export interface AttackAuditEvent {
   sequence: number;

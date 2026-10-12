@@ -100,9 +100,7 @@ test("regression generator refuses clean reports", () => {
       startedAt: "2026-10-12T00:00:00.000Z",
       requestCount: 0,
       serverErrors: 0,
-      scenarios: [
-        { name: "foreign order", kind: "bola", status: "passed" },
-      ],
+      scenarios: [{ name: "foreign order", kind: "bola", status: "passed" }],
       audit: [],
     },
   };

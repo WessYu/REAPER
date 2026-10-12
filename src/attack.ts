@@ -312,7 +312,11 @@ function addGraph(
   const requestId = `request:${scenario.name}`;
   const resourceId = `resource:${scenario.resource ?? scenario.attack.path}`;
   const nodes = [
-    { id: principalId, kind: "principal" as const, label: scenario.attackerIdentity },
+    {
+      id: principalId,
+      kind: "principal" as const,
+      label: scenario.attackerIdentity,
+    },
     {
       id: requestId,
       kind: "request" as const,
@@ -386,7 +390,9 @@ function activeFinding(
       ? "CRITICAL"
       : "HIGH";
   const source = scenario.sourceFindingId
-    ? sourceReport?.findings.find((item) => item.id === scenario.sourceFindingId)
+    ? sourceReport?.findings.find(
+        (item) => item.id === scenario.sourceFindingId,
+      )
     : undefined;
   const evidence = [
     `Scenario: ${scenario.name}`,

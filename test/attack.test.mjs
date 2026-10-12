@@ -153,7 +153,10 @@ test("active engine records a passed denial without inventing a finding", async 
 
 test("active engine enforces path scope and remote target authorization", async () => {
   await assert.rejects(
-    attack("https://example.com", config({ allowMutations: false, scenarios: [] })),
+    attack(
+      "https://example.com",
+      config({ allowMutations: false, scenarios: [] }),
+    ),
     /blocked/,
   );
   const { instance, origin } = await server((_req, res) => {
@@ -176,7 +179,11 @@ test("active engine enforces path scope and remote target authorization", async 
     });
     const result = await attack(origin, scoped);
     assert.equal(result.findings.length, 0);
-    assert.ok(result.diagnostics.some((item) => /outside configured scope/.test(item.message)));
+    assert.ok(
+      result.diagnostics.some((item) =>
+        /outside configured scope/.test(item.message),
+      ),
+    );
   } finally {
     delete process.env.REAPER_ATTACK_A;
     delete process.env.REAPER_ATTACK_B;

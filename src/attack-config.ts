@@ -12,11 +12,7 @@ function strings(value: unknown): value is string[] {
   );
 }
 
-function positiveInteger(
-  value: unknown,
-  label: string,
-  maximum: number,
-): void {
+function positiveInteger(value: unknown, label: string, maximum: number): void {
   if (
     value !== undefined &&
     (!Number.isSafeInteger(value) ||
@@ -150,7 +146,11 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   for (const key of Object.keys(config))
     if (!allowed.has(key)) throw new Error(`Unknown attack key: ${key}`);
 
-  if (!config.scope || typeof config.scope !== "object" || Array.isArray(config.scope))
+  if (
+    !config.scope ||
+    typeof config.scope !== "object" ||
+    Array.isArray(config.scope)
+  )
     throw new Error("attack.scope must be an object.");
   const scope = config.scope as Record<string, unknown>;
   const scopeAllowed = new Set([
@@ -171,10 +171,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     )
   )
     throw new Error("attack.scope.environment is invalid.");
-  if (
-    scope.allowedTargets !== undefined &&
-    !strings(scope.allowedTargets)
-  )
+  if (scope.allowedTargets !== undefined && !strings(scope.allowedTargets))
     throw new Error("attack.scope.allowedTargets must be a string array.");
   if (scope.pathPrefixes !== undefined && !strings(scope.pathPrefixes))
     throw new Error("attack.scope.pathPrefixes must be a string array.");
@@ -190,11 +187,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
 
   positiveInteger(config.maxRequests, "attack.maxRequests", 500);
   positiveInteger(config.timeoutMs, "attack.timeoutMs", 30000);
-  positiveInteger(
-    config.rateLimitPerSecond,
-    "attack.rateLimitPerSecond",
-    20,
-  );
+  positiveInteger(config.rateLimitPerSecond, "attack.rateLimitPerSecond", 20);
   positiveInteger(config.maxServerErrors, "attack.maxServerErrors", 20);
   if (
     config.allowMutations !== undefined &&
@@ -287,11 +280,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       if (steps.length > 20)
         throw new Error(`${label}.${phase} cannot exceed 20 steps.`);
       steps.forEach((step, stepIndex) =>
-        validateStep(
-          step,
-          `${label}.${phase}[${stepIndex}]`,
-          identities,
-        ),
+        validateStep(step, `${label}.${phase}[${stepIndex}]`, identities),
       );
     }
     validateStep(scenario.attack, `${label}.attack`, identities);
