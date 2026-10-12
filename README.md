@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/reaper-icon.svg" width="112" alt="REAPER icon" />
+  <img src="./assets/reaper-icon.webp" width="128" alt="REAPER icon" />
 </p>
 
 <h1 align="center">REAPER</h1>
@@ -9,6 +9,10 @@
 
 [![CI](https://github.com/WessYu/REAPER/actions/workflows/ci.yml/badge.svg)](https://github.com/WessYu/REAPER/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@wess2001/reaper.svg)](https://www.npmjs.com/package/@wess2001/reaper)
+
+<p align="center">
+  <img src="./assets/reaper-banner.svg" width="100%" alt="REAPER — Data Access Security Engine" />
+</p>
 
 REAPER traces request input into supported database calls and reports authorization, tenant-isolation, SQL, migration, secret and database-posture risks. It can combine source analysis with read-only PostgreSQL evidence and can run explicitly configured, bounded authorization assertions against authorized targets.
 
@@ -45,6 +49,15 @@ node dist/cli.js scan test/fixtures/secure --fail-on medium
 ```
 
 The vulnerable fixture produces one SQL, one ownership and one tenant finding. The secure fixture produces none of those findings. Both are analysis fixtures, not deployable applications.
+
+## Brand assets
+
+The project artwork stays monochrome and keeps the original REAPER icon without redrawing it.
+
+- [Original icon](assets/reaper-icon.webp)
+- [SVG wrapper](assets/reaper-icon.svg)
+- [Transparent-canvas SVG](assets/reaper-icon-transparent.svg)
+- [README / portfolio banner](assets/reaper-banner.svg)
 
 ## Real CI proof
 
