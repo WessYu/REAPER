@@ -1,7 +1,6 @@
 import type {
   AttackConfig,
   AttackIdentity,
-  AttackScenario,
   AttackStep,
   VerifyJson,
 } from "./model.js";
