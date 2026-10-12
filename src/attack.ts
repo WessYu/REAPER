@@ -420,11 +420,25 @@ function sourceFindingFor(
   );
 }
 
+function correlatedFindingsFor(
+  scenario: AttackScenario,
+  sourceReport: ScanResult | undefined,
+): Finding[] {
+  if (!sourceReport) return [];
+  const primary = sourceFindingFor(scenario, sourceReport);
+  const related = sourceReport.findings.filter((item) => {
+    if (item.status === "suppressed" || item === primary) return false;
+    if (!scenario.resource || item.resource !== scenario.resource) return false;
+    return ["RLS", "Privileges", "Supabase"].includes(item.category);
+  });
+  return [...(primary ? [primary] : []), ...related];
+}
+
 function addGraph(
   context: AttackContext,
   scenario: AttackScenario,
   findingId?: string,
-  sourceFinding?: Finding,
+  sourceFindings: Finding[] = [],
 ): void {
   const principalId = `principal:${scenario.attackerIdentity}`;
   const requestId = `request:${scenario.name}`;
@@ -452,7 +466,7 @@ function addGraph(
       kind: "finding" as const,
       label: findingId,
     });
-  if (sourceFinding)
+  for (const sourceFinding of sourceFindings)
     nodes.push({
       id: `finding:${sourceFinding.id}`,
       kind: "finding" as const,
@@ -471,10 +485,12 @@ function addGraph(
       to: `finding:${findingId}`,
       relation: "observed" as const,
     });
-  if (sourceFinding)
+  for (const sourceFinding of sourceFindings)
     edges.push({
       from: `finding:${sourceFinding.id}`,
-      to: requestId,
+      to: ["RLS", "Privileges", "Supabase"].includes(sourceFinding.category)
+        ? resourceId
+        : requestId,
       relation: "correlates" as const,
     });
   for (const edge of edges)
@@ -555,11 +571,10 @@ function activeFinding(
     ...(scenario.expect?.absentHeaders ?? []).map(
       (name) => `Expected response header absent: ${name}`,
     ),
-    ...(source
-      ? [
-          `Correlated static finding: ${source.id} at ${source.file}:${source.line}`,
-        ]
-      : []),
+    ...correlations.map(
+      (item) =>
+        `Correlated ${item.category} finding: ${item.id} at ${item.file}:${item.line}`,
+    ),
   ];
   return finding(
     {
@@ -698,7 +713,7 @@ async function runScenario(
         context,
         scenario,
         undefined,
-        sourceFindingFor(scenario, sourceReport),
+        correlatedFindingsFor(scenario, sourceReport),
       );
       return { name: scenario.name, kind: scenario.kind, status: "passed" };
     }
@@ -710,7 +725,7 @@ async function runScenario(
         context,
         scenario,
         undefined,
-        sourceFindingFor(scenario, sourceReport),
+        correlatedFindingsFor(scenario, sourceReport),
       );
       return { name: scenario.name, kind: scenario.kind, status: "incomplete" };
     }
@@ -741,7 +756,7 @@ async function runScenario(
       context,
       scenario,
       confirmed.id,
-      sourceFindingFor(scenario, sourceReport),
+      correlatedFindingsFor(scenario, sourceReport),
     );
     return {
       name: scenario.name,
