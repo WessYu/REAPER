@@ -413,3 +413,43 @@ test("attack audit carries a run id, authorization reference and cleanup failure
   }
 });
 
+
+test("HTTP 500 is inconclusive, never a confirmed authorization bypass", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.statusCode = 500;
+    res.end("internal error");
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-500",
+          environment: "staging",
+        },
+        identities: { userA: { tokenEnv: "REAPER_ATTACK_USER_A" } },
+        scenarios: [{
+          id: "inconclusive-server-error",
+          title: "Server error is not a bypass",
+          dimension: "ownership",
+          steps: [{
+            name: "foreign read",
+            path: "/orders/foreign",
+            actor: "userA",
+            resource: "order:foreign:owner:userB",
+            expect: { deniedStatuses: [403, 404] },
+          }],
+        }],
+      },
+    });
+    assert.equal(result.findings.length, 0);
+    assert.equal(result.attack.confirmed.length, 0);
+    assert.ok(result.diagnostics.some((d) => /cannot confirm/.test(d.message)));
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    instance.close();
+    await once(instance, "close");
+  }
+});
