@@ -104,6 +104,13 @@ test("active engine confirms BOLA while redacting tokens and cleaning state", as
     assert.equal(result.findings[0].confidence, "CONFIRMED");
     assert.equal(result.attack.scenarios[0].status, "confirmed");
     assert.equal(result.attack.audit.length, 3);
+    assert.equal(result.attack.audit[0].previousHash, "");
+    assert.equal(result.attack.audit[0].hash.length, 64);
+    assert.equal(
+      result.attack.audit[1].previousHash,
+      result.attack.audit[0].hash,
+    );
+    assert.equal(result.attack.auditHash, result.attack.audit.at(-1).hash);
     assert.equal(deleted, true);
     assert.ok(!JSON.stringify(result).includes("token-a"));
     assert.ok(!JSON.stringify(result).includes("token-b"));

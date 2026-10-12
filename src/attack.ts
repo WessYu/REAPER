@@ -27,6 +27,7 @@ interface AttackContext {
   serverErrors: number;
   nextRequestAt: number;
   sequence: number;
+  lastAuditHash: string;
 }
 
 function parseTarget(value: string): URL {
@@ -342,7 +343,7 @@ async function executeRequest(
     return response;
   } finally {
     clearTimeout(timeout);
-    context.result.attack!.audit.push({
+    const auditBase = {
       sequence: ++context.sequence,
       scenario: scenario.name,
       step: step.name,
@@ -352,7 +353,14 @@ async function executeRequest(
       status: response?.status,
       durationMs: Math.round(performance.now() - started),
       phase,
-    });
+      previousHash: context.lastAuditHash,
+    };
+    const hash = createHash("sha256")
+      .update(context.lastAuditHash)
+      .update(JSON.stringify(auditBase))
+      .digest("hex");
+    context.lastAuditHash = hash;
+    context.result.attack!.audit.push({ ...auditBase, hash });
   }
 }
 
@@ -780,6 +788,7 @@ export async function attack(
       startedAt: new Date().toISOString(),
       requestCount: 0,
       serverErrors: 0,
+      auditHash: "",
       scenarios: [],
       audit: [],
     },
@@ -795,6 +804,7 @@ export async function attack(
     serverErrors: 0,
     nextRequestAt: 0,
     sequence: 0,
+    lastAuditHash: "",
   };
 
   for (const scenario of attackConfig.scenarios) {
@@ -825,6 +835,7 @@ export async function attack(
   result.findings.sort((a, b) => a.id.localeCompare(b.id));
   attackSummary.requestCount = context.requestCount;
   attackSummary.serverErrors = context.serverErrors;
+  attackSummary.auditHash = context.lastAuditHash;
   result.metrics.durationMs = Math.round(performance.now() - start);
   result.metrics.memoryBytes = process.memoryUsage().rss;
   return result;

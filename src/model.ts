@@ -200,6 +200,8 @@ export interface AttackAuditEvent {
   status?: number;
   durationMs: number;
   phase: "setup" | "attack" | "cleanup";
+  previousHash: string;
+  hash: string;
 }
 export interface AttackScenarioResult {
   name: string;
@@ -215,6 +217,7 @@ export interface AttackSummary {
   startedAt: string;
   requestCount: number;
   serverErrors: number;
+  auditHash: string;
   scenarios: AttackScenarioResult[];
   audit: AttackAuditEvent[];
 }
