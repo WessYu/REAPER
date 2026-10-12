@@ -1102,3 +1102,229 @@ test("identity header configuration rejects protocol-sensitive headers", () => {
     /unsafe header/,
   );
 });
+
+test("attack mode hard-blocks link-local infrastructure even with private-network opt-in", async () => {
+  await assert.rejects(
+    runAttack("http://169.254.169.254", {
+      attack: {
+        allowedTargets: ["http://169.254.169.254"],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-LINKLOCAL",
+          environment: "staging",
+        },
+        allowPrivateNetwork: true,
+        scenarios: [
+          {
+            id: "metadata-block",
+            title: "Metadata endpoint stays blocked",
+            dimension: "session",
+            steps: [{ name: "head", path: "/", method: "HEAD" }],
+          },
+        ],
+      },
+    }),
+    /blocked even when private-network testing is enabled/,
+  );
+});
+
+test("cleanup uses its reserved request budget", async () => {
+  const deleted = [];
+  const { instance, origin } = await server((req, res) => {
+    if (req.method === "POST" && req.url === "/resource") {
+      res.statusCode = 201;
+      res.end("{}");
+      return;
+    }
+    if (req.method === "DELETE" && req.url === "/resource") {
+      deleted.push(req.url);
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-CLEANUP-BUDGET",
+          environment: "staging",
+        },
+        allowMutations: true,
+        maxRequests: 1,
+        maxCleanupRequests: 2,
+        scenarios: [
+          {
+            id: "cleanup-budget",
+            title: "Cleanup remains available",
+            dimension: "business-logic",
+            steps: [
+              {
+                name: "create",
+                path: "/resource",
+                method: "POST",
+                expect: { allowedStatuses: [201] },
+              },
+            ],
+            cleanup: [
+              {
+                name: "delete",
+                path: "/resource",
+                method: "DELETE",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.deepEqual(deleted, ["/resource"]);
+    assert.equal(result.attack.cleanupFailures, 0);
+    assert.equal(result.attack.cleanupRequests, 1);
+    assert.equal(result.attack.requests, 2);
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("cleanup still runs after external cancellation", async () => {
+  const controller = new AbortController();
+  const deleted = [];
+  const { instance, origin } = await server((req, res) => {
+    if (req.method === "POST" && req.url === "/resource") {
+      res.statusCode = 201;
+      res.end("{}");
+      return;
+    }
+    if (req.method === "GET" && req.url === "/wait") {
+      setTimeout(() => {
+        if (!res.writableEnded) {
+          res.statusCode = 200;
+          res.end("{}");
+        }
+      }, 200);
+      return;
+    }
+    if (req.method === "DELETE" && req.url === "/resource") {
+      deleted.push(req.url);
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  try {
+    setTimeout(() => controller.abort(), 30);
+    const result = await runAttack(
+      origin,
+      {
+        attack: {
+          allowedTargets: [origin],
+          authorization: {
+            acknowledged: true,
+            reference: "SEC-CANCEL-CLEANUP",
+            environment: "staging",
+          },
+          allowMutations: true,
+          maxRequests: 3,
+          maxCleanupRequests: 2,
+          scenarios: [
+            {
+              id: "cancel-cleanup",
+              title: "Cancellation preserves cleanup",
+              dimension: "business-logic",
+              steps: [
+                {
+                  name: "create",
+                  path: "/resource",
+                  method: "POST",
+                  expect: { allowedStatuses: [201] },
+                },
+                {
+                  name: "wait",
+                  path: "/wait",
+                  expect: { allowedStatuses: [200] },
+                },
+              ],
+              cleanup: [
+                {
+                  name: "delete",
+                  path: "/resource",
+                  method: "DELETE",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { signal: controller.signal },
+    );
+    assert.deepEqual(deleted, ["/resource"]);
+    assert.equal(result.attack.cleanupFailures, 0);
+    assert.equal(result.attack.cleanupRequests, 1);
+    assert.ok(result.diagnostics.some((item) => /cancel/i.test(item.message)));
+  } finally {
+    instance.closeAllConnections?.();
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("authorization expiry stops later requests in a long-running scenario", async () => {
+  let requests = 0;
+  const { instance, origin } = await server((_req, res) => {
+    requests++;
+    setTimeout(() => {
+      res.statusCode = 200;
+      res.end("{}");
+    }, 60);
+  });
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "SEC-EXPIRY",
+          environment: "staging",
+          expiresAt: new Date(Date.now() + 25).toISOString(),
+        },
+        rateLimitPerSecond: 20,
+        scenarios: [
+          {
+            id: "expiry-mid-run",
+            title: "Authorization expires during execution",
+            dimension: "session",
+            steps: [
+              {
+                name: "first",
+                path: "/first",
+                expect: { allowedStatuses: [200] },
+              },
+              {
+                name: "second",
+                path: "/second",
+                expect: { allowedStatuses: [200] },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(requests, 1);
+    assert.ok(
+      result.diagnostics.some((item) =>
+        /expired during the run/.test(item.message),
+      ),
+    );
+  } finally {
+    instance.closeAllConnections?.();
+    instance.close();
+    await once(instance, "close");
+  }
+});

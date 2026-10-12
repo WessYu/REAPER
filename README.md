@@ -227,7 +227,7 @@ Redirect following is disabled. Concurrency, request rate, total request budget,
 
 `reaper attack` is a stateful authorization-focused validation mode. It is intentionally configuration-driven rather than an unrestricted crawler or exploit framework.
 
-Every attack run requires an exact target origin, an explicit authorization acknowledgement/reference, a bounded request budget and configured scenarios or authorization matrices. Production runs cannot enable mutations and production authorization must have an expiry. Nonproduction scenarios that mutate state must declare cleanup steps. Non-loopback private/link-local targets require a separate `allowPrivateNetwork` opt-in. Redirects are not followed, target DNS resolution is checked for changes during the run, consecutive server errors open a circuit breaker, and authentication values loaded from environment/captured variables are not written into findings.
+Every attack run requires an exact target origin, an explicit authorization acknowledgement/reference, bounded active and cleanup request budgets, and configured scenarios or authorization matrices. Production runs cannot enable mutations and production authorization must have an expiry that remains valid throughout the run. Nonproduction scenarios that mutate state must declare cleanup steps. RFC1918/ULA-style private targets require a separate `allowPrivateNetwork` opt-in; link-local, unspecified, multicast and reserved infrastructure addresses remain blocked. Redirects are not followed, outbound connections are pinned to the initially approved DNS resolution and resolution changes stop the run, consecutive server errors open a circuit breaker, and authentication values loaded from environment/captured variables are not written into findings.
 
 Stateful flows can capture JSON values and session cookies, then reuse them through bearer, cookie or secret-backed header identities. Ownership/tenant matrices can systematically test each configured actor against foreign-owned test resources. For ownership, tenant and vertical-authorization confirmation, a denial expectation must identify both a configured actor and a known test resource. HTTP 5xx, redirects and ambiguous 4xx responses remain inconclusive by default: confirmation defaults to HTTP 2xx unless `confirmStatuses` narrows that set. Optional `jsonEquals` response proof can additionally require the returned JSON to match known resource identity/ownership fields before a `REAPER-ATTACK-001` finding becomes CONFIRMED.
 
@@ -244,6 +244,7 @@ export default {
       expiresAt: "2026-10-13T12:00:00.000Z",
     },
     maxRequests: 40,
+    maxCleanupRequests: 10,
     timeoutMs: 5000,
     rateLimitPerSecond: 3,
     maxConsecutiveServerErrors: 3,
@@ -286,6 +287,8 @@ To correlate runtime evidence back to an earlier source/database report:
 ```sh
 reaper attack https://preview.example.com --config reaper.config.ts --input combined.json --format json
 ```
+
+Cleanup uses a separate bounded reserve so normal request-budget exhaustion does not strand declared test data. On Ctrl+C or external cancellation, active work stops while declared cleanup receives a bounded best-effort attempt using its own per-request timeout.
 
 REAPER does not invent users, credentials, ownership or destructive requests. See [offensive safety contract](docs/offensive-safety-contract.md).
 

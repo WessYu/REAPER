@@ -60,14 +60,18 @@ exploitability.
 `reaper attack` requires an exact-origin allowlist plus an explicit authorization
 acknowledgement and reference. Production attack scenarios cannot enable
 mutations. In nonproduction environments, a scenario that mutates state must
-declare cleanup steps.
+declare cleanup steps. Cleanup has a separate bounded request reserve and is
+attempted after cancellation so active-test budget exhaustion or Ctrl+C does not
+silently strand declared synthetic state.
 
 The runner uses bounded request/rate/timeout controls, manual redirect handling,
-DNS-resolution change detection and a consecutive-5xx circuit breaker. A
-non-loopback target that resolves to private or link-local space requires
-`attack.allowPrivateNetwork: true`; this is an additional operator decision,
-not a substitute for network-level isolation. Production authorization requires
-an unexpired `expiresAt` timestamp.
+connection pinning to the initially approved DNS resolution, DNS-change detection
+and a consecutive-5xx circuit breaker. RFC1918/ULA-style private targets require
+`attack.allowPrivateNetwork: true`; link-local, unspecified, multicast and
+reserved infrastructure addresses remain blocked even with that opt-in. This is
+an additional operator decision, not a substitute for network-level isolation.
+Production authorization requires an `expiresAt` timestamp that remains valid
+throughout active execution.
 
 Identity secrets can come from named environment variables or explicitly
 captured in-memory variables. Bearer credentials, named cookies and selected
