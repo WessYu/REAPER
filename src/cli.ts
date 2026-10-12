@@ -27,7 +27,9 @@ import { planOpenApi } from "./openapi.js";
 import { planGraphql } from "./graphql.js";
 import {
   buildEvidenceBundle,
+  signEvidenceBundle,
   verifyEvidenceBundle,
+  verifySignedEvidence,
 } from "./evidence.js";
 import { readConfig } from "./config.js";
 import { renderDashboard } from "./dashboard.js";
@@ -63,6 +65,8 @@ reaper attack-matrix      Show ownership/tenant identity pairs from config
 reaper regression <json>  Generate a CI regression test from confirmed attack scenarios
 reaper evidence <json>    Build a content-addressed evidence bundle
 reaper evidence-verify <json> Verify an evidence bundle digest
+reaper evidence-sign <json> Sign a bundle with an Ed25519 key from --key-env
+reaper evidence-signature-verify <json> Verify signature with --public-key
 reaper audit-verify <json> Verify the tamper-evident active audit chain
 reaper callback [label]   Start a loopback-only canary callback collector
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
@@ -97,6 +101,8 @@ async function main(): Promise<void> {
       "db-env": { type: "string" },
       input: { type: "string" },
       port: { type: "string" },
+      "key-env": { type: "string" },
+      "public-key": { type: "string" },
     },
   });
   if (values.help || (positionals.length === 0 && !values.version)) {
@@ -281,6 +287,31 @@ async function main(): Promise<void> {
     if (result.diagnostics.length) process.exitCode = 2;
     else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
       process.exitCode = 1;
+    return;
+  }
+  if (command === "evidence-signature-verify") {
+    if (!arg)
+      throw new Error("evidence-signature-verify requires a signed bundle.");
+    if (!values["public-key"])
+      throw new Error("evidence-signature-verify requires --public-key.");
+    const publicKey = await readFile(values["public-key"], "utf8");
+    const verified = verifySignedEvidence(await json(arg), publicKey);
+    await output(JSON.stringify(verified, null, 2) + "\n");
+    if (!verified.valid) process.exitCode = 1;
+    return;
+  }
+  if (command === "evidence-sign") {
+    if (!arg) throw new Error("evidence-sign requires a bundle path.");
+    if (!values["key-env"])
+      throw new Error("evidence-sign requires --key-env.");
+    const privateKey = process.env[values["key-env"]];
+    if (!privateKey)
+      throw new Error(`Missing environment variable ${values["key-env"]}.`);
+    const signed = signEvidenceBundle(
+      (await json(arg)) as ReturnType<typeof buildEvidenceBundle>,
+      privateKey,
+    );
+    await output(JSON.stringify(signed, null, 2) + "\n");
     return;
   }
   if (command === "evidence-verify") {
