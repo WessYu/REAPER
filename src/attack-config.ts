@@ -108,7 +108,7 @@ function validateStep(
       throw new Error(`${label}.expect must be an object.`);
     const expect = item.expect as Record<string, unknown>;
     for (const key of Object.keys(expect))
-      if (!["deniedStatuses", "allowedStatuses"].includes(key))
+      if (!["deniedStatuses", "allowedStatuses", "jsonEquals"].includes(key))
         throw new Error(`Unknown ${label}.expect key: ${key}`);
     const denied = statusList(
       expect.deniedStatuses,
@@ -124,6 +124,24 @@ function validateStep(
       );
     if (!denied && !allowedStatuses)
       throw new Error(`${label}.expect requires a status policy.`);
+    if (expect.jsonEquals !== undefined) {
+      if (
+        !expect.jsonEquals ||
+        typeof expect.jsonEquals !== "object" ||
+        Array.isArray(expect.jsonEquals) ||
+        !Object.entries(expect.jsonEquals as Record<string, unknown>).every(
+          ([path, expected]) =>
+            path.length > 0 &&
+            (expected === null ||
+              typeof expected === "string" ||
+              typeof expected === "number" ||
+              typeof expected === "boolean"),
+        )
+      )
+        throw new Error(
+          `${label}.expect.jsonEquals must map JSON paths to scalar literal values.`,
+        );
+    }
   }
   return item as unknown as AttackStep;
 }

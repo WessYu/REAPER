@@ -120,6 +120,7 @@ export interface AttackIdentity {
 export interface AttackExpectation {
   deniedStatuses?: number[];
   allowedStatuses?: number[];
+  jsonEquals?: Record<string, string | number | boolean | null>;
 }
 
 export interface AttackStep {
