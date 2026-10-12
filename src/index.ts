@@ -38,3 +38,5 @@ export { planOpenApi } from "./openapi.js";
 export type * from "./openapi.js";
 export { planGraphql } from "./graphql.js";
 export type * from "./graphql.js";
+export { buildEvidenceBundle, verifyEvidenceBundle } from "./evidence.js";
+export type * from "./evidence.js";
