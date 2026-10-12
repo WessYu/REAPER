@@ -161,6 +161,8 @@ export interface AttackMatrix {
   actors: string[];
   resources: AttackMatrixResource[];
   deniedStatuses: number[];
+  confirmStatuses?: number[];
+  jsonEquals?: Record<string, string | number | boolean | null>;
 }
 
 export interface AttackConfig {
