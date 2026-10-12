@@ -434,6 +434,8 @@ export function validateAttackConfig(value: unknown): AttackConfig {
       "actors",
       "resources",
       "deniedStatuses",
+      "confirmStatuses",
+      "jsonEquals",
     ]);
     for (const key of Object.keys(item))
       if (!keys.has(key)) throw new Error(`Unknown ${label} key: ${key}`);
@@ -510,6 +512,25 @@ export function validateAttackConfig(value: unknown): AttackConfig {
         );
     }
     statusList(item.deniedStatuses, `${label}.deniedStatuses`);
+    statusList(item.confirmStatuses, `${label}.confirmStatuses`);
+    if (item.jsonEquals !== undefined) {
+      if (
+        !item.jsonEquals ||
+        typeof item.jsonEquals !== "object" ||
+        Array.isArray(item.jsonEquals) ||
+        !Object.entries(item.jsonEquals as Record<string, unknown>).every(
+          ([path, expected]) =>
+            path.length > 0 &&
+            (expected === null ||
+              typeof expected === "string" ||
+              typeof expected === "number" ||
+              typeof expected === "boolean"),
+        )
+      )
+        throw new Error(
+          `${label}.jsonEquals must map JSON paths to scalar literal values.`,
+        );
+    }
     if (
       (item.actors as string[]).length * (item.resources as unknown[]).length >
       100
