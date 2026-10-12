@@ -6,6 +6,7 @@ import { validateAttackConfig } from "./attack-config.js";
 import type {
   AttackConfig,
   AttackIdentity,
+  AttackMatrix,
   AttackScenario,
   AttackStep,
   Config,
@@ -420,6 +421,60 @@ async function requestStep(
   });
 }
 
+async function runMatrix(
+  context: AttackContext,
+  matrix: AttackMatrix,
+): Promise<void> {
+  const previousResourceId = context.variables.get("RESOURCE_ID");
+  try {
+    for (const actor of matrix.actors) {
+      for (const resource of matrix.resources) {
+        if (actor === resource.owner) continue;
+        const resourceId = interpolate(resource.id, context.variables);
+        context.variables.set("RESOURCE_ID", resourceId);
+        const scenario: AttackScenario = {
+          id: `${matrix.id}.${actor}.vs.${resource.owner}`,
+          title: matrix.title,
+          dimension: matrix.dimension,
+          severity: matrix.severity,
+          steps: [],
+        };
+        const step: AttackStep = {
+          name: `${actor} -> ${resource.label ?? resourceId}`,
+          path: matrix.path,
+          method: matrix.method ?? "GET",
+          actor,
+          resource:
+            resource.label ??
+            `${matrix.id}:${resourceId}:owner:${resource.owner}`,
+          expect: { deniedStatuses: matrix.deniedStatuses },
+        };
+        try {
+          await requestStep(context, scenario, step, false);
+        } catch (error) {
+          context.result.diagnostics.push({
+            message: `Attack matrix ${matrix.id} stopped at ${actor} -> ${resource.owner}: ${error instanceof Error ? error.message : "unknown error"}`,
+          });
+          context.result.attack?.audit.push({
+            scenarioId: scenario.id,
+            step: step.name,
+            actor,
+            method: step.method ?? "GET",
+            path: step.path,
+            durationMs: 0,
+            outcome: "error",
+          });
+          if (context.consecutiveServerErrors > 0 || context.signal?.aborted)
+            return;
+        }
+      }
+    }
+  } finally {
+    if (previousResourceId === undefined) context.variables.delete("RESOURCE_ID");
+    else context.variables.set("RESOURCE_ID", previousResourceId);
+  }
+}
+
 export async function runAttack(
   target: string,
   config: Config,
@@ -460,7 +515,7 @@ export async function runAttack(
     signal: options.signal,
   };
 
-  for (const scenario of attack.scenarios) {
+  for (const scenario of attack.scenarios ?? []) {
     let scenarioFailed = false;
     let currentStep: AttackStep | undefined;
     try {
@@ -510,6 +565,12 @@ export async function runAttack(
     }
     if (scenarioFailed && context.consecutiveServerErrors > 0) break;
   }
+
+  if (!context.signal?.aborted && context.consecutiveServerErrors === 0)
+    for (const matrix of attack.matrices ?? []) {
+      await runMatrix(context, matrix);
+      if (context.signal?.aborted || context.consecutiveServerErrors > 0) break;
+    }
 
   result.metrics.durationMs = Math.round(performance.now() - started);
   result.metrics.memoryBytes = process.memoryUsage().rss;

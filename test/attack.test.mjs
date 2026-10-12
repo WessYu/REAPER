@@ -453,3 +453,95 @@ test("HTTP 500 is inconclusive, never a confirmed authorization bypass", async (
     await once(instance, "close");
   }
 });
+
+test("authorization matrix tests every actor against foreign-owned resources", async () => {
+  const seen = [];
+  const { instance, origin } = await server((req, res) => {
+    seen.push([req.headers.authorization, req.url]);
+    if (
+      req.headers.authorization === "Bearer user-a-token" &&
+      req.url === "/orders/order-b"
+    ) {
+      res.statusCode = 200;
+      res.end("{}");
+      return;
+    }
+    res.statusCode = 403;
+    res.end("denied");
+  });
+  process.env.REAPER_ATTACK_USER_A = "user-a-token";
+  process.env.REAPER_ATTACK_USER_B = "user-b-token";
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "matrix-test",
+          environment: "staging",
+        },
+        rateLimitPerSecond: 20,
+        identities: {
+          userA: { tokenEnv: "REAPER_ATTACK_USER_A" },
+          userB: { tokenEnv: "REAPER_ATTACK_USER_B" },
+        },
+        matrices: [
+          {
+            id: "orders",
+            title: "Cross-user order matrix",
+            dimension: "ownership",
+            path: "/orders/{{RESOURCE_ID}}",
+            actors: ["userA", "userB"],
+            resources: [
+              { id: "order-a", owner: "userA", label: "order A" },
+              { id: "order-b", owner: "userB", label: "order B" },
+            ],
+            deniedStatuses: [403, 404],
+          },
+        ],
+      },
+    });
+    assert.equal(seen.length, 2);
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].resource, "order B");
+    assert.equal(result.findings[0].confidence, "CONFIRMED");
+  } finally {
+    delete process.env.REAPER_ATTACK_USER_A;
+    delete process.env.REAPER_ATTACK_USER_B;
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("authorization matrices are capped and require configured owners", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        attack: {
+          allowedTargets: ["https://example.test"],
+          authorization: {
+            acknowledged: true,
+            reference: "matrix-test",
+            environment: "staging",
+          },
+          identities: { userA: { tokenEnv: "USER_A_TOKEN" } },
+          matrices: [
+            {
+              id: "bad-owner",
+              title: "Unknown owner",
+              dimension: "ownership",
+              path: "/orders/{{RESOURCE_ID}}",
+              actors: ["userA"],
+              resources: [
+                { id: "1", owner: "userA" },
+                { id: "2", owner: "userB" },
+              ],
+              deniedStatuses: [403],
+            },
+          ],
+        },
+      }),
+    /owner/,
+  );
+});
+
