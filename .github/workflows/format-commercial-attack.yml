@@ -1,0 +1,34 @@
+name: Format commercial attack work
+on:
+  push:
+    branches:
+      - feat/attack-engine-hardening-01
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/attack-engine-hardening-01
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: >
+          npx prettier --write
+          README.md SECURITY.md CHANGELOG.md
+          docs/rules.md docs/offensive-safety-contract.md
+          src/model.ts src/attack-config.ts src/attack.ts src/attack-correlation.ts
+          src/cli.ts src/index.ts src/score.ts
+          test/attack.test.mjs test/attack-correlation.test.mjs test/cli.test.mjs
+      - name: Commit formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md SECURITY.md CHANGELOG.md docs/rules.md docs/offensive-safety-contract.md src/model.ts src/attack-config.ts src/attack.ts src/attack-correlation.ts src/cli.ts src/index.ts src/score.ts test/attack.test.mjs test/attack-correlation.test.mjs test/cli.test.mjs
+          git diff --cached --quiet || git commit -m "style(attack): format commercial hardening"
+          git push origin HEAD:feat/attack-engine-hardening-01
