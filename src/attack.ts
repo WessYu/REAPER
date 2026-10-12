@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { performance } from "node:perf_hooks";
 import { finding } from "./findings.js";
+import { validateAttackConfig } from "./attack-config.js";
 import type {
   AttackConfig,
   AttackIdentity,
@@ -259,6 +260,14 @@ async function requestStep(
 
   const started = performance.now();
   const method = step.method ?? "GET";
+  if (!["GET", "HEAD"].includes(method)) {
+    if (context.config.allowMutations !== true)
+      throw new Error(
+        `Attack step ${step.name} uses ${method}; mutations are not enabled.`,
+      );
+    if (context.config.authorization.environment === "production")
+      throw new Error("Mutating attack steps are blocked in production.");
+  }
   const path = requestPath(step.path, context.variables);
   const url = new URL(path, context.target);
   if (url.origin !== context.target.origin)
@@ -412,7 +421,7 @@ export async function runAttack(
 ): Promise<ScanResult> {
   if (!config.attack)
     throw new Error("Attack mode requires an attack configuration.");
-  const attack = config.attack;
+  const attack = validateAttackConfig(config.attack);
   const parsed = targetUrl(target);
   if (!authorizedTarget(parsed, attack))
     throw new Error("Attack target is blocked by the exact-origin allowlist.");

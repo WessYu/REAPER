@@ -256,3 +256,91 @@ test("attack mode opens a circuit breaker on repeated server errors", async () =
     await once(instance, "close");
   }
 });
+
+test("attack mode enforces mutation gates at runtime and in cleanup", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.statusCode = 204;
+    res.end();
+  });
+  try {
+    await assert.rejects(
+      runAttack(origin, {
+        attack: {
+          allowedTargets: [origin],
+          authorization: {
+            acknowledged: true,
+            reference: "test-suite",
+            environment: "staging",
+          },
+          scenarios: [
+            {
+              id: "cleanup-mutation",
+              title: "Cleanup mutation must be explicitly enabled",
+              dimension: "session",
+              steps: [{ name: "read", path: "/" }],
+              cleanup: [
+                {
+                  name: "delete",
+                  path: "/resource",
+                  method: "DELETE",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      /allowMutations/,
+    );
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+
+test("attack mode blocks production mutation even for direct API callers", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.statusCode = 204;
+    res.end();
+  });
+  try {
+    await assert.rejects(
+      runAttack(origin, {
+        attack: {
+          allowedTargets: [origin],
+          authorization: {
+            acknowledged: true,
+            reference: "test-suite",
+            environment: "production",
+          },
+          allowMutations: true,
+          scenarios: [
+            {
+              id: "production-mutation",
+              title: "Production mutation must be blocked",
+              dimension: "business-logic",
+              steps: [
+                {
+                  name: "update",
+                  path: "/resource",
+                  method: "PATCH",
+                },
+              ],
+              cleanup: [
+                {
+                  name: "cleanup",
+                  path: "/resource",
+                  method: "DELETE",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      /production/,
+    );
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});
+

@@ -348,7 +348,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
           step,
           `${stepLabel}.cleanup[${stepIndex}]`,
           identities,
-          true,
+          attack.allowMutations === true,
         ),
       );
     }
