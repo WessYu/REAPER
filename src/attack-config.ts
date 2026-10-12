@@ -108,7 +108,14 @@ function validateStep(
       throw new Error(`${label}.expect must be an object.`);
     const expect = item.expect as Record<string, unknown>;
     for (const key of Object.keys(expect))
-      if (!["deniedStatuses", "allowedStatuses", "jsonEquals"].includes(key))
+      if (
+        ![
+          "deniedStatuses",
+          "allowedStatuses",
+          "confirmStatuses",
+          "jsonEquals",
+        ].includes(key)
+      )
         throw new Error(`Unknown ${label}.expect key: ${key}`);
     const denied = statusList(
       expect.deniedStatuses,
@@ -118,9 +125,17 @@ function validateStep(
       expect.allowedStatuses,
       `${label}.expect.allowedStatuses`,
     );
+    const confirmStatuses = statusList(
+      expect.confirmStatuses,
+      `${label}.expect.confirmStatuses`,
+    );
     if (denied && allowedStatuses)
       throw new Error(
         `${label}.expect cannot define both deniedStatuses and allowedStatuses.`,
+      );
+    if (confirmStatuses && !denied)
+      throw new Error(
+        `${label}.expect.confirmStatuses requires deniedStatuses.`,
       );
     if (!denied && !allowedStatuses)
       throw new Error(`${label}.expect requires a status policy.`);
