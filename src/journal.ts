@@ -274,9 +274,16 @@ function validateRecord(value: unknown): ExecutionJournalRecord {
     throw new Error("Execution journal version is unsupported.");
   if (typeof value.runId !== "string" || !RUN_ID.test(value.runId))
     throw new Error("Execution journal runId is invalid.");
-  for (const field of ["workspaceId", "projectId", "assessmentId"] as const)
+  for (const field of ["workspaceId", "projectId"] as const)
     if (typeof value[field] !== "string" || !ID.test(value[field]))
       throw new Error(`Execution journal ${field} is invalid.`);
+  if (
+    typeof value.assessmentId !== "string" ||
+    !value.assessmentId.trim() ||
+    value.assessmentId.length > 200 ||
+    /[\u0000-\u001f\u007f]/.test(value.assessmentId)
+  )
+    throw new Error("Execution journal assessmentId is invalid.");
   if (typeof value.targetOrigin !== "string") 
     throw new Error("Execution journal target is invalid.");
   const target = new URL(value.targetOrigin);
