@@ -1376,3 +1376,47 @@ test("attack JSON capture bounds chunked responses without content-length", asyn
     await once(instance, "close");
   }
 });
+
+test("attack request timeout remains active while reading a response body", async () => {
+  const { instance, origin } = await server((_req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.write('{"value":"');
+  });
+  try {
+    const started = Date.now();
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "slow-body-test",
+          environment: "staging",
+        },
+        timeoutMs: 100,
+        scenarios: [
+          {
+            id: "slow-body",
+            title: "Stop waiting on an incomplete body",
+            dimension: "session",
+            steps: [
+              {
+                name: "capture slow body",
+                path: "/slow",
+                capture: { ID: "id" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.ok(Date.now() - started < 2_000);
+    assert.equal(result.attack.requests, 1);
+    assert.ok(
+      result.diagnostics.some((item) => /slow-body/.test(item.message)),
+    );
+  } finally {
+    instance.closeAllConnections?.();
+    instance.close();
+    await once(instance, "close");
+  }
+});

@@ -404,18 +404,18 @@ async function pace(context: AttackContext, cleanup = false): Promise<boolean> {
 
 function consumeBudget(context: AttackContext, cleanup = false): void {
   if (cleanup) {
-    context.cleanupRequestCount++;
     const maxCleanup = context.config.maxCleanupRequests ?? 100;
-    if (context.cleanupRequestCount > maxCleanup)
+    if (context.cleanupRequestCount >= maxCleanup)
       throw new Error(
         `Attack cleanup request budget exceeded (${maxCleanup}).`,
       );
+    context.cleanupRequestCount++;
     return;
   }
-  context.requestCount++;
   const max = context.config.maxRequests ?? 100;
-  if (context.requestCount > max)
+  if (context.requestCount >= max)
     throw new Error(`Attack request budget exceeded (${max}).`);
+  context.requestCount++;
 }
 
 function assertAuthorizationActive(
@@ -432,9 +432,14 @@ async function limitedJson(response: Response): Promise<unknown> {
   const maxBytes = 65536;
   const contentLength = response.headers.get("content-length");
   const declared = contentLength === null ? undefined : Number(contentLength);
-  if (declared !== undefined && (!Number.isSafeInteger(declared) || declared < 0)) {
+  if (
+    declared !== undefined &&
+    (!Number.isSafeInteger(declared) || declared < 0)
+  ) {
     await response.body?.cancel();
-    throw new Error("Response has an invalid content length for attack capture.");
+    throw new Error(
+      "Response has an invalid content length for attack capture.",
+    );
   }
   if (declared !== undefined && declared > maxBytes) {
     await response.body?.cancel();
@@ -558,6 +563,8 @@ async function requestStep(
     body = JSON.stringify(bodyValue(step.body, context.variables));
   }
 
+  assertAuthorizationActive(context, cleanup);
+
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
@@ -576,194 +583,199 @@ async function requestStep(
       body,
       signal,
     });
-  } finally {
+  } catch (error) {
     clearTimeout(timeout);
+    throw error;
   }
-  context.result.metrics.sinks++;
+  try {
+    context.result.metrics.sinks++;
 
-  if (step.captureCookies && Object.keys(step.captureCookies).length) {
-    for (const [variableName, cookieName] of Object.entries(
-      step.captureCookies,
-    )) {
-      const value = responseCookie(response, cookieName);
-      if (!value)
-        throw new Error(
-          `Attack cookie capture ${variableName} failed for cookie ${cookieName}.`,
-        );
-      context.variables.set(variableName, value);
-    }
-  }
-
-  if (response.status >= 500) context.consecutiveServerErrors++;
-  else context.consecutiveServerErrors = 0;
-  const serverErrorLimit = context.config.maxConsecutiveServerErrors ?? 3;
-  if (context.consecutiveServerErrors >= serverErrorLimit) {
-    await response.body?.cancel();
-    throw new Error(
-      `Circuit breaker opened after ${serverErrorLimit} consecutive server errors.`,
-    );
-  }
-
-  const routeId = `route:attack:${method} ${step.path}`;
-  graphNode(context.result, routeId, "route", `${method} ${step.path}`);
-  if (step.actor) {
-    const principalId = `principal:attack:${step.actor}`;
-    graphNode(context.result, principalId, "principal", step.actor);
-    graphEdge(context.result, principalId, routeId, "acts-as");
-  }
-  if (step.resource) {
-    const resource = interpolate(step.resource, context.variables);
-    const resourceId = `resource:attack:${resource}`;
-    graphNode(context.result, resourceId, "resource", resource);
-    graphEdge(context.result, routeId, resourceId, "targets");
-  }
-
-  const proof = step.expect?.jsonEquals;
-  let parsed: unknown;
-  if (
-    (step.capture && Object.keys(step.capture).length) ||
-    (proof && Object.keys(proof).length)
-  ) {
-    try {
-      parsed = await limitedJson(response);
-    } catch (error) {
-      if (proof && Object.keys(proof).length) {
-        context.result.diagnostics.push({
-          message: `Attack scenario ${scenario.id} step "${step.name}" could not validate JSON response proof: ${error instanceof Error ? error.message : "unknown error"}`,
-        });
-      } else {
-        throw error;
+    if (step.captureCookies && Object.keys(step.captureCookies).length) {
+      for (const [variableName, cookieName] of Object.entries(
+        step.captureCookies,
+      )) {
+        const value = responseCookie(response, cookieName);
+        if (!value)
+          throw new Error(
+            `Attack cookie capture ${variableName} failed for cookie ${cookieName}.`,
+          );
+        context.variables.set(variableName, value);
       }
     }
-  }
 
-  if (step.capture && Object.keys(step.capture).length) {
-    if (parsed === undefined)
-      throw new Error("Attack capture expected a JSON response.");
-    for (const [name, capturePath] of Object.entries(step.capture)) {
-      const value = jsonPath(parsed, capturePath);
-      if (!["string", "number", "boolean"].includes(typeof value))
-        throw new Error(
-          `Attack capture ${name} failed at JSON path ${capturePath}.`,
-        );
-      context.variables.set(name, String(value));
+    if (response.status >= 500) context.consecutiveServerErrors++;
+    else context.consecutiveServerErrors = 0;
+    const serverErrorLimit = context.config.maxConsecutiveServerErrors ?? 3;
+    if (context.consecutiveServerErrors >= serverErrorLimit) {
+      await response.body?.cancel();
+      throw new Error(
+        `Circuit breaker opened after ${serverErrorLimit} consecutive server errors.`,
+      );
     }
-  }
 
-  const proofPaths = proof ? Object.keys(proof) : [];
-  const proofMatched =
-    proofPaths.length === 0 ||
-    (parsed !== undefined &&
-      proofPaths.every((proofPath) => {
-        const expected = proof![proofPath];
-        const resolvedExpected =
-          typeof expected === "string"
-            ? interpolate(expected, context.variables)
-            : expected;
-        return Object.is(jsonPath(parsed, proofPath), resolvedExpected);
-      }));
+    const routeId = `route:attack:${method} ${step.path}`;
+    graphNode(context.result, routeId, "route", `${method} ${step.path}`);
+    if (step.actor) {
+      const principalId = `principal:attack:${step.actor}`;
+      graphNode(context.result, principalId, "principal", step.actor);
+      graphEdge(context.result, principalId, routeId, "acts-as");
+    }
+    if (step.resource) {
+      const resource = interpolate(step.resource, context.variables);
+      const resourceId = `resource:attack:${resource}`;
+      graphNode(context.result, resourceId, "resource", resource);
+      graphEdge(context.result, routeId, resourceId, "targets");
+    }
 
-  let outcome: "passed" | "confirmed" | "inconclusive" | "cleanup" = cleanup
-    ? "cleanup"
-    : "passed";
-  const denied = step.expect?.deniedStatuses;
-  const allowed = step.expect?.allowedStatuses;
-  const confirmStatuses =
-    step.expect?.confirmStatuses ??
-    Array.from({ length: 100 }, (_, i) => 200 + i);
-  if (denied && response.status >= 500) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}; server errors cannot confirm an authorization bypass.`,
-    });
-  } else if (
-    denied &&
-    !denied.includes(response.status) &&
-    !confirmStatuses.includes(response.status)
-  ) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}, which is outside both the denial policy and the confirmation-status policy; the result is inconclusive.`,
-    });
-  } else if (
-    denied &&
-    !denied.includes(response.status) &&
-    proofPaths.length > 0 &&
-    !proofMatched
-  ) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" violated the denial status policy but its configured JSON response proof did not match; the bypass remains unconfirmed.`,
-    });
-  } else if (denied && !denied.includes(response.status)) {
-    const resource = step.resource
-      ? interpolate(step.resource, context.variables)
-      : undefined;
-    const created = finding(
-      {
-        ruleId: "REAPER-ATTACK-001",
-        title: "Configured authorization boundary was bypassed",
-        description:
-          "An authorized adversarial scenario reached a resource with an HTTP status outside the configured denial policy.",
-        severity: severity(scenario),
-        confidence: "CONFIRMED",
-        category: "Offensive Validation",
-        file: `runtime:${scenario.id}`,
-        line: 1,
-        column: 1,
-        route: `${method} ${step.path}`,
-        resource,
-        evidence: [
-          `Scenario: ${scenario.title}`,
-          `Authorization reference: ${context.config.authorization.reference}`,
-          `Dimension: ${scenario.dimension}`,
-          `Actor: ${step.actor ?? "anonymous"}`,
-          `Expected denial statuses: ${denied.join(", ")}`,
-          `Confirmation statuses: ${confirmStatuses.join(", ")}`,
-          `Observed HTTP status: ${response.status}`,
-          ...(resource ? [`Known test resource: ${resource}`] : []),
-          ...(proofPaths.length
-            ? [`Response proof matched JSON paths: ${proofPaths.join(", ")}`]
-            : []),
-        ],
-        dataFlow: [],
-        recommendation:
-          "Bind resource access to the authenticated principal/tenant at the application or database policy layer, then keep this scenario as a regression test.",
-      },
-      `${scenario.id}:${step.name}:${step.actor ?? "anonymous"}:${resource ?? ""}`,
-    );
-    context.result.findings.push(created);
-    context.result.attack?.confirmed.push({
+    const proof = step.expect?.jsonEquals;
+    let parsed: unknown;
+    if (
+      (step.capture && Object.keys(step.capture).length) ||
+      (proof && Object.keys(proof).length)
+    ) {
+      try {
+        parsed = await limitedJson(response);
+      } catch (error) {
+        if (proof && Object.keys(proof).length) {
+          context.result.diagnostics.push({
+            message: `Attack scenario ${scenario.id} step "${step.name}" could not validate JSON response proof: ${error instanceof Error ? error.message : "unknown error"}`,
+          });
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    if (step.capture && Object.keys(step.capture).length) {
+      if (parsed === undefined)
+        throw new Error("Attack capture expected a JSON response.");
+      for (const [name, capturePath] of Object.entries(step.capture)) {
+        const value = jsonPath(parsed, capturePath);
+        if (!["string", "number", "boolean"].includes(typeof value))
+          throw new Error(
+            `Attack capture ${name} failed at JSON path ${capturePath}.`,
+          );
+        context.variables.set(name, String(value));
+      }
+    }
+
+    const proofPaths = proof ? Object.keys(proof) : [];
+    const proofMatched =
+      proofPaths.length === 0 ||
+      (parsed !== undefined &&
+        proofPaths.every((proofPath) => {
+          const expected = proof![proofPath];
+          const resolvedExpected =
+            typeof expected === "string"
+              ? interpolate(expected, context.variables)
+              : expected;
+          return Object.is(jsonPath(parsed, proofPath), resolvedExpected);
+        }));
+
+    let outcome: "passed" | "confirmed" | "inconclusive" | "cleanup" = cleanup
+      ? "cleanup"
+      : "passed";
+    const denied = step.expect?.deniedStatuses;
+    const allowed = step.expect?.allowedStatuses;
+    const confirmStatuses =
+      step.expect?.confirmStatuses ??
+      Array.from({ length: 100 }, (_, i) => 200 + i);
+    if (denied && response.status >= 500) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}; server errors cannot confirm an authorization bypass.`,
+      });
+    } else if (
+      denied &&
+      !denied.includes(response.status) &&
+      !confirmStatuses.includes(response.status)
+    ) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}, which is outside both the denial policy and the confirmation-status policy; the result is inconclusive.`,
+      });
+    } else if (
+      denied &&
+      !denied.includes(response.status) &&
+      proofPaths.length > 0 &&
+      !proofMatched
+    ) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" violated the denial status policy but its configured JSON response proof did not match; the bypass remains unconfirmed.`,
+      });
+    } else if (denied && !denied.includes(response.status)) {
+      const resource = step.resource
+        ? interpolate(step.resource, context.variables)
+        : undefined;
+      const created = finding(
+        {
+          ruleId: "REAPER-ATTACK-001",
+          title: "Configured authorization boundary was bypassed",
+          description:
+            "An authorized adversarial scenario reached a resource with an HTTP status outside the configured denial policy.",
+          severity: severity(scenario),
+          confidence: "CONFIRMED",
+          category: "Offensive Validation",
+          file: `runtime:${scenario.id}`,
+          line: 1,
+          column: 1,
+          route: `${method} ${step.path}`,
+          resource,
+          evidence: [
+            `Scenario: ${scenario.title}`,
+            `Authorization reference: ${context.config.authorization.reference}`,
+            `Dimension: ${scenario.dimension}`,
+            `Actor: ${step.actor ?? "anonymous"}`,
+            `Expected denial statuses: ${denied.join(", ")}`,
+            `Confirmation statuses: ${confirmStatuses.join(", ")}`,
+            `Observed HTTP status: ${response.status}`,
+            ...(resource ? [`Known test resource: ${resource}`] : []),
+            ...(proofPaths.length
+              ? [`Response proof matched JSON paths: ${proofPaths.join(", ")}`]
+              : []),
+          ],
+          dataFlow: [],
+          recommendation:
+            "Bind resource access to the authenticated principal/tenant at the application or database policy layer, then keep this scenario as a regression test.",
+        },
+        `${scenario.id}:${step.name}:${step.actor ?? "anonymous"}:${resource ?? ""}`,
+      );
+      context.result.findings.push(created);
+      context.result.attack?.confirmed.push({
+        scenarioId: scenario.id,
+        findingId: created.id,
+      });
+      const findingId = `finding:${created.id}`;
+      graphNode(context.result, findingId, "finding", created.title);
+      graphEdge(context.result, routeId, findingId, "confirms");
+      outcome = "confirmed";
+    } else if (allowed && !allowed.includes(response.status)) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" expected an allowed status (${allowed.join(", ")}) but received ${response.status}.`,
+      });
+    } else if (allowed && proofPaths.length > 0 && !proofMatched) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" matched its allowed status policy but its configured JSON response proof did not match.`,
+      });
+    }
+
+    context.result.attack?.audit.push({
       scenarioId: scenario.id,
-      findingId: created.id,
+      step: step.name,
+      actor: step.actor,
+      method,
+      path: step.path,
+      status: response.status,
+      durationMs: Math.round(performance.now() - started),
+      outcome,
     });
-    const findingId = `finding:${created.id}`;
-    graphNode(context.result, findingId, "finding", created.title);
-    graphEdge(context.result, routeId, findingId, "confirms");
-    outcome = "confirmed";
-  } else if (allowed && !allowed.includes(response.status)) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" expected an allowed status (${allowed.join(", ")}) but received ${response.status}.`,
-    });
-  } else if (allowed && proofPaths.length > 0 && !proofMatched) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" matched its allowed status policy but its configured JSON response proof did not match.`,
-    });
+  } finally {
+    clearTimeout(timeout);
+    if (!response.bodyUsed) await response.body?.cancel().catch(() => {});
   }
-
-  await response.body?.cancel();
-  context.result.attack?.audit.push({
-    scenarioId: scenario.id,
-    step: step.name,
-    actor: step.actor,
-    method,
-    path: step.path,
-    status: response.status,
-    durationMs: Math.round(performance.now() - started),
-    outcome,
-  });
 }
 
 async function runMatrix(
