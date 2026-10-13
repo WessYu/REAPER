@@ -48,6 +48,7 @@ test("platform API key auth and durable job leasing respect workspace isolation"
     await admin.query("DROP SCHEMA IF EXISTS reaper_control CASCADE");
     await admin.query(baseMigration);
     await admin.query(platformMigration);
+    await admin.query(hardeningMigration);
 
     await admin.query(
       "SELECT reaper_control.bootstrap_platform($1,$2,$3,$4,$5,$6,$7,$8,NULL)",
