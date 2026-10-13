@@ -45,6 +45,7 @@ interface AttackContext {
   scopeExpiresAt?: number;
   secrets: SecretProvider;
   secretReferences: Set<string>;
+  secretValues: Set<string>;
 }
 
 function targetUrl(value: string): URL {
@@ -322,7 +323,35 @@ async function requiredSecret(
     throw new Error(
       `Configured secret exceeds the 16 KiB limit for ${purpose}.`,
     );
+  context.secretValues.add(value);
   return value;
+}
+
+function redactKnownSecrets(value: unknown, secretValues: Set<string>): void {
+  const secrets = [...secretValues]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  const redact = (text: string): string => {
+    for (const secret of secrets) text = text.split(secret).join("[REDACTED]");
+    return text;
+  };
+  const visit = (entry: unknown): void => {
+    if (Array.isArray(entry)) {
+      for (let index = 0; index < entry.length; index++)
+        if (typeof entry[index] === "string")
+          entry[index] = redact(entry[index] as string);
+        else visit(entry[index]);
+      return;
+    }
+    if (!entry || typeof entry !== "object") return;
+    const record = entry as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (typeof record[key] === "string")
+        record[key] = redact(record[key] as string);
+      else visit(record[key]);
+    }
+  };
+  visit(value);
 }
 
 async function identityToken(
@@ -336,6 +365,7 @@ async function identityToken(
     const value = context.variables.get(identity.tokenVar);
     if (!value)
       throw new Error(`Missing captured variable ${identity.tokenVar}.`);
+    context.secretValues.add(value);
     return value;
   }
   return undefined;
@@ -363,6 +393,7 @@ async function applyIdentityHeaders(
         `Missing captured variable ${identity.cookie.valueVar} for identity cookie.`,
       );
     if (value) headers.set("cookie", `${identity.cookie.name}=${value}`);
+    if (value && identity.cookie.valueVar) context.secretValues.add(value);
   }
 
   for (const [header, envName] of Object.entries(identity.headerEnvs ?? {})) {
@@ -377,6 +408,7 @@ async function applyIdentityHeaders(
       throw new Error(
         `Missing captured variable ${variableName} for header ${header}.`,
       );
+    context.secretValues.add(value);
     headers.set(header, value);
   }
 }
@@ -628,6 +660,7 @@ async function requestStep(
             `Attack cookie capture ${variableName} failed for cookie ${cookieName}.`,
           );
         context.variables.set(variableName, value);
+        context.secretValues.add(value);
       }
     }
 
@@ -1004,6 +1037,7 @@ export async function runAttack(
     scopeExpiresAt: scopeExpiry,
     secrets: options.secretProvider ?? new EnvironmentSecretProvider(),
     secretReferences: new Set<string>(),
+    secretValues: new Set<string>(),
   };
 
   try {
@@ -1086,5 +1120,6 @@ export async function runAttack(
   result.attack.requests = context.requestCount + context.cleanupRequestCount;
   result.attack.cleanupRequests = context.cleanupRequestCount;
   result.attack.completedAt = new Date().toISOString();
+  redactKnownSecrets(result, context.secretValues);
   return result;
 }

@@ -179,3 +179,95 @@ test("oversized secrets are rejected and their provider lease is revoked", async
     await once(server, "close");
   }
 });
+
+test("captured session credentials are redacted from findings and graph output", async () => {
+  const capturedSession = "SUPER_SECRET_CAPTURED_SESSION_726401";
+  const server = http.createServer((req, res) => {
+    if (req.url === "/login") {
+      res.setHeader(
+        "set-cookie",
+        `session=${capturedSession}; HttpOnly; Secure`,
+      );
+      res.end("ok");
+      return;
+    }
+    const authenticated = req.headers.cookie === `session=${capturedSession}`;
+    res.statusCode = authenticated ? 200 : 401;
+    res.end("ok");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const target = `http://127.0.0.1:${address.port}`;
+  try {
+    const result = await runAttack(target, {
+      attack: {
+        allowedTargets: [target],
+        authorization: {
+          acknowledged: true,
+          reference: "captured-session-redaction-test",
+          environment: "staging",
+        },
+        identities: {
+          testUser: { cookie: { name: "session", valueVar: "SESSION" } },
+        },
+        scenarios: [
+          {
+            id: "captured-session-redaction",
+            title: "Redact captured session credential",
+            dimension: "ownership",
+            steps: [
+              {
+                name: "capture login session",
+                path: "/login",
+                captureCookies: { SESSION: "session" },
+              },
+              {
+                name: "access known foreign resource",
+                path: "/private",
+                actor: "testUser",
+                resource: "{{SESSION}}",
+                expect: { deniedStatuses: [403], confirmStatuses: [200] },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const artifacts = {
+      result: JSON.stringify(result),
+      json: report(result, "json"),
+      sarif: report(result, "sarif"),
+      audit: JSON.stringify(result.attack.audit),
+      graph: JSON.stringify(result.graph),
+    };
+    assert.equal(result.findings.length, 1);
+    const leakedArtifacts = Object.entries(artifacts)
+      .filter(([, content]) => content.includes(capturedSession))
+      .map(([name]) => name);
+    const leakedFields = [];
+    const findLeaks = (value, path = "result") => {
+      if (typeof value === "string" && value.includes(capturedSession)) {
+        leakedFields.push(path);
+      } else if (Array.isArray(value)) {
+        value.forEach((entry, index) => findLeaks(entry, `${path}[${index}]`));
+      } else if (value && typeof value === "object") {
+        for (const [key, entry] of Object.entries(value))
+          findLeaks(entry, `${path}.${key}`);
+      }
+    };
+    findLeaks(result);
+    assert.deepEqual(leakedFields, []);
+    assert.deepEqual(leakedArtifacts, []);
+    assert.ok(
+      Object.values(artifacts).some((content) =>
+        content.includes("[REDACTED]"),
+      ),
+    );
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await once(server, "close");
+  }
+});
