@@ -142,6 +142,17 @@ export class PlatformRepository {
     });
   }
 
+  async listAssessments(context: RequestContext): Promise<unknown[]> {
+    return withWorkspaceContext(this.pool, context, async (client) => {
+      const result = await client.query(
+        `SELECT id,project_id,reference,created_at
+         FROM reaper_control.assessments
+         ORDER BY created_at DESC LIMIT 500`,
+      );
+      return result.rows;
+    });
+  }
+
   async createAssessment(
     context: RequestContext,
     input: CreateAssessmentInput,
@@ -200,6 +211,18 @@ export class PlatformRepository {
         [jobId, context.workspaceId, runId, JSON.stringify(input)],
       );
       return { ...run.rows[0], jobId };
+    });
+  }
+
+  async listRuns(context: RequestContext): Promise<unknown[]> {
+    return withWorkspaceContext(this.pool, context, async (client) => {
+      const result = await client.query(
+        `SELECT id,project_id,assessment_id,status,target_origin,environment,
+                created_at,updated_at,error
+         FROM reaper_control.runs
+         ORDER BY created_at DESC LIMIT 500`,
+      );
+      return result.rows;
     });
   }
 
