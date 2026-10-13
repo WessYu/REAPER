@@ -233,7 +233,8 @@ function validateCleanup(value: unknown): JournalCleanupPlan {
 function withoutIntegrity(
   value: ExecutionJournalRecord,
 ): Omit<ExecutionJournalRecord, "integrity"> {
-  const { integrity: _integrity, ...rest } = value;
+  const { integrity, ...rest } = value;
+  void integrity;
   return rest;
 }
 
