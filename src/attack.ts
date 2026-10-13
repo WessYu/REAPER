@@ -16,7 +16,7 @@ import {
   verifyAuthorizationScope,
   type SignedAuthorizationScope,
 } from "./scope.js";
-import type { KeyLike } from "node:crypto";
+import type { TrustedKeySource } from "./trust.js";
 import { ENGINE_VERSION } from "./model.js";
 import {
   journalError,
@@ -1193,8 +1193,12 @@ export async function runAttack(
     workspaceId?: string;
     projectId?: string;
     scopeManifest?: SignedAuthorizationScope;
-    trustedScopeKeys?: Record<string, KeyLike | string | Buffer>;
+    trustedScopeKeys?: TrustedKeySource;
     secretProvider?: SecretProvider;
+    strictCommercial?: boolean;
+    scopeReplayStore?: ScopeReplayStore;
+    journalStore?: ExecutionJournalStore;
+    auditStore?: AuditStore;
   } = {},
 ): Promise<ScanResult> {
   if (!config.attack)
