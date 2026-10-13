@@ -1328,3 +1328,51 @@ test("authorization expiry stops later requests in a long-running scenario", asy
     await once(instance, "close");
   }
 });
+
+test("attack JSON capture bounds chunked responses without content-length", async () => {
+  let clientClosed = false;
+  const { instance, origin } = await server((_req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.write('{"value":"');
+    res.write("x".repeat(70_000));
+    res.end('"}');
+    res.on("close", () => {
+      clientClosed = true;
+    });
+  });
+  try {
+    const result = await runAttack(origin, {
+      attack: {
+        allowedTargets: [origin],
+        authorization: {
+          acknowledged: true,
+          reference: "bounded-response-test",
+          environment: "staging",
+        },
+        scenarios: [
+          {
+            id: "large-response",
+            title: "Do not buffer unbounded response bodies",
+            dimension: "session",
+            steps: [
+              {
+                name: "capture oversized body",
+                path: "/large",
+                capture: { CAPTURED_VALUE: "value" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.match(
+      result.diagnostics[0]?.message ?? "",
+      /too large for attack capture/,
+    );
+    assert.ok(!JSON.stringify(result).includes("x".repeat(100)));
+    assert.equal(clientClosed, true);
+  } finally {
+    instance.close();
+    await once(instance, "close");
+  }
+});

@@ -430,12 +430,43 @@ function assertAuthorizationActive(
 
 async function limitedJson(response: Response): Promise<unknown> {
   const maxBytes = 65536;
-  const declared = Number(response.headers.get("content-length") ?? "0");
-  if (declared > maxBytes)
+  const contentLength = response.headers.get("content-length");
+  const declared = contentLength === null ? undefined : Number(contentLength);
+  if (declared !== undefined && (!Number.isSafeInteger(declared) || declared < 0)) {
+    await response.body?.cancel();
+    throw new Error("Response has an invalid content length for attack capture.");
+  }
+  if (declared !== undefined && declared > maxBytes) {
+    await response.body?.cancel();
     throw new Error("Response is too large for attack capture.");
-  const text = await response.text();
-  if (Buffer.byteLength(text, "utf8") > maxBytes)
-    throw new Error("Response is too large for attack capture.");
+  }
+  if (!response.body) return undefined;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error("Response is too large for attack capture.");
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   if (!text.trim()) return undefined;
   try {
     return JSON.parse(text) as unknown;
@@ -594,7 +625,7 @@ async function requestStep(
     (proof && Object.keys(proof).length)
   ) {
     try {
-      parsed = await limitedJson(response.clone());
+      parsed = await limitedJson(response);
     } catch (error) {
       if (proof && Object.keys(proof).length) {
         context.result.diagnostics.push({
