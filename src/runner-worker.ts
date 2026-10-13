@@ -75,20 +75,24 @@ process.on("message", (message: unknown) => {
           ? new FileAuditStore(path.join(stateDirectory, "audit"))
           : undefined;
       activeController = new AbortController();
-      const result = await runAttack(job.target, job.config, {
-        signal: activeController.signal,
-        runId: job.runId,
-        rulePackVersion: job.rulePackVersion,
-        workspaceId: job.workspaceId,
-        projectId: job.projectId,
-        scopeManifest: job.scopeManifest,
-        trustedScopeKeys: job.trustedScopeKeys,
-        strictCommercial,
-        journalStore,
-        scopeReplayStore,
-        auditStore,
-      });
-      await pool?.end();
+      let result;
+      try {
+        result = await runAttack(job.target, job.config, {
+          signal: activeController.signal,
+          runId: job.runId,
+          rulePackVersion: job.rulePackVersion,
+          workspaceId: job.workspaceId,
+          projectId: job.projectId,
+          scopeManifest: job.scopeManifest,
+          trustedScopeKeys: job.trustedScopeKeys,
+          strictCommercial,
+          journalStore,
+          scopeReplayStore,
+          auditStore,
+        });
+      } finally {
+        await pool?.end().catch(() => {});
+      }
       const json = JSON.stringify(result);
       if (typeof json !== "string")
         throw new Error("result serialization failed");
