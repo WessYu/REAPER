@@ -5,30 +5,6 @@ on:
 permissions:
   contents: read
 jobs:
-  format-free-runner-artifact:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/free-staging-runner'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Format free runner sources
-        run: |
-          npx prettier --write platform/src/free-runner.ts platform/test/github-oidc.test.mjs supabase/functions/reaper-platform/free-runner.ts supabase/functions/reaper-platform/github-oidc.mjs test/integration/free-runner.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: formatted-free-runner
-          path: |
-            platform/src/free-runner.ts
-            platform/test/github-oidc.test.mjs
-            supabase/functions/reaper-platform/free-runner.ts
-            supabase/functions/reaper-platform/github-oidc.mjs
-            test/integration/free-runner.mjs
-          if-no-files-found: error
-
   quality:
     runs-on: ubuntu-latest
     strategy:
