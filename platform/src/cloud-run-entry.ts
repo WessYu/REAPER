@@ -44,30 +44,17 @@ function required(name: string): string {
   return value;
 }
 
-function decodeEnvelope(): ExecutionEnvelope & Record<string, unknown> {
-  const encoded = required("REAPER_EXECUTION_ENVELOPE_B64");
-  if (
-    !/^[A-Za-z0-9_-]+$/.test(encoded) ||
-    Buffer.byteLength(encoded, "utf8") > 900_000
-  )
-    throw new Error("Cloud Run execution envelope is invalid.");
-  const raw = Buffer.from(encoded, "base64url").toString("utf8");
-  const value = JSON.parse(raw) as ExecutionEnvelope & Record<string, unknown>;
-  if (
-    value.version !== 1 ||
-    typeof value.runId !== "string" ||
-    typeof value.workspaceId !== "string" ||
-    !value.platform ||
-    typeof value.platform.jobId !== "string" ||
-    typeof value.platform.workerId !== "string"
-  )
-    throw new Error("Cloud Run execution envelope metadata is invalid.");
-  return value;
-}
-
 async function main(): Promise<void> {
   const databaseUrl = required("REAPER_PLATFORM_DATABASE_URL");
-  const envelope = decodeEnvelope();
+  const jobId = required("REAPER_EXECUTION_JOB_ID");
+  const workerId = required("REAPER_EXECUTION_WORKER_ID");
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      jobId,
+    ) ||
+    !/^[A-Za-z0-9._:-]{1,200}$/.test(workerId)
+  )
+    throw new Error("Cloud Run execution identity is invalid.");
   const rootDist = new URL("../../dist/", import.meta.url);
   const engine = (await import(new URL("index.js", rootDist).href)) as {
     runAttackJob: (
@@ -85,11 +72,32 @@ async function main(): Promise<void> {
     max: 1,
     application_name: "reaper-cloud-runner",
   });
+  const loaded = await pool.query<{
+    workspace_id: string;
+    run_id: string;
+    envelope: ExecutionEnvelope & Record<string, unknown>;
+  }>(
+    "SELECT * FROM reaper_control.load_platform_execution_envelope($1,$2)",
+    [jobId, workerId],
+  );
+  const row = loaded.rows[0];
+  if (!row)
+    throw new Error("Cloud Run execution envelope is unavailable or expired.");
+  const envelope = row.envelope;
+  if (
+    envelope.version !== 1 ||
+    envelope.runId !== row.run_id ||
+    envelope.workspaceId !== row.workspace_id ||
+    envelope.platform?.jobId !== jobId ||
+    envelope.platform?.workerId !== workerId
+  )
+    throw new Error("Cloud Run execution envelope metadata is inconsistent.");
+
   let heartbeatFailure: Error | undefined;
   const renew = async (): Promise<void> => {
     const result = await pool.query<{ renewed: boolean }>(
       "SELECT reaper_control.renew_platform_job_lease($1,$2,900) AS renewed",
-      [envelope.platform.jobId, envelope.platform.workerId],
+      [jobId, workerId],
     );
     if (result.rows[0]?.renewed !== true)
       throw new Error("Cloud Run job lease could not be renewed.");
@@ -120,34 +128,42 @@ async function main(): Promise<void> {
       const result = await pool.query<{ completed: boolean }>(
         "SELECT reaper_control.complete_platform_job($1,$2,$3::jsonb) AS completed",
         [
-          envelope.platform.jobId,
-          envelope.platform.workerId,
+          jobId,
+          workerId,
           JSON.stringify(outcome.result ?? outcome),
         ],
       );
       if (result.rows[0]?.completed !== true)
         throw new Error("Cloud Run completion lost its durable job lease.");
+      await pool.query(
+        "SELECT reaper_control.delete_platform_execution_envelope($1,$2)",
+        [jobId, workerId],
+      );
       return;
     }
 
     const failed = await pool.query<{ failed: boolean }>(
       "SELECT reaper_control.fail_platform_job($1,$2,$3,0) AS failed",
       [
-        envelope.platform.jobId,
-        envelope.platform.workerId,
+        jobId,
+        workerId,
         outcome.reason ?? outcome.status,
       ],
     );
     if (failed.rows[0]?.failed !== true)
       throw new Error("Cloud Run failure could not be persisted.");
+    await pool.query(
+      "SELECT reaper_control.delete_platform_execution_envelope($1,$2)",
+      [jobId, workerId],
+    );
     process.exitCode = 2;
   } catch (error) {
     await pool
       .query(
         "SELECT reaper_control.fail_platform_job($1,$2,$3,0) AS failed",
         [
-          envelope.platform.jobId,
-          envelope.platform.workerId,
+          jobId,
+          workerId,
           error instanceof Error ? error.message : "cloud runner failed",
         ],
       )
