@@ -173,6 +173,9 @@ function secretReferences(config: Config): Set<string> {
 function childEnvironment(
   job: AttackJob,
   stateDirectory: string | undefined,
+  durableState:
+    | { databaseUrl: string; workspaceId: string }
+    | undefined,
   isolationMode: RunnerIsolationMode,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -180,6 +183,10 @@ function childEnvironment(
     if (process.env[name]) env[name] = process.env[name];
   if (stateDirectory)
     env.REAPER_RUNNER_STATE_DIR = path.resolve(stateDirectory);
+  if (durableState) {
+    env.REAPER_RUNNER_DATABASE_URL = durableState.databaseUrl;
+    env.REAPER_RUNNER_WORKSPACE_ID = durableState.workspaceId;
+  }
   env.REAPER_RUNNER_MODE = isolationMode;
   for (const ref of secretReferences(job.config))
     if (process.env[ref] !== undefined) {
@@ -197,6 +204,10 @@ export async function runAttackJob(
     isolationMode?: RunnerIsolationMode;
     isolationProvider?: RunnerIsolationProvider;
     stateDirectory?: string;
+    durableState?: {
+      databaseUrl: string;
+      workspaceId: string;
+    };
   } = {},
 ): Promise<AttackJobOutcome> {
   const isolationMode = options.isolationMode ?? "standard";
@@ -206,10 +217,20 @@ export async function runAttackJob(
   const stateDirectory = options.stateDirectory
     ? await ensureSecureDirectory(options.stateDirectory)
     : undefined;
+  if (stateDirectory && options.durableState)
+    throw new Error("Runner state backend must be filesystem or PostgreSQL, not both.");
+  if (
+    options.durableState &&
+    (!options.durableState.databaseUrl ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        options.durableState.workspaceId,
+      ))
+  )
+    throw new Error("PostgreSQL runner state configuration is invalid.");
   if (isolationMode === "strict") {
-    if (!stateDirectory)
+    if (!stateDirectory && !options.durableState)
       throw new Error(
-        "Strict runner mode requires a persistent state directory.",
+        "Strict runner mode requires a durable state backend.",
       );
     if (!job.workspaceId || !job.projectId)
       throw new Error("Strict runner mode requires workspaceId and projectId.");
@@ -233,7 +254,12 @@ export async function runAttackJob(
     child = isolationProvider.spawn({
       modulePath: JOB_FILE,
       cwd: workingDirectory,
-      env: childEnvironment(snapshot, stateDirectory, isolationMode),
+      env: childEnvironment(
+        snapshot,
+        stateDirectory,
+        options.durableState,
+        isolationMode,
+      ),
       execArgv: [`--max-old-space-size=${snapshot.limits.memoryMb}`],
     });
   } catch {
