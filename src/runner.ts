@@ -173,9 +173,7 @@ function secretReferences(config: Config): Set<string> {
 function childEnvironment(
   job: AttackJob,
   stateDirectory: string | undefined,
-  durableState:
-    | { databaseUrl: string; workspaceId: string }
-    | undefined,
+  durableState: { databaseUrl: string; workspaceId: string } | undefined,
   isolationMode: RunnerIsolationMode,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -218,7 +216,9 @@ export async function runAttackJob(
     ? await ensureSecureDirectory(options.stateDirectory)
     : undefined;
   if (stateDirectory && options.durableState)
-    throw new Error("Runner state backend must be filesystem or PostgreSQL, not both.");
+    throw new Error(
+      "Runner state backend must be filesystem or PostgreSQL, not both.",
+    );
   if (
     options.durableState &&
     (!options.durableState.databaseUrl ||
@@ -229,9 +229,7 @@ export async function runAttackJob(
     throw new Error("PostgreSQL runner state configuration is invalid.");
   if (isolationMode === "strict") {
     if (!stateDirectory && !options.durableState)
-      throw new Error(
-        "Strict runner mode requires a durable state backend.",
-      );
+      throw new Error("Strict runner mode requires a durable state backend.");
     if (!job.workspaceId || !job.projectId)
       throw new Error("Strict runner mode requires workspaceId and projectId.");
     if (!job.scopeManifest || job.config.attack?.requireSignedScope !== true)
