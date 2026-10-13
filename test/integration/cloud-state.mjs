@@ -108,6 +108,38 @@ test("PostgreSQL strict-runner state survives independent store instances", asyn
     assert.equal(await replay.consume(nonce), true);
     assert.equal(await new PostgresScopeReplayStore(admin, ids.workspace).consume(nonce), false);
 
+    await admin.query(
+      "INSERT INTO reaper_control.jobs(id,workspace_id,run_id,status,attempt,lease_expires_at,worker_id,payload) VALUES ($1,$2,$3,'RUNNING',1,now()+interval '10 minutes','dispatcher-test','{}'::jsonb)",
+      [
+        "20000000-0000-4000-8000-000000000007",
+        ids.workspace,
+        ids.run,
+      ],
+    );
+    const prepared = await admin.query(
+      "SELECT reaper_control.prepare_platform_execution_envelope($1,$2,$3::jsonb,now()+interval '5 minutes') AS prepared",
+      [
+        "20000000-0000-4000-8000-000000000007",
+        "dispatcher-test",
+        JSON.stringify({
+          version: 1,
+          runId: ids.run,
+          workspaceId: ids.workspace,
+          platform: {
+            jobId: "20000000-0000-4000-8000-000000000007",
+            workerId: "dispatcher-test",
+          },
+        }),
+      ],
+    );
+    assert.equal(prepared.rows[0].prepared, true);
+    const loaded = await admin.query(
+      "SELECT * FROM reaper_control.load_platform_execution_envelope($1,$2)",
+      ["20000000-0000-4000-8000-000000000007", "dispatcher-test"],
+    );
+    assert.equal(loaded.rows[0].run_id, ids.run);
+    assert.equal(loaded.rows[0].envelope.workspaceId, ids.workspace);
+
     const audit = new PostgresAuditStore(admin, ids.workspace);
     await audit.append(ids.run, { type: "RUN_CREATED", data: { mode: "cloud-run" } });
     await audit.append(ids.run, { type: "RUN_STARTED" });
