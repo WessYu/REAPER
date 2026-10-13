@@ -11,7 +11,9 @@ import {
 
 const connectionString = process.env.REAPER_TEST_DATABASE_URL;
 if (!connectionString)
-  throw new Error("Set REAPER_TEST_DATABASE_URL to a disposable PostgreSQL database.");
+  throw new Error(
+    "Set REAPER_TEST_DATABASE_URL to a disposable PostgreSQL database.",
+  );
 
 const migrations = await Promise.all(
   [1, 2, 3, 4].map(async (number) => {
@@ -22,7 +24,9 @@ const migrations = await Promise.all(
       4: "004_cloud_run.sql",
     };
     return readFile(
-      fileURLToPath(new URL(`../../control-plane/${names[number]}`, import.meta.url)),
+      fileURLToPath(
+        new URL(`../../control-plane/${names[number]}`, import.meta.url),
+      ),
       "utf8",
     );
   }),
@@ -94,7 +98,10 @@ test("PostgreSQL strict-runner state survives independent store instances", asyn
     await journal.update(ids.run, (record) => {
       record.status = "CLEANING";
     });
-    const restartedJournal = new PostgresExecutionJournalStore(admin, ids.workspace);
+    const restartedJournal = new PostgresExecutionJournalStore(
+      admin,
+      ids.workspace,
+    );
     assert.equal((await restartedJournal.read(ids.run)).status, "CLEANING");
 
     const replay = new PostgresScopeReplayStore(admin, ids.workspace);
@@ -106,15 +113,14 @@ test("PostgreSQL strict-runner state survives independent store instances", asyn
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     };
     assert.equal(await replay.consume(nonce), true);
-    assert.equal(await new PostgresScopeReplayStore(admin, ids.workspace).consume(nonce), false);
+    assert.equal(
+      await new PostgresScopeReplayStore(admin, ids.workspace).consume(nonce),
+      false,
+    );
 
     await admin.query(
       "INSERT INTO reaper_control.jobs(id,workspace_id,run_id,status,attempt,lease_expires_at,worker_id,payload) VALUES ($1,$2,$3,'RUNNING',1,now()+interval '10 minutes','dispatcher-test','{}'::jsonb)",
-      [
-        "20000000-0000-4000-8000-000000000007",
-        ids.workspace,
-        ids.run,
-      ],
+      ["20000000-0000-4000-8000-000000000007", ids.workspace, ids.run],
     );
     const prepared = await admin.query(
       "SELECT reaper_control.prepare_platform_execution_envelope($1,$2,$3::jsonb,now()+interval '5 minutes') AS prepared",
@@ -141,9 +147,15 @@ test("PostgreSQL strict-runner state survives independent store instances", asyn
     assert.equal(loaded.rows[0].envelope.workspaceId, ids.workspace);
 
     const audit = new PostgresAuditStore(admin, ids.workspace);
-    await audit.append(ids.run, { type: "RUN_CREATED", data: { mode: "cloud-run" } });
+    await audit.append(ids.run, {
+      type: "RUN_CREATED",
+      data: { mode: "cloud-run" },
+    });
     await audit.append(ids.run, { type: "RUN_STARTED" });
-    assert.equal(await new PostgresAuditStore(admin, ids.workspace).verify(ids.run), true);
+    assert.equal(
+      await new PostgresAuditStore(admin, ids.workspace).verify(ids.run),
+      true,
+    );
 
     await admin.query(
       "UPDATE reaper_control.audit_heads SET event_hash=$1 WHERE workspace_id=$2 AND run_id=$3",
