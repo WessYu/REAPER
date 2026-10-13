@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  generateKeyPairSync,
-  sign as signData,
-} from "node:crypto";
+import { generateKeyPairSync, sign as signData } from "node:crypto";
 import { GcpKmsScopeSigner } from "../dist/gcp-kms-signer.js";
 import { CloudRunJobClient } from "../dist/cloud-run-job.js";
 import { verifyAuthorizationScope } from "../../dist/index.js";
@@ -114,11 +111,17 @@ test("Cloud Run client executes one task with bounded overrides", async () => {
   assert.match(result.operationName, /operations\/op-1$/);
   const body = JSON.parse(String(request.init.body));
   assert.equal(body.overrides.taskCount, 1);
-  assert.equal(body.overrides.containerOverrides[0].env[0].name, "REAPER_EXECUTION_JOB_ID");
+  assert.equal(
+    body.overrides.containerOverrides[0].env[0].name,
+    "REAPER_EXECUTION_JOB_ID",
+  );
   assert.equal(
     body.overrides.containerOverrides[0].env[0].value,
     "30000000-0000-4000-8000-000000000001",
   );
-  assert.equal(body.overrides.containerOverrides[0].env[1].name, "REAPER_EXECUTION_WORKER_ID");
+  assert.equal(
+    body.overrides.containerOverrides[0].env[1].name,
+    "REAPER_EXECUTION_WORKER_ID",
+  );
   assert.equal(body.overrides.timeout, "180s");
 });
