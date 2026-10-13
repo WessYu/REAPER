@@ -6,6 +6,27 @@ import { performance } from "node:perf_hooks";
 import { Readable } from "node:stream";
 import { finding } from "./findings.js";
 import { validateAttackConfig } from "./attack-config.js";
+import {
+  EnvironmentSecretProvider,
+  type SecretProvider,
+  type SecretRequestContext,
+} from "./secrets.js";
+import {
+  authorizationScopeDigest,
+  verifyAuthorizationScope,
+  type SignedAuthorizationScope,
+} from "./scope.js";
+import type { TrustedKeySource } from "./trust.js";
+import { ENGINE_VERSION } from "./model.js";
+import {
+  journalError,
+  type ExecutionJournalRecord,
+  type ExecutionJournalStore,
+  type JournalCleanupPlan,
+  type JournalIdentityRef,
+} from "./journal.js";
+import type { ScopeReplayStore } from "./replay.js";
+import type { AuditJson, AuditStore, AuditEventType } from "./audit.js";
 import type {
   AttackConfig,
   AttackIdentity,
@@ -30,6 +51,14 @@ interface AttackContext {
   consecutiveServerErrors: number;
   baselineAddresses: string[];
   signal?: AbortSignal;
+  scopeExpiresAt?: number;
+  secrets: SecretProvider;
+  secretReferences: Set<string>;
+  secretValues: Set<string>;
+  journal?: ExecutionJournalStore;
+  audit?: AuditStore;
+  plannedJournalScenarios: Set<string>;
+  executionFailed: boolean;
 }
 
 function targetUrl(value: string): URL {
@@ -257,107 +286,142 @@ function requestPath(value: string, variables: Map<string, string>): string {
 function bodyValue(
   value: VerifyJson,
   variables: Map<string, string>,
-): VerifyJson {
+  resolveSecret: (reference: string, purpose: string) => Promise<string>,
+): Promise<VerifyJson> {
   if (typeof value === "string") {
     if (value.startsWith("$env:")) {
       const name = value.slice(5);
-      const resolved = process.env[name];
-      if (resolved === undefined)
-        throw new Error(`Missing environment variable ${name}.`);
-      return resolved;
+      return resolveSecret(name, "request body");
     }
-    return interpolate(value, variables);
+    return Promise.resolve(interpolate(value, variables));
   }
   if (Array.isArray(value))
-    return value.map((entry) => bodyValue(entry, variables));
-  if (value && typeof value === "object")
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [
-        key,
-        bodyValue(entry, variables),
-      ]),
+    return Promise.all(
+      value.map((entry) => bodyValue(entry, variables, resolveSecret)),
     );
+  if (value && typeof value === "object")
+    return Promise.all(
+      Object.entries(value).map(async ([key, entry]) => [
+        key,
+        await bodyValue(entry, variables, resolveSecret),
+      ]),
+    ).then(
+      (entries) => Object.fromEntries(entries) as { [key: string]: VerifyJson },
+    );
+  return Promise.resolve(value);
+}
+
+async function requiredSecret(
+  context: AttackContext,
+  reference: string,
+  purpose: string,
+): Promise<string> {
+  const requestContext: SecretRequestContext = {
+    runId: context.result.attack?.runId ?? "unknown",
+    targetOrigin: context.target.origin,
+    purpose,
+  };
+  // A provider may allocate a lease before returning or throwing. Register the
+  // reference first so the run-level finally block always attempts revocation.
+  context.secretReferences.add(reference);
+  let value: string | undefined;
+  try {
+    value = await context.secrets.get(reference, requestContext);
+  } catch {
+    throw new Error(`Secret provider failed for ${purpose}.`);
+  }
+  if (typeof value !== "string" || value.length === 0)
+    throw new Error(`Missing configured secret reference for ${purpose}.`);
+  if (Buffer.byteLength(value, "utf8") > 16_384)
+    throw new Error(
+      `Configured secret exceeds the 16 KiB limit for ${purpose}.`,
+    );
+  context.secretValues.add(value);
   return value;
 }
 
-function identityToken(
+function redactKnownSecrets(value: unknown, secretValues: Set<string>): void {
+  const secrets = [...secretValues]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  const redact = (text: string): string => {
+    for (const secret of secrets) text = text.split(secret).join("[REDACTED]");
+    return text;
+  };
+  const visit = (entry: unknown): void => {
+    if (Array.isArray(entry)) {
+      for (let index = 0; index < entry.length; index++)
+        if (typeof entry[index] === "string")
+          entry[index] = redact(entry[index] as string);
+        else visit(entry[index]);
+      return;
+    }
+    if (!entry || typeof entry !== "object") return;
+    const record = entry as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (typeof record[key] === "string")
+        record[key] = redact(record[key] as string);
+      else visit(record[key]);
+    }
+  };
+  visit(value);
+}
+
+async function identityToken(
   identity: AttackIdentity | undefined,
-  variables: Map<string, string>,
-): string | undefined {
+  context: AttackContext,
+): Promise<string | undefined> {
   if (!identity) return undefined;
-  if (identity.tokenEnv) {
-    const value = process.env[identity.tokenEnv];
-    if (!value)
-      throw new Error(`Missing environment variable ${identity.tokenEnv}.`);
-    return value;
-  }
+  if (identity.tokenEnv)
+    return requiredSecret(context, identity.tokenEnv, "identity token");
   if (identity.tokenVar) {
-    const value = variables.get(identity.tokenVar);
+    const value = context.variables.get(identity.tokenVar);
     if (!value)
       throw new Error(`Missing captured variable ${identity.tokenVar}.`);
+    context.secretValues.add(value);
     return value;
   }
   return undefined;
 }
 
-function requiredSecret(
-  envName: string | undefined,
-  variableName: string | undefined,
-  variables: Map<string, string>,
-  label: string,
-): string | undefined {
-  if (envName) {
-    const value = process.env[envName];
-    if (!value)
-      throw new Error(`Missing environment variable ${envName} for ${label}.`);
-    return value;
-  }
-  if (variableName) {
-    const value = variables.get(variableName);
-    if (!value)
-      throw new Error(
-        `Missing captured variable ${variableName} for ${label}.`,
-      );
-    return value;
-  }
-  return undefined;
-}
-
-function applyIdentityHeaders(
+async function applyIdentityHeaders(
   headers: Headers,
   identity: AttackIdentity | undefined,
-  variables: Map<string, string>,
-): void {
+  context: AttackContext,
+): Promise<void> {
   if (!identity) return;
-  const token = identityToken(identity, variables);
+  const token = await identityToken(identity, context);
   if (token) headers.set("authorization", `Bearer ${token}`);
 
   if (identity.cookie) {
-    const value = requiredSecret(
-      identity.cookie.valueEnv,
-      identity.cookie.valueVar,
-      variables,
-      "identity cookie",
-    );
+    const value = identity.cookie.valueEnv
+      ? await requiredSecret(
+          context,
+          identity.cookie.valueEnv,
+          "identity cookie",
+        )
+      : context.variables.get(identity.cookie.valueVar!);
+    if (!value && identity.cookie.valueVar)
+      throw new Error(
+        `Missing captured variable ${identity.cookie.valueVar} for identity cookie.`,
+      );
     if (value) headers.set("cookie", `${identity.cookie.name}=${value}`);
+    if (value && identity.cookie.valueVar) context.secretValues.add(value);
   }
 
   for (const [header, envName] of Object.entries(identity.headerEnvs ?? {})) {
-    const value = process.env[envName];
-    if (!value)
-      throw new Error(
-        `Missing environment variable ${envName} for header ${header}.`,
-      );
+    const value = await requiredSecret(context, envName, `header ${header}`);
     headers.set(header, value);
   }
   for (const [header, variableName] of Object.entries(
     identity.headerVars ?? {},
   )) {
-    const value = variables.get(variableName);
+    const value = context.variables.get(variableName);
     if (!value)
       throw new Error(
         `Missing captured variable ${variableName} for header ${header}.`,
       );
+    context.secretValues.add(value);
     headers.set(header, value);
   }
 }
@@ -382,6 +446,237 @@ function responseCookie(
   return undefined;
 }
 
+async function persistentAudit(
+  context: AttackContext,
+  type: AuditEventType,
+  data: Record<string, AuditJson> = {},
+): Promise<void> {
+  if (!context.audit) return;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Persistent audit requires an attack run id.");
+  await context.audit.append(runId, { type, data });
+}
+
+function journalIdentity(
+  identity: AttackIdentity | undefined,
+): JournalIdentityRef | undefined {
+  if (!identity) return undefined;
+  if (
+    identity.tokenVar ||
+    identity.cookie?.valueVar ||
+    Object.keys(identity.headerVars ?? {}).length > 0
+  )
+    throw new Error(
+      "Crash-safe cleanup cannot depend on captured credential values; use environment-backed secret references.",
+    );
+  const result: JournalIdentityRef = {};
+  if (identity.tokenEnv) result.tokenEnv = identity.tokenEnv;
+  if (identity.cookie?.valueEnv)
+    result.cookie = {
+      name: identity.cookie.name,
+      valueEnv: identity.cookie.valueEnv,
+    };
+  if (Object.keys(identity.headerEnvs ?? {}).length)
+    result.headerEnvs = { ...identity.headerEnvs };
+  return Object.keys(result).length ? result : undefined;
+}
+
+function journalTemplate(
+  value: string,
+  context: AttackContext,
+  encode: boolean,
+): string {
+  return value.replace(
+    /\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g,
+    (_, name: string) => {
+      const replacement = context.variables.get(name);
+      if (replacement === undefined)
+        throw new Error(
+          `Crash-safe cleanup requires captured variable ${name} before the mutating request.`,
+        );
+      if (context.secretValues.has(replacement))
+        throw new Error(
+          `Crash-safe cleanup cannot persist secret captured variable ${name}.`,
+        );
+      return encode ? encodeURIComponent(replacement) : replacement;
+    },
+  );
+}
+
+function journalBody(value: VerifyJson, context: AttackContext): VerifyJson {
+  if (typeof value === "string") {
+    if (value.startsWith("$env:")) return value;
+    return journalTemplate(value, context, false);
+  }
+  if (Array.isArray(value))
+    return value.map((entry) => journalBody(entry, context));
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        journalBody(entry, context),
+      ]),
+    );
+  return value;
+}
+
+async function ensureJournalCleanupPlanned(
+  context: AttackContext,
+  scenario: AttackScenario,
+): Promise<void> {
+  if (!context.journal || context.plannedJournalScenarios.has(scenario.id))
+    return;
+  const cleanup = [...(scenario.cleanup ?? [])].reverse();
+  if (cleanup.length < 1)
+    throw new Error(
+      `Crash-safe mutation scenario ${scenario.id} requires cleanup steps.`,
+    );
+  const names = new Set<string>();
+  const now = new Date().toISOString();
+  const plans: JournalCleanupPlan[] = cleanup.map((step, index) => {
+    if (names.has(step.name))
+      throw new Error(
+        `Crash-safe cleanup step names must be unique in scenario ${scenario.id}.`,
+      );
+    names.add(step.name);
+    const method = step.method ?? "GET";
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(method))
+      throw new Error(
+        `Crash-safe cleanup step ${step.name} must use a mutating HTTP method.`,
+      );
+    const allowedStatuses = step.expect?.allowedStatuses;
+    if (
+      !allowedStatuses?.length ||
+      allowedStatuses.some((status) => status >= 500)
+    )
+      throw new Error(
+        `Crash-safe cleanup step ${step.name} requires explicit non-5xx allowedStatuses.`,
+      );
+    const identity = step.actor
+      ? journalIdentity(context.config.identities?.[step.actor])
+      : undefined;
+    return {
+      id: `cleanup-${index + 1}-${scenario.id}`,
+      scenarioId: scenario.id,
+      stepName: step.name,
+      method: method as "POST" | "PUT" | "PATCH" | "DELETE",
+      path: journalTemplate(step.path, context, true),
+      ...(step.actor ? { actor: step.actor } : {}),
+      ...(identity ? { identity } : {}),
+      ...(step.body !== undefined
+        ? { body: journalBody(step.body, context) }
+        : {}),
+      allowedStatuses: [...allowedStatuses],
+      attempts: 0,
+      status: "PENDING" as const,
+      plannedAt: now,
+      updatedAt: now,
+    };
+  });
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  await context.journal.update(runId, (record) => {
+    if (record.cleanups.some((plan) => plan.scenarioId === scenario.id)) return;
+    record.cleanups.push(...plans);
+  });
+  context.plannedJournalScenarios.add(scenario.id);
+  for (const plan of plans)
+    await persistentAudit(context, "CLEANUP_PLANNED", {
+      scenarioId: plan.scenarioId,
+      step: plan.stepName,
+      method: plan.method,
+      path: plan.path,
+    });
+}
+
+async function journalCleanupStarted(
+  context: AttackContext,
+  scenario: AttackScenario,
+  step: AttackStep,
+): Promise<JournalCleanupPlan | undefined> {
+  if (!context.journal) return undefined;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  let selected: JournalCleanupPlan | undefined;
+  await context.journal.update(runId, (record) => {
+    const plan = record.cleanups.find(
+      (candidate) =>
+        candidate.scenarioId === scenario.id &&
+        candidate.stepName === step.name &&
+        candidate.status !== "SUCCEEDED",
+    );
+    if (!plan)
+      throw new Error(
+        `No write-ahead cleanup plan exists for ${scenario.id}/${step.name}.`,
+      );
+    plan.status = "RUNNING";
+    plan.attempts++;
+    plan.updatedAt = new Date().toISOString();
+    delete plan.lastError;
+    record.status = "CLEANING";
+    selected = structuredClone(plan);
+  });
+  await persistentAudit(context, "CLEANUP_STARTED", {
+    scenarioId: scenario.id,
+    step: step.name,
+  });
+  return selected;
+}
+
+async function journalCleanupSucceeded(
+  context: AttackContext,
+  plan: JournalCleanupPlan,
+  status: number,
+): Promise<void> {
+  if (!context.journal) return;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  await context.journal.update(runId, (record) => {
+    const current = record.cleanups.find(
+      (candidate) => candidate.id === plan.id,
+    );
+    if (!current)
+      throw new Error("Execution journal cleanup plan disappeared.");
+    current.status = "SUCCEEDED";
+    current.updatedAt = new Date().toISOString();
+    delete current.lastError;
+  });
+  await persistentAudit(context, "CLEANUP_SUCCEEDED", {
+    scenarioId: plan.scenarioId,
+    step: plan.stepName,
+    status,
+  });
+}
+
+async function journalCleanupFailed(
+  context: AttackContext,
+  scenario: AttackScenario,
+  step: AttackStep,
+  error: unknown,
+): Promise<void> {
+  if (!context.journal) return;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  await context.journal.update(runId, (record) => {
+    const current = record.cleanups.find(
+      (candidate) =>
+        candidate.scenarioId === scenario.id &&
+        candidate.stepName === step.name &&
+        candidate.status !== "SUCCEEDED",
+    );
+    if (!current) return;
+    current.status = "FAILED";
+    current.lastError = journalError(error);
+    current.updatedAt = new Date().toISOString();
+    record.status = "CLEANUP_FAILED";
+  });
+  await persistentAudit(context, "CLEANUP_FAILED", {
+    scenarioId: scenario.id,
+    step: step.name,
+    error: journalError(error),
+  });
+}
+
 async function pace(context: AttackContext, cleanup = false): Promise<boolean> {
   let release!: () => void;
   const previous = context.pacing;
@@ -404,18 +699,18 @@ async function pace(context: AttackContext, cleanup = false): Promise<boolean> {
 
 function consumeBudget(context: AttackContext, cleanup = false): void {
   if (cleanup) {
-    context.cleanupRequestCount++;
     const maxCleanup = context.config.maxCleanupRequests ?? 100;
-    if (context.cleanupRequestCount > maxCleanup)
+    if (context.cleanupRequestCount >= maxCleanup)
       throw new Error(
         `Attack cleanup request budget exceeded (${maxCleanup}).`,
       );
+    context.cleanupRequestCount++;
     return;
   }
-  context.requestCount++;
   const max = context.config.maxRequests ?? 100;
-  if (context.requestCount > max)
+  if (context.requestCount >= max)
     throw new Error(`Attack request budget exceeded (${max}).`);
+  context.requestCount++;
 }
 
 function assertAuthorizationActive(
@@ -426,16 +721,57 @@ function assertAuthorizationActive(
   const expiresAt = context.config.authorization.expiresAt;
   if (expiresAt && Date.parse(expiresAt) <= Date.now())
     throw new Error("Attack authorization expired during the run.");
+  if (
+    context.scopeExpiresAt !== undefined &&
+    context.scopeExpiresAt <= Date.now()
+  )
+    throw new Error("Signed authorization scope expired during the run.");
 }
 
 async function limitedJson(response: Response): Promise<unknown> {
   const maxBytes = 65536;
-  const declared = Number(response.headers.get("content-length") ?? "0");
-  if (declared > maxBytes)
+  const contentLength = response.headers.get("content-length");
+  const declared = contentLength === null ? undefined : Number(contentLength);
+  if (
+    declared !== undefined &&
+    (!Number.isSafeInteger(declared) || declared < 0)
+  ) {
+    await response.body?.cancel();
+    throw new Error(
+      "Response has an invalid content length for attack capture.",
+    );
+  }
+  if (declared !== undefined && declared > maxBytes) {
+    await response.body?.cancel();
     throw new Error("Response is too large for attack capture.");
-  const text = await response.text();
-  if (Buffer.byteLength(text, "utf8") > maxBytes)
-    throw new Error("Response is too large for attack capture.");
+  }
+  if (!response.body) return undefined;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error("Response is too large for attack capture.");
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   if (!text.trim()) return undefined;
   try {
     return JSON.parse(text) as unknown;
@@ -491,7 +827,10 @@ async function requestStep(
   scenario: AttackScenario,
   step: AttackStep,
   cleanup: boolean,
-): Promise<void> {
+): Promise<{
+  status: number;
+  outcome: "passed" | "confirmed" | "inconclusive" | "cleanup";
+}> {
   if (!(await pace(context, cleanup))) throw new Error("Attack run cancelled.");
   assertAuthorizationActive(context, cleanup);
   consumeBudget(context, cleanup);
@@ -506,7 +845,11 @@ async function requestStep(
       );
     if (context.config.authorization.environment === "production")
       throw new Error("Mutating attack steps are blocked in production.");
+    if (!cleanup) await ensureJournalCleanupPlanned(context, scenario);
   }
+  const cleanupPlan = cleanup
+    ? await journalCleanupStarted(context, scenario, step)
+    : undefined;
   const path = requestPath(step.path, context.variables);
   const url = new URL(path, context.target);
   if (url.origin !== context.target.origin)
@@ -519,13 +862,19 @@ async function requestStep(
   const identity = step.actor
     ? context.config.identities?.[step.actor]
     : undefined;
-  applyIdentityHeaders(headers, identity, context.variables);
+  await applyIdentityHeaders(headers, identity, context);
 
   let body: string | undefined;
   if (step.body !== undefined) {
     headers.set("content-type", "application/json");
-    body = JSON.stringify(bodyValue(step.body, context.variables));
+    body = JSON.stringify(
+      await bodyValue(step.body, context.variables, (reference, purpose) =>
+        requiredSecret(context, reference, purpose),
+      ),
+    );
   }
+
+  assertAuthorizationActive(context, cleanup);
 
   const controller = new AbortController();
   const timeout = setTimeout(
@@ -545,194 +894,333 @@ async function requestStep(
       body,
       signal,
     });
-  } finally {
+  } catch (error) {
     clearTimeout(timeout);
+    throw error;
   }
-  context.result.metrics.sinks++;
+  try {
+    context.result.metrics.sinks++;
+    await persistentAudit(context, "REQUEST_EXECUTED", {
+      scenarioId: scenario.id,
+      step: step.name,
+      actor: step.actor ?? "anonymous",
+      method,
+      path: step.path,
+      status: response.status,
+      cleanup,
+    });
 
-  if (step.captureCookies && Object.keys(step.captureCookies).length) {
-    for (const [variableName, cookieName] of Object.entries(
-      step.captureCookies,
-    )) {
-      const value = responseCookie(response, cookieName);
-      if (!value)
-        throw new Error(
-          `Attack cookie capture ${variableName} failed for cookie ${cookieName}.`,
-        );
-      context.variables.set(variableName, value);
-    }
-  }
-
-  if (response.status >= 500) context.consecutiveServerErrors++;
-  else context.consecutiveServerErrors = 0;
-  const serverErrorLimit = context.config.maxConsecutiveServerErrors ?? 3;
-  if (context.consecutiveServerErrors >= serverErrorLimit) {
-    await response.body?.cancel();
-    throw new Error(
-      `Circuit breaker opened after ${serverErrorLimit} consecutive server errors.`,
-    );
-  }
-
-  const routeId = `route:attack:${method} ${step.path}`;
-  graphNode(context.result, routeId, "route", `${method} ${step.path}`);
-  if (step.actor) {
-    const principalId = `principal:attack:${step.actor}`;
-    graphNode(context.result, principalId, "principal", step.actor);
-    graphEdge(context.result, principalId, routeId, "acts-as");
-  }
-  if (step.resource) {
-    const resource = interpolate(step.resource, context.variables);
-    const resourceId = `resource:attack:${resource}`;
-    graphNode(context.result, resourceId, "resource", resource);
-    graphEdge(context.result, routeId, resourceId, "targets");
-  }
-
-  const proof = step.expect?.jsonEquals;
-  let parsed: unknown;
-  if (
-    (step.capture && Object.keys(step.capture).length) ||
-    (proof && Object.keys(proof).length)
-  ) {
-    try {
-      parsed = await limitedJson(response.clone());
-    } catch (error) {
-      if (proof && Object.keys(proof).length) {
-        context.result.diagnostics.push({
-          message: `Attack scenario ${scenario.id} step "${step.name}" could not validate JSON response proof: ${error instanceof Error ? error.message : "unknown error"}`,
-        });
-      } else {
-        throw error;
+    if (step.captureCookies && Object.keys(step.captureCookies).length) {
+      for (const [variableName, cookieName] of Object.entries(
+        step.captureCookies,
+      )) {
+        const value = responseCookie(response, cookieName);
+        if (!value)
+          throw new Error(
+            `Attack cookie capture ${variableName} failed for cookie ${cookieName}.`,
+          );
+        context.variables.set(variableName, value);
+        context.secretValues.add(value);
       }
     }
-  }
 
-  if (step.capture && Object.keys(step.capture).length) {
-    if (parsed === undefined)
-      throw new Error("Attack capture expected a JSON response.");
-    for (const [name, capturePath] of Object.entries(step.capture)) {
-      const value = jsonPath(parsed, capturePath);
-      if (!["string", "number", "boolean"].includes(typeof value))
-        throw new Error(
-          `Attack capture ${name} failed at JSON path ${capturePath}.`,
-        );
-      context.variables.set(name, String(value));
+    if (response.status >= 500) context.consecutiveServerErrors++;
+    else context.consecutiveServerErrors = 0;
+    const serverErrorLimit = context.config.maxConsecutiveServerErrors ?? 3;
+    if (context.consecutiveServerErrors >= serverErrorLimit) {
+      await response.body?.cancel();
+      throw new Error(
+        `Circuit breaker opened after ${serverErrorLimit} consecutive server errors.`,
+      );
     }
-  }
 
-  const proofPaths = proof ? Object.keys(proof) : [];
-  const proofMatched =
-    proofPaths.length === 0 ||
-    (parsed !== undefined &&
-      proofPaths.every((proofPath) => {
-        const expected = proof![proofPath];
-        const resolvedExpected =
-          typeof expected === "string"
-            ? interpolate(expected, context.variables)
-            : expected;
-        return Object.is(jsonPath(parsed, proofPath), resolvedExpected);
-      }));
+    const routeId = `route:attack:${method} ${step.path}`;
+    graphNode(context.result, routeId, "route", `${method} ${step.path}`);
+    if (step.actor) {
+      const principalId = `principal:attack:${step.actor}`;
+      graphNode(context.result, principalId, "principal", step.actor);
+      graphEdge(context.result, principalId, routeId, "acts-as");
+    }
+    if (step.resource) {
+      const resource = interpolate(step.resource, context.variables);
+      const resourceId = `resource:attack:${resource}`;
+      graphNode(context.result, resourceId, "resource", resource);
+      graphEdge(context.result, routeId, resourceId, "targets");
+    }
 
-  let outcome: "passed" | "confirmed" | "inconclusive" | "cleanup" = cleanup
-    ? "cleanup"
-    : "passed";
-  const denied = step.expect?.deniedStatuses;
-  const allowed = step.expect?.allowedStatuses;
-  const confirmStatuses =
-    step.expect?.confirmStatuses ??
-    Array.from({ length: 100 }, (_, i) => 200 + i);
-  if (denied && response.status >= 500) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}; server errors cannot confirm an authorization bypass.`,
-    });
-  } else if (
-    denied &&
-    !denied.includes(response.status) &&
-    !confirmStatuses.includes(response.status)
-  ) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}, which is outside both the denial policy and the confirmation-status policy; the result is inconclusive.`,
-    });
-  } else if (
-    denied &&
-    !denied.includes(response.status) &&
-    proofPaths.length > 0 &&
-    !proofMatched
-  ) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" violated the denial status policy but its configured JSON response proof did not match; the bypass remains unconfirmed.`,
-    });
-  } else if (denied && !denied.includes(response.status)) {
-    const resource = step.resource
-      ? interpolate(step.resource, context.variables)
-      : undefined;
-    const created = finding(
-      {
-        ruleId: "REAPER-ATTACK-001",
-        title: "Configured authorization boundary was bypassed",
-        description:
-          "An authorized adversarial scenario reached a resource with an HTTP status outside the configured denial policy.",
-        severity: severity(scenario),
-        confidence: "CONFIRMED",
-        category: "Offensive Validation",
-        file: `runtime:${scenario.id}`,
-        line: 1,
-        column: 1,
-        route: `${method} ${step.path}`,
-        resource,
-        evidence: [
-          `Scenario: ${scenario.title}`,
-          `Authorization reference: ${context.config.authorization.reference}`,
-          `Dimension: ${scenario.dimension}`,
-          `Actor: ${step.actor ?? "anonymous"}`,
-          `Expected denial statuses: ${denied.join(", ")}`,
-          `Confirmation statuses: ${confirmStatuses.join(", ")}`,
-          `Observed HTTP status: ${response.status}`,
-          ...(resource ? [`Known test resource: ${resource}`] : []),
-          ...(proofPaths.length
-            ? [`Response proof matched JSON paths: ${proofPaths.join(", ")}`]
-            : []),
-        ],
-        dataFlow: [],
-        recommendation:
-          "Bind resource access to the authenticated principal/tenant at the application or database policy layer, then keep this scenario as a regression test.",
-      },
-      `${scenario.id}:${step.name}:${step.actor ?? "anonymous"}:${resource ?? ""}`,
-    );
-    context.result.findings.push(created);
-    context.result.attack?.confirmed.push({
+    const proof = step.expect?.jsonEquals;
+    let parsed: unknown;
+    if (
+      (step.capture && Object.keys(step.capture).length) ||
+      (proof && Object.keys(proof).length)
+    ) {
+      try {
+        parsed = await limitedJson(response);
+      } catch (error) {
+        if (proof && Object.keys(proof).length) {
+          context.result.diagnostics.push({
+            message: `Attack scenario ${scenario.id} step "${step.name}" could not validate JSON response proof: ${error instanceof Error ? error.message : "unknown error"}`,
+          });
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    if (step.capture && Object.keys(step.capture).length) {
+      if (parsed === undefined)
+        throw new Error("Attack capture expected a JSON response.");
+      for (const [name, capturePath] of Object.entries(step.capture)) {
+        const value = jsonPath(parsed, capturePath);
+        if (!["string", "number", "boolean"].includes(typeof value))
+          throw new Error(
+            `Attack capture ${name} failed at JSON path ${capturePath}.`,
+          );
+        context.variables.set(name, String(value));
+      }
+    }
+
+    const proofPaths = proof ? Object.keys(proof) : [];
+    const proofMatched =
+      proofPaths.length === 0 ||
+      (parsed !== undefined &&
+        proofPaths.every((proofPath) => {
+          const expected = proof![proofPath];
+          const resolvedExpected =
+            typeof expected === "string"
+              ? interpolate(expected, context.variables)
+              : expected;
+          return Object.is(jsonPath(parsed, proofPath), resolvedExpected);
+        }));
+
+    let outcome: "passed" | "confirmed" | "inconclusive" | "cleanup" = cleanup
+      ? "cleanup"
+      : "passed";
+    const denied = step.expect?.deniedStatuses;
+    const allowed = step.expect?.allowedStatuses;
+    const confirmStatuses =
+      step.expect?.confirmStatuses ??
+      Array.from({ length: 100 }, (_, i) => 200 + i);
+    if (denied && response.status >= 500) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}; server errors cannot confirm an authorization bypass.`,
+      });
+    } else if (
+      denied &&
+      !denied.includes(response.status) &&
+      !confirmStatuses.includes(response.status)
+    ) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" returned HTTP ${response.status}, which is outside both the denial policy and the confirmation-status policy; the result is inconclusive.`,
+      });
+    } else if (
+      denied &&
+      !denied.includes(response.status) &&
+      proofPaths.length > 0 &&
+      !proofMatched
+    ) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" violated the denial status policy but its configured JSON response proof did not match; the bypass remains unconfirmed.`,
+      });
+    } else if (denied && !denied.includes(response.status)) {
+      const resource = step.resource
+        ? interpolate(step.resource, context.variables)
+        : undefined;
+      const created = finding(
+        {
+          ruleId: "REAPER-ATTACK-001",
+          title: "Configured authorization boundary was bypassed",
+          description:
+            "An authorized adversarial scenario reached a resource with an HTTP status outside the configured denial policy.",
+          severity: severity(scenario),
+          confidence: "CONFIRMED",
+          category: "Offensive Validation",
+          file: `runtime:${scenario.id}`,
+          line: 1,
+          column: 1,
+          route: `${method} ${step.path}`,
+          resource,
+          evidence: [
+            `Scenario: ${scenario.title}`,
+            `Authorization reference: ${context.config.authorization.reference}`,
+            `Dimension: ${scenario.dimension}`,
+            `Actor: ${step.actor ?? "anonymous"}`,
+            `Expected denial statuses: ${denied.join(", ")}`,
+            `Confirmation statuses: ${confirmStatuses.join(", ")}`,
+            `Observed HTTP status: ${response.status}`,
+            ...(resource ? [`Known test resource: ${resource}`] : []),
+            ...(proofPaths.length
+              ? [`Response proof matched JSON paths: ${proofPaths.join(", ")}`]
+              : []),
+          ],
+          dataFlow: [],
+          recommendation:
+            "Bind resource access to the authenticated principal/tenant at the application or database policy layer, then keep this scenario as a regression test.",
+        },
+        `${scenario.id}:${step.name}:${step.actor ?? "anonymous"}:${resource ?? ""}`,
+      );
+      context.result.findings.push(created);
+      context.result.attack?.confirmed.push({
+        scenarioId: scenario.id,
+        findingId: created.id,
+      });
+      const findingId = `finding:${created.id}`;
+      graphNode(context.result, findingId, "finding", created.title);
+      graphEdge(context.result, routeId, findingId, "confirms");
+      await persistentAudit(context, "FINDING_CONFIRMED", {
+        scenarioId: scenario.id,
+        findingId: created.id,
+        ruleId: created.ruleId,
+      });
+      outcome = "confirmed";
+    } else if (allowed && !allowed.includes(response.status)) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" expected an allowed status (${allowed.join(", ")}) but received ${response.status}.`,
+      });
+    } else if (allowed && proofPaths.length > 0 && !proofMatched) {
+      outcome = "inconclusive";
+      context.result.diagnostics.push({
+        message: `Attack scenario ${scenario.id} step "${step.name}" matched its allowed status policy but its configured JSON response proof did not match.`,
+      });
+    }
+
+    context.result.attack?.audit.push({
       scenarioId: scenario.id,
-      findingId: created.id,
+      step: step.name,
+      actor: step.actor,
+      method,
+      path: step.path,
+      status: response.status,
+      durationMs: Math.round(performance.now() - started),
+      outcome,
     });
-    const findingId = `finding:${created.id}`;
-    graphNode(context.result, findingId, "finding", created.title);
-    graphEdge(context.result, routeId, findingId, "confirms");
-    outcome = "confirmed";
-  } else if (allowed && !allowed.includes(response.status)) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" expected an allowed status (${allowed.join(", ")}) but received ${response.status}.`,
-    });
-  } else if (allowed && proofPaths.length > 0 && !proofMatched) {
-    outcome = "inconclusive";
-    context.result.diagnostics.push({
-      message: `Attack scenario ${scenario.id} step "${step.name}" matched its allowed status policy but its configured JSON response proof did not match.`,
-    });
+    if (cleanupPlan) {
+      if (!cleanupPlan.allowedStatuses.includes(response.status))
+        throw new Error(
+          `Cleanup step ${step.name} returned HTTP ${response.status}; expected one of ${cleanupPlan.allowedStatuses.join(", ")}.`,
+        );
+      await journalCleanupSucceeded(context, cleanupPlan, response.status);
+    }
+    return { status: response.status, outcome };
+  } finally {
+    clearTimeout(timeout);
+    if (!response.bodyUsed) await response.body?.cancel().catch(() => {});
   }
+}
 
-  await response.body?.cancel();
-  context.result.attack?.audit.push({
-    scenarioId: scenario.id,
-    step: step.name,
-    actor: step.actor,
-    method,
-    path: step.path,
-    status: response.status,
-    durationMs: Math.round(performance.now() - started),
-    outcome,
-  });
+export async function executeRecordedCleanup(
+  record: ExecutionJournalRecord,
+  plan: JournalCleanupPlan,
+  options: { secretProvider?: SecretProvider } = {},
+): Promise<{ status: number }> {
+  const parsed = targetUrl(record.targetOrigin);
+  const identity: AttackIdentity | undefined = plan.identity
+    ? {
+        ...(plan.identity.tokenEnv ? { tokenEnv: plan.identity.tokenEnv } : {}),
+        ...(plan.identity.cookie
+          ? {
+              cookie: {
+                name: plan.identity.cookie.name,
+                valueEnv: plan.identity.cookie.valueEnv,
+              },
+            }
+          : {}),
+        ...(plan.identity.headerEnvs
+          ? { headerEnvs: { ...plan.identity.headerEnvs } }
+          : {}),
+      }
+    : undefined;
+  const config: AttackConfig = {
+    allowedTargets: [parsed.origin],
+    authorization: {
+      acknowledged: true,
+      reference: record.assessmentId,
+      environment: record.environment,
+    },
+    allowMutations: true,
+    allowPrivateNetwork: record.allowPrivateNetwork,
+    maxCleanupRequests: Math.max(1, record.maxCleanupRequests),
+    timeoutMs: record.timeoutMs,
+    rateLimitPerSecond: record.rateLimitPerSecond,
+    maxConsecutiveServerErrors: 1,
+    ...(plan.actor && identity
+      ? { identities: { [plan.actor]: identity } }
+      : {}),
+    scenarios: [],
+  };
+  const result = resultFor(parsed);
+  const now = new Date().toISOString();
+  result.attack = {
+    runId: record.runId,
+    engineVersion: ENGINE_VERSION,
+    workspaceId: record.workspaceId,
+    projectId: record.projectId,
+    target: parsed.origin,
+    authorizationReference: record.assessmentId,
+    environment: record.environment,
+    startedAt: now,
+    completedAt: now,
+    requests: 0,
+    cleanupRequests: 0,
+    cleanupFailures: 0,
+    confirmed: [],
+    audit: [],
+  };
+  const baselineAddresses = await resolvedAddresses(parsed);
+  assertNetworkScope(baselineAddresses, config);
+  const context: AttackContext = {
+    target: parsed,
+    config,
+    result,
+    variables: new Map<string, string>(),
+    requestCount: 0,
+    cleanupRequestCount: 0,
+    nextRequestAt: 0,
+    pacing: Promise.resolve(),
+    consecutiveServerErrors: 0,
+    baselineAddresses,
+    secrets: options.secretProvider ?? new EnvironmentSecretProvider(),
+    secretReferences: new Set<string>(),
+    secretValues: new Set<string>(),
+    plannedJournalScenarios: new Set<string>(),
+    executionFailed: false,
+  };
+  const scenario: AttackScenario = {
+    id: plan.scenarioId,
+    title: "Crash-recovery cleanup",
+    dimension: "business-logic",
+    steps: [],
+  };
+  const step: AttackStep = {
+    name: plan.stepName,
+    path: plan.path,
+    method: plan.method,
+    ...(plan.actor ? { actor: plan.actor } : {}),
+    ...(plan.body !== undefined ? { body: plan.body } : {}),
+    expect: { allowedStatuses: [...plan.allowedStatuses] },
+  };
+  try {
+    const executed = await requestStep(context, scenario, step, true);
+    if (!plan.allowedStatuses.includes(executed.status))
+      throw new Error(
+        `Recovered cleanup returned HTTP ${executed.status}; expected one of ${plan.allowedStatuses.join(", ")}.`,
+      );
+    return { status: executed.status };
+  } finally {
+    if (context.secrets.revoke)
+      for (const reference of context.secretReferences)
+        await Promise.resolve(
+          context.secrets.revoke(reference, {
+            runId: record.runId,
+            targetOrigin: record.targetOrigin,
+            purpose: "crash-recovery cleanup",
+          }),
+        ).catch(() => {});
+  }
 }
 
 async function runMatrix(
@@ -777,6 +1265,7 @@ async function runMatrix(
         try {
           await requestStep(context, scenario, step, false);
         } catch (error) {
+          context.executionFailed = true;
           context.result.diagnostics.push({
             message: `Attack matrix ${matrix.id} stopped at ${actor} -> ${resource.owner}: ${error instanceof Error ? error.message : "unknown error"}`,
           });
@@ -809,7 +1298,20 @@ async function runMatrix(
 export async function runAttack(
   target: string,
   config: Config,
-  options: { signal?: AbortSignal } = {},
+  options: {
+    signal?: AbortSignal;
+    runId?: string;
+    rulePackVersion?: string;
+    workspaceId?: string;
+    projectId?: string;
+    scopeManifest?: SignedAuthorizationScope;
+    trustedScopeKeys?: TrustedKeySource;
+    secretProvider?: SecretProvider;
+    strictCommercial?: boolean;
+    scopeReplayStore?: ScopeReplayStore;
+    journalStore?: ExecutionJournalStore;
+    auditStore?: AuditStore;
+  } = {},
 ): Promise<ScanResult> {
   if (!config.attack)
     throw new Error("Attack mode requires an attack configuration.");
@@ -818,14 +1320,151 @@ export async function runAttack(
   if (!authorizedTarget(parsed, attack))
     throw new Error("Attack target is blocked by the exact-origin allowlist.");
 
+  const runId = options.runId ?? randomUUID();
   const started = performance.now();
   const startedAt = new Date().toISOString();
+
+  if (options.strictCommercial) {
+    if (
+      attack.requireSignedScope !== true ||
+      !options.scopeManifest ||
+      !options.trustedScopeKeys
+    )
+      throw new Error(
+        "Strict commercial execution requires a verified signed authorization scope.",
+      );
+    if (!options.workspaceId || !options.projectId)
+      throw new Error(
+        "Strict commercial execution requires workspaceId and projectId.",
+      );
+    if (
+      !options.scopeReplayStore ||
+      !options.journalStore ||
+      !options.auditStore
+    )
+      throw new Error(
+        "Strict commercial execution requires replay, journal and audit stores.",
+      );
+  }
+  if (options.journalStore && (!options.workspaceId || !options.projectId))
+    throw new Error(
+      "Persistent execution journals require workspaceId and projectId.",
+    );
+
+  if (options.auditStore)
+    await options.auditStore.append(runId, {
+      type: "RUN_CREATED",
+      at: startedAt,
+      data: {
+        target: parsed.origin,
+        workspaceId: options.workspaceId ?? "",
+        projectId: options.projectId ?? "",
+        authorizationReference: attack.authorization.reference,
+      },
+    });
+
+  if (attack.requireSignedScope && !options.scopeManifest)
+    throw new Error(
+      "Attack configuration requires a signed authorization scope.",
+    );
+
+  let scopeExpiry: number | undefined;
+  let verifiedScope: ReturnType<typeof verifyAuthorizationScope> | undefined;
+  let activeSignal = options.signal;
+  try {
+    if (options.scopeManifest) {
+      if (!options.trustedScopeKeys)
+        throw new Error(
+          "Trusted public keys are required to verify the signed scope.",
+        );
+      const scope = verifyAuthorizationScope(
+        options.scopeManifest,
+        options.trustedScopeKeys,
+        {
+          target: parsed.origin,
+          environment: attack.authorization.environment,
+          reference: attack.authorization.reference,
+        },
+      );
+      verifiedScope = scope;
+      if (
+        attack.allowMutations === true &&
+        !scope.permissions.includes("mutations")
+      )
+        throw new Error(
+          "Signed authorization scope does not permit mutations.",
+        );
+      if (
+        attack.allowPrivateNetwork === true &&
+        !scope.permissions.includes("internalNetwork")
+      )
+        throw new Error(
+          "Signed authorization scope does not permit internal network targets.",
+        );
+      attack.maxRequests = Math.min(
+        attack.maxRequests ?? scope.limits.maxRequests,
+        scope.limits.maxRequests,
+      );
+      attack.maxCleanupRequests = Math.min(
+        attack.maxCleanupRequests ?? scope.limits.maxCleanupRequests,
+        scope.limits.maxCleanupRequests,
+      );
+      attack.rateLimitPerSecond = Math.min(
+        attack.rateLimitPerSecond ?? scope.limits.rateLimitPerSecond,
+        scope.limits.rateLimitPerSecond,
+      );
+      scopeExpiry = Date.parse(scope.expiresAt);
+      activeSignal = activeSignal
+        ? AbortSignal.any([
+            activeSignal,
+            AbortSignal.timeout(scope.limits.deadlineMs),
+          ])
+        : AbortSignal.timeout(scope.limits.deadlineMs);
+      if (options.auditStore)
+        await options.auditStore.append(runId, {
+          type: "SCOPE_VERIFIED",
+          data: {
+            keyId: options.scopeManifest.keyId,
+            assessmentId: scope.assessmentId,
+            issuer: scope.issuer,
+            digest: authorizationScopeDigest(options.scopeManifest),
+          },
+        });
+    }
+  } catch (error) {
+    if (options.auditStore)
+      await options.auditStore.append(runId, {
+        type: "RUN_FAILED",
+        data: {
+          phase: "scope-validation",
+          error: error instanceof Error ? error.message : "unknown error",
+        },
+      });
+    throw error;
+  }
   const result = resultFor(parsed);
   result.attack = {
-    runId: randomUUID(),
+    runId,
+    engineVersion: ENGINE_VERSION,
+    ...(options.rulePackVersion
+      ? { rulePackVersion: options.rulePackVersion }
+      : {}),
+    ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+    ...(options.projectId ? { projectId: options.projectId } : {}),
     target: parsed.origin,
     authorizationReference: attack.authorization.reference,
     authorizationExpiresAt: attack.authorization.expiresAt,
+    ...(options.scopeManifest && verifiedScope
+      ? {
+          signedScope: {
+            keyId: options.scopeManifest.keyId,
+            assessmentId: verifiedScope.assessmentId,
+            issuer: verifiedScope.issuer,
+            expiresAt: verifiedScope.expiresAt,
+            digest: authorizationScopeDigest(options.scopeManifest),
+          },
+        }
+      : {}),
     environment: attack.authorization.environment,
     startedAt,
     completedAt: startedAt,
@@ -837,6 +1476,75 @@ export async function runAttack(
   };
   const baselineAddresses = await resolvedAddresses(parsed);
   assertNetworkScope(baselineAddresses, attack);
+
+  if (options.journalStore)
+    await options.journalStore.create({
+      version: 1,
+      runId,
+      workspaceId: options.workspaceId!,
+      projectId: options.projectId!,
+      assessmentId: attack.authorization.reference,
+      targetOrigin: parsed.origin,
+      environment: attack.authorization.environment,
+      allowPrivateNetwork: attack.allowPrivateNetwork === true,
+      timeoutMs: attack.timeoutMs ?? 5000,
+      rateLimitPerSecond: attack.rateLimitPerSecond ?? 3,
+      maxCleanupRequests: attack.maxCleanupRequests ?? 100,
+      createdAt: startedAt,
+      status: "PENDING",
+    });
+
+  if (options.scopeManifest && verifiedScope && options.scopeReplayStore) {
+    const accepted = await options.scopeReplayStore.consume({
+      issuer: verifiedScope.issuer,
+      assessmentId: verifiedScope.assessmentId,
+      nonce: verifiedScope.nonce,
+      targetOrigin: parsed.origin,
+      expiresAt: verifiedScope.expiresAt,
+    });
+    if (!accepted) {
+      if (options.journalStore)
+        await options.journalStore.update(runId, (record) => {
+          record.status = "FAILED";
+        });
+      if (options.auditStore)
+        await options.auditStore.append(runId, {
+          type: "RUN_FAILED",
+          data: {
+            phase: "scope-replay",
+            error: "signed scope replay rejected",
+          },
+        });
+      throw new Error("Signed authorization scope has already been consumed.");
+    }
+    if (options.auditStore)
+      await options.auditStore.append(runId, {
+        type: "SCOPE_CONSUMED",
+        data: {
+          issuer: verifiedScope.issuer,
+          assessmentId: verifiedScope.assessmentId,
+          nonceDigest: authorizationScopeDigest(options.scopeManifest),
+        },
+      });
+  } else if (options.strictCommercial) {
+    throw new Error(
+      "Strict commercial execution requires scope replay protection.",
+    );
+  }
+
+  if (options.journalStore)
+    await options.journalStore.update(runId, (record) => {
+      record.status = "RUNNING";
+    });
+  if (options.auditStore)
+    await options.auditStore.append(runId, {
+      type: "RUN_STARTED",
+      data: {
+        workspaceId: options.workspaceId ?? "",
+        projectId: options.projectId ?? "",
+      },
+    });
+
   const context: AttackContext = {
     target: parsed,
     config: attack,
@@ -848,70 +1556,130 @@ export async function runAttack(
     pacing: Promise.resolve(),
     consecutiveServerErrors: 0,
     baselineAddresses,
-    signal: options.signal,
+    signal: activeSignal,
+    scopeExpiresAt: scopeExpiry,
+    secrets: options.secretProvider ?? new EnvironmentSecretProvider(),
+    secretReferences: new Set<string>(),
+    secretValues: new Set<string>(),
+    journal: options.journalStore,
+    audit: options.auditStore,
+    plannedJournalScenarios: new Set<string>(),
+    executionFailed: false,
   };
 
-  for (const scenario of attack.scenarios ?? []) {
-    let scenarioFailed = false;
-    let currentStep: AttackStep | undefined;
-    try {
-      for (const step of scenario.steps) {
-        currentStep = step;
-        await requestStep(context, scenario, step, false);
+  try {
+    for (const scenario of attack.scenarios ?? []) {
+      let scenarioFailed = false;
+      let currentStep: AttackStep | undefined;
+      try {
+        for (const step of scenario.steps) {
+          currentStep = step;
+          await requestStep(context, scenario, step, false);
+        }
+        currentStep = undefined;
+      } catch (error) {
+        scenarioFailed = true;
+        context.executionFailed = true;
+        result.diagnostics.push({
+          message: `Attack scenario ${scenario.id} stopped: ${error instanceof Error ? error.message : "unknown error"}`,
+        });
+        result.attack.audit.push({
+          scenarioId: scenario.id,
+          step: currentStep?.name ?? "scenario",
+          actor: currentStep?.actor,
+          method: currentStep?.method ?? "GET",
+          path: currentStep?.path ?? "",
+          durationMs: 0,
+          outcome: "error",
+        });
+      } finally {
+        const cleanup = [...(scenario.cleanup ?? [])].reverse();
+        for (const step of cleanup)
+          try {
+            await requestStep(context, scenario, step, true);
+          } catch (error) {
+            result.attack.cleanupFailures++;
+            context.executionFailed = true;
+            await journalCleanupFailed(context, scenario, step, error);
+            result.attack.audit.push({
+              scenarioId: scenario.id,
+              step: step.name,
+              actor: step.actor,
+              method: step.method ?? "GET",
+              path: step.path,
+              durationMs: 0,
+              outcome: "cleanup-error",
+            });
+            result.diagnostics.push({
+              message: `Attack scenario ${scenario.id} cleanup failed: ${error instanceof Error ? error.message : "unknown error"}`,
+            });
+          }
       }
-      currentStep = undefined;
-    } catch (error) {
-      scenarioFailed = true;
-      result.diagnostics.push({
-        message: `Attack scenario ${scenario.id} stopped: ${error instanceof Error ? error.message : "unknown error"}`,
-      });
-      result.attack.audit.push({
-        scenarioId: scenario.id,
-        step: currentStep?.name ?? "scenario",
-        actor: currentStep?.actor,
-        method: currentStep?.method ?? "GET",
-        path: currentStep?.path ?? "",
-        durationMs: 0,
-        outcome: "error",
-      });
-    } finally {
-      const cleanup = [...(scenario.cleanup ?? [])].reverse();
-      for (const step of cleanup)
+      if (context.signal?.aborted) {
+        result.diagnostics.push({ message: "Attack run cancelled." });
+        break;
+      }
+      if (scenarioFailed && context.consecutiveServerErrors > 0) break;
+    }
+
+    if (!context.signal?.aborted && context.consecutiveServerErrors === 0)
+      for (const matrix of attack.matrices ?? []) {
+        await runMatrix(context, matrix);
+        if (context.signal?.aborted || context.consecutiveServerErrors > 0)
+          break;
+      }
+  } finally {
+    if (context.secrets.revoke)
+      for (const reference of context.secretReferences)
         try {
-          await requestStep(context, scenario, step, true);
-        } catch (error) {
-          result.attack.cleanupFailures++;
-          result.attack.audit.push({
-            scenarioId: scenario.id,
-            step: step.name,
-            actor: step.actor,
-            method: step.method ?? "GET",
-            path: step.path,
-            durationMs: 0,
-            outcome: "cleanup-error",
+          await context.secrets.revoke(reference, {
+            runId: result.attack.runId,
+            targetOrigin: parsed.origin,
+            purpose: "attack run completion",
           });
+        } catch {
           result.diagnostics.push({
-            message: `Attack scenario ${scenario.id} cleanup failed: ${error instanceof Error ? error.message : "unknown error"}`,
+            message:
+              "A configured secret lease could not be revoked after the attack run.",
           });
         }
-    }
-    if (context.signal?.aborted) {
-      result.diagnostics.push({ message: "Attack run cancelled." });
-      break;
-    }
-    if (scenarioFailed && context.consecutiveServerErrors > 0) break;
   }
-
-  if (!context.signal?.aborted && context.consecutiveServerErrors === 0)
-    for (const matrix of attack.matrices ?? []) {
-      await runMatrix(context, matrix);
-      if (context.signal?.aborted || context.consecutiveServerErrors > 0) break;
-    }
 
   result.metrics.durationMs = Math.round(performance.now() - started);
   result.metrics.memoryBytes = process.memoryUsage().rss;
   result.attack.requests = context.requestCount + context.cleanupRequestCount;
   result.attack.cleanupRequests = context.cleanupRequestCount;
   result.attack.completedAt = new Date().toISOString();
+  const terminalStatus =
+    result.attack.cleanupFailures > 0
+      ? "CLEANUP_FAILED"
+      : context.signal?.aborted
+        ? "INTERRUPTED"
+        : context.executionFailed
+          ? "FAILED"
+          : "COMPLETED";
+  if (context.journal)
+    await context.journal.update(runId, (record) => {
+      record.status = terminalStatus;
+    });
+  if (context.audit) {
+    const type =
+      terminalStatus === "COMPLETED"
+        ? "RUN_COMPLETED"
+        : terminalStatus === "INTERRUPTED"
+          ? "RUN_INTERRUPTED"
+          : "RUN_FAILED";
+    await context.audit.append(runId, {
+      type,
+      data: {
+        status: terminalStatus,
+        requests: result.attack.requests,
+        cleanupRequests: result.attack.cleanupRequests,
+        cleanupFailures: result.attack.cleanupFailures,
+        confirmedFindings: result.attack.confirmed.length,
+      },
+    });
+  }
+  redactKnownSecrets(result, context.secretValues);
   return result;
 }

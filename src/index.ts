@@ -26,6 +26,46 @@ export type * from "./cfg.js";
 
 export { runAttack } from "./attack.js";
 export {
+  authorizationScopeDigest,
+  createSignedAuthorizationScope,
+  verifyAuthorizationScope,
+} from "./scope.js";
+export type {
+  AuthorizationScopePayload,
+  ScopePermission,
+  SignedAuthorizationScope,
+} from "./scope.js";
+export {
+  EnvironmentSecretProvider,
+  InMemorySecretProvider,
+} from "./secrets.js";
+export type { SecretProvider, SecretRequestContext } from "./secrets.js";
+export { createAttackJob, runAttackJob } from "./runner.js";
+export type { AttackJob, AttackJobOutcome } from "./runner.js";
+export { ENGINE_VERSION } from "./model.js";
+export {
+  applySignedRulePack,
+  canonicalRulePackPayload,
+  createSignedRulePack,
+  verifySignedRulePack,
+} from "./rule-pack.js";
+export type {
+  RulePackPayload,
+  RulePackRule,
+  SignedRulePack,
+} from "./rule-pack.js";
+export {
   correlateAttackSource,
   normalizeAttackRoute,
 } from "./attack-correlation.js";
+
+export * from "./journal.js";
+export * from "./replay.js";
+export * from "./audit.js";
+export * from "./trust.js";
+
+export * from "./tenant.js";
+
+export * from "./isolation.js";
+
+export * from "./recovery.js";

@@ -192,6 +192,7 @@ export function validateAttackConfig(value: unknown): AttackConfig {
     "maxConsecutiveServerErrors",
     "allowMutations",
     "allowPrivateNetwork",
+    "requireSignedScope",
     "identities",
     "scenarios",
     "matrices",
@@ -285,7 +286,11 @@ export function validateAttackConfig(value: unknown): AttackConfig {
   positive("rateLimitPerSecond", 20);
   positive("maxConsecutiveServerErrors", 10);
 
-  for (const key of ["allowMutations", "allowPrivateNetwork"])
+  for (const key of [
+    "allowMutations",
+    "allowPrivateNetwork",
+    "requireSignedScope",
+  ])
     if (attack[key] !== undefined && typeof attack[key] !== "boolean")
       throw new Error(`attack.${key} must be boolean.`);
   if (

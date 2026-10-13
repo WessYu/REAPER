@@ -1,4 +1,5 @@
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+export const ENGINE_VERSION = "0.2.0" as const;
 export type Confidence = "CONFIRMED" | "HIGH" | "MEDIUM" | "LOW";
 export type Category =
   | "SQL Safety"
@@ -186,6 +187,7 @@ export interface AttackConfig {
   maxConsecutiveServerErrors?: number;
   allowMutations?: boolean;
   allowPrivateNetwork?: boolean;
+  requireSignedScope?: boolean;
   identities?: Record<string, AttackIdentity>;
   scenarios?: AttackScenario[];
   matrices?: AttackMatrix[];
@@ -210,9 +212,20 @@ export interface AttackAuditEvent {
 
 export interface AttackRunMetadata {
   runId: string;
+  engineVersion?: string;
+  rulePackVersion?: string;
+  workspaceId?: string;
+  projectId?: string;
   target: string;
   authorizationReference: string;
   authorizationExpiresAt?: string;
+  signedScope?: {
+    keyId: string;
+    assessmentId: string;
+    issuer: string;
+    expiresAt: string;
+    digest: string;
+  };
   environment: AttackAuthorization["environment"];
   startedAt: string;
   completedAt: string;
@@ -263,6 +276,7 @@ export interface ScanResult {
     memoryBytes: number;
   };
   coverage: { source: boolean; database: boolean; runtime: boolean };
+  rulePacks?: Array<{ packId: string; version: string; hash: string }>;
   attack?: AttackRunMetadata;
 }
 export const severities: Severity[] = [
