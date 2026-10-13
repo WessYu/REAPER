@@ -73,6 +73,14 @@ an additional operator decision, not a substitute for network-level isolation.
 Production authorization requires an `expiresAt` timestamp that remains valid
 throughout active execution.
 
+Deployments that manage a trusted signing key can set
+`attack.requireSignedScope: true`. The Ed25519 manifest can further restrict the
+target origin, environment, permissions, request budgets, rate and run deadline.
+The CLI reads the signed manifest from `REAPER_SCOPE_MANIFEST` and the trusted
+PEM public key from `REAPER_SCOPE_PUBLIC_KEY`. Key distribution, rotation and
+replay prevention remain deployment responsibilities. This signature check
+does not isolate the local Node.js process.
+
 Identity secrets can come from named environment variables or explicitly
 captured in-memory variables. Bearer credentials, named cookies and selected
 custom headers are supported. Generic identity header maps reject

@@ -2,6 +2,10 @@
 
 ## 0.2.0 — unreleased
 
+- Bounded attack-mode JSON capture to 64 KiB using incremental stream reads, including chunked responses without `Content-Length`; request timeouts now remain active through response processing, and rejected budget reservations no longer inflate request counts.
+- Added optional Ed25519 signed authorization scopes with canonical payload signing, exact target/assessment/environment binding, expiry, permission checks, request/cleanup/rate caps, and a global deadline for strict attack runs.
+- Added CI dependency-audit gating, CycloneDX SBOM generation, SHA-256 artifact manifests, and GitHub artifact attestations on version-tag workflows.
+- Added an implementation-backed threat model and documented the current Community/Commercial/Enterprise architecture boundaries and unimplemented controls.
 - Expanded bounded control-flow analysis across loops, try/catch/finally and switch with conservative environment merges.
 - Added shared-object/property mutation tracking, deeper alias propagation, `.bind`/`.call`/`.apply`, common `Object.assign`/`Object.defineProperty` and `Reflect.get`/`Reflect.set` modeling, and array mutation tracking for supported values.
 - Added sequentially resolved Express/Fastify route middleware analysis plus literal contracts for opaque middleware that establishes trusted request principals.
