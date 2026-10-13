@@ -3,10 +3,7 @@ import type {
   ScopeSigner,
   SignedAuthorizationScope,
 } from "./scope-signer.js";
-import {
-  googleApiJson,
-  type AccessTokenProvider,
-} from "./gcp-auth.js";
+import { googleApiJson, type AccessTokenProvider } from "./gcp-auth.js";
 
 function canonical(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "boolean")
@@ -124,7 +121,9 @@ export class GcpKmsScopeSigner implements ScopeSigner {
       response.verifiedDataCrc32c !== true ||
       typeof response.signature !== "string"
     )
-      throw new Error("Cloud KMS signing response failed integrity validation.");
+      throw new Error(
+        "Cloud KMS signing response failed integrity validation.",
+      );
     const signature = Buffer.from(response.signature, "base64");
     const responseCrc = Number(response.signatureCrc32c);
     if (
