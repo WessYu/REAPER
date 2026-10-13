@@ -28,7 +28,9 @@ const hardeningMigration = await readFile(
   "utf8",
 );
 const cloudRunMigration = await readFile(
-  fileURLToPath(new URL("../../control-plane/004_cloud_run.sql", import.meta.url)),
+  fileURLToPath(
+    new URL("../../control-plane/004_cloud_run.sql", import.meta.url),
+  ),
   "utf8",
 );
 
