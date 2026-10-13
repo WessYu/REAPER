@@ -49,6 +49,7 @@ jobs:
           node -e "const fs=require('node:fs'); const bom=JSON.parse(fs.readFileSync('reaper.cdx.json','utf8')); if (bom.bomFormat !== 'CycloneDX' || !bom.components?.length) process.exit(1)"
           node scripts/artifact-hashes.mjs write
           node scripts/artifact-hashes.mjs verify
+          npm run release:evidence:check
 
       - name: Upload package and supply-chain evidence
         if: matrix.node == 22
@@ -94,6 +95,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: reaper-supply-chain-evidence
+      - name: Validate trusted release evidence
+        run: node scripts/validate-release-evidence.mjs
       - name: Attest npm package and hash manifest
         uses: actions/attest@v4
         with:
