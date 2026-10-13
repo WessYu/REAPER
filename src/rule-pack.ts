@@ -108,8 +108,50 @@ function text(value: unknown, field: string, max: number, min = 1): string {
 }
 
 function exactKeys(record: Record<string, unknown>, allowed: string[]): void {
-  if (Object.keys(record).some((key) => !allowed.includes(key)))
+  if (
+    Object.getPrototypeOf(record) !== Object.prototype &&
+    Object.getPrototypeOf(record) !== null
+  )
+    throw new Error("Rule pack must contain plain JSON objects.");
+  if (
+    Object.getOwnPropertySymbols(record).length > 0 ||
+    Object.getOwnPropertyNames(record).some((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(record, key);
+      return (
+        !allowed.includes(key) ||
+        !descriptor ||
+        !descriptor.enumerable ||
+        !Object.hasOwn(descriptor, "value")
+      );
+    })
+  )
     throw new Error("Rule pack contains an unsupported field.");
+}
+
+function denseArray(
+  value: unknown,
+  maxLength: number,
+  field: string,
+): unknown[] {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    value.length > maxLength
+  )
+    throw new Error(`Rule pack ${field} is invalid.`);
+  const keys = Object.keys(value);
+  if (
+    keys.length !== value.length ||
+    keys.some((key, index) => key !== String(index)) ||
+    Object.getOwnPropertySymbols(value).length > 0 ||
+    Object.getOwnPropertyNames(value).length !== value.length + 1 ||
+    keys.some((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      return !descriptor?.enumerable || !Object.hasOwn(descriptor, "value");
+    })
+  )
+    throw new Error(`Rule pack ${field} must be a dense JSON array.`);
+  return value;
 }
 
 function validatePayload(value: unknown): RulePackPayload {
@@ -139,26 +181,25 @@ function validatePayload(value: unknown): RulePackPayload {
     throw new Error("Rule pack compatibility is invalid.");
   const compatibility = payload.compatibility as Record<string, unknown>;
   exactKeys(compatibility, ["engineVersions"]);
+  const engineVersions = denseArray(
+    compatibility.engineVersions,
+    10,
+    "engineVersions",
+  );
   if (
-    !Array.isArray(compatibility.engineVersions) ||
-    compatibility.engineVersions.length < 1 ||
-    compatibility.engineVersions.length > 10 ||
-    compatibility.engineVersions.some(
+    engineVersions.length < 1 ||
+    engineVersions.some(
       (entry) => typeof entry !== "string" || !semver.test(entry),
     ) ||
-    new Set(compatibility.engineVersions).size !==
-      compatibility.engineVersions.length
+    new Set(engineVersions).size !== engineVersions.length
   )
     throw new Error("Rule pack engine compatibility is invalid.");
 
-  if (
-    !Array.isArray(payload.rules) ||
-    payload.rules.length < 1 ||
-    payload.rules.length > maxRules
-  )
+  const rawRules = denseArray(payload.rules, maxRules, "rules");
+  if (rawRules.length < 1)
     throw new Error(`Rule pack must contain between 1 and ${maxRules} rules.`);
   const ruleIds = new Set<string>();
-  const rules = payload.rules.map((raw) => {
+  const rules = rawRules.map((raw) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw))
       throw new Error("Rule pack rule is invalid.");
     const rule = raw as Record<string, unknown>;
@@ -203,18 +244,17 @@ function validatePayload(value: unknown): RulePackPayload {
       throw new Error("Rule pack caseSensitive is invalid.");
     let fileExtensions: string[] | undefined;
     if (rule.fileExtensions !== undefined) {
+      const extensions = denseArray(rule.fileExtensions, 20, "fileExtensions");
       if (
-        !Array.isArray(rule.fileExtensions) ||
-        rule.fileExtensions.length > 20 ||
-        rule.fileExtensions.some(
+        extensions.some(
           (extension) =>
             typeof extension !== "string" ||
             !/^\.[a-z0-9]{1,10}$/.test(extension),
         ) ||
-        new Set(rule.fileExtensions).size !== rule.fileExtensions.length
+        new Set(extensions).size !== extensions.length
       )
         throw new Error("Rule pack fileExtensions is invalid.");
-      fileExtensions = rule.fileExtensions as string[];
+      fileExtensions = extensions as string[];
     }
     return {
       id,
@@ -324,7 +364,13 @@ export function verifySignedRulePack(
     !Object.hasOwn(trustedKeys, pack.keyId)
   )
     throw new Error("Rule pack signing key is not trusted.");
-  const keyInput = trustedKeys[pack.keyId];
+  const keyDescriptor = Object.getOwnPropertyDescriptor(
+    trustedKeys,
+    pack.keyId,
+  );
+  if (!keyDescriptor || !Object.hasOwn(keyDescriptor, "value"))
+    throw new Error("Rule pack trust keys must be data properties.");
+  const keyInput = keyDescriptor.value as KeyLike | string | Buffer;
   if (!keyInput) throw new Error("Rule pack signing key is not trusted.");
   const key = publicKey(keyInput);
   if (key.asymmetricKeyType !== "ed25519")

@@ -139,6 +139,40 @@ test("rule pack data cannot declare executable callbacks or regex behavior", () 
   );
 });
 
+test("rule pack validation rejects accessors and sparse arrays without executing them", () => {
+  const keys = generateKeyPairSync("ed25519");
+  const signed = createSignedRulePack(
+    payload(),
+    "rulepack-key-1",
+    keys.privateKey,
+  );
+  let getterExecuted = false;
+  const payloadWithGetter = { ...signed.payload };
+  Object.defineProperty(payloadWithGetter, "packId", {
+    enumerable: true,
+    get() {
+      getterExecuted = true;
+      return signed.payload.packId;
+    },
+  });
+  assert.throws(
+    () =>
+      verifySignedRulePack(
+        { ...signed, payload: payloadWithGetter },
+        { "rulepack-key-1": keys.publicKey },
+      ),
+    /unsupported field/,
+  );
+  assert.equal(getterExecuted, false);
+
+  const sparse = structuredClone(signed);
+  sparse.payload.rules = Array(1);
+  assert.throws(
+    () => verifySignedRulePack(sparse, { "rulepack-key-1": keys.publicKey }),
+    /dense JSON array/,
+  );
+});
+
 test("scan requires trusted rule-pack keys and does not report unmatched literals", async () => {
   const keys = generateKeyPairSync("ed25519");
   const pack = createSignedRulePack(

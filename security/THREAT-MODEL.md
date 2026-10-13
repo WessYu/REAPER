@@ -1,7 +1,7 @@
 # REAPER threat model
 
 **Status:** implementation-backed baseline, not a claim of complete mitigation
-**Reviewed against:** `main` at `1554402e0676e11dbc7958a7d6ea242b4315c5ea` and this branch's bounded-response, signed-scope, secret-provider, and supply-chain changes
+**Reviewed against:** `main` at `1554402e0676e11dbc7958a7d6ea242b4315c5ea` and this branch's bounded-response, signed-scope, secret-provider, signed data-only rule-pack, and supply-chain changes
 **Scope:** Node.js CLI/library, local review server, static analysis of scanned projects, PostgreSQL catalog introspection, runtime verification, and authorized attack mode. Hosted control plane, remote multi-user service, operating-system sandboxing, and commercial release infrastructure are outside the current runtime.
 
 ## System and trust boundaries
