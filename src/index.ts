@@ -67,3 +67,5 @@ export * from "./trust.js";
 export * from "./tenant.js";
 
 export * from "./isolation.js";
+
+export * from "./recovery.js";
