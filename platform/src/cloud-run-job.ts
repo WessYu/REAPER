@@ -24,14 +24,17 @@ export class CloudRunJobClient {
   }
 
   async execute(input: {
-    executionEnvelope: string;
+    jobId: string;
+    workerId: string;
     timeoutMs: number;
   }): Promise<{ operationName: string }> {
     if (
-      !/^[A-Za-z0-9_-]+$/.test(input.executionEnvelope) ||
-      Buffer.byteLength(input.executionEnvelope, "utf8") > 900_000
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        input.jobId,
+      ) ||
+      !/^[A-Za-z0-9._:-]{1,200}$/.test(input.workerId)
     )
-      throw new Error("Cloud Run execution envelope is invalid or too large.");
+      throw new Error("Cloud Run execution identity is invalid.");
     if (
       !Number.isSafeInteger(input.timeoutMs) ||
       input.timeoutMs < 1_000 ||
@@ -53,8 +56,12 @@ export class CloudRunJobClient {
               {
                 env: [
                   {
-                    name: "REAPER_EXECUTION_ENVELOPE_B64",
-                    value: input.executionEnvelope,
+                    name: "REAPER_EXECUTION_JOB_ID",
+                    value: input.jobId,
+                  },
+                  {
+                    name: "REAPER_EXECUTION_WORKER_ID",
+                    value: input.workerId,
                   },
                 ],
               },
