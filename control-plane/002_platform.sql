@@ -10,6 +10,13 @@ ALTER TABLE reaper_control.runs
   ADD COLUMN IF NOT EXISTS report jsonb,
   ADD COLUMN IF NOT EXISTS error text;
 
+DROP POLICY IF EXISTS reaper_organization_bootstrap_insert
+ON reaper_control.organizations;
+CREATE POLICY reaper_organization_bootstrap_insert
+ON reaper_control.organizations
+FOR INSERT
+WITH CHECK (current_setting('reaper.bootstrap', true) = '1');
+
 CREATE TABLE IF NOT EXISTS reaper_control.api_keys (
   id uuid PRIMARY KEY,
   workspace_id uuid NOT NULL REFERENCES reaper_control.workspaces(id) ON DELETE CASCADE,
@@ -129,6 +136,10 @@ BEGIN
   IF EXISTS (SELECT 1 FROM api_keys) THEN
     RAISE EXCEPTION 'platform bootstrap is already complete';
   END IF;
+
+  PERFORM set_config('reaper.bootstrap', '1', true);
+  PERFORM set_config('reaper.workspace_id', p_workspace_id::text, true);
+  PERFORM set_config('reaper.principal_id', p_principal_id, true);
 
   INSERT INTO organizations(id, name)
   VALUES (p_organization_id, p_organization_name);
