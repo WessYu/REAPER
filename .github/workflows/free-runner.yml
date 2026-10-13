@@ -1,0 +1,40 @@
+name: Free staging runner
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: reaper-free-staging-runner
+  cancel-in-progress: false
+
+jobs:
+  free-staging-runner:
+    if: github.repository == 'WessYu/REAPER' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build REAPER runner
+        run: |
+          npm run build
+          npm run platform:build
+
+      - name: Lease and execute one free staging assessment
+        run: node platform/dist/free-runner.js
+        env:
+          REAPER_FREE_RUNNER_API: https://szzdstxpdopprmgdjhcn.supabase.co/functions/v1/reaper-platform
