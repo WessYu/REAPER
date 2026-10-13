@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { CreateRunInput } from "./types.js";
 
@@ -72,7 +73,7 @@ export class RemoteScopeSigner implements ScopeSigner {
         !/^[A-Za-z0-9._-]{1,100}$/.test(value.keyId) ||
         typeof value.signature !== "string" ||
         !/^[A-Za-z0-9_-]{86}$/.test(value.signature) ||
-        JSON.stringify(value.payload) !== JSON.stringify(payload)
+        !isDeepStrictEqual(value.payload, payload)
       )
         throw new Error("Scope signer returned an invalid envelope.");
       return value as SignedAuthorizationScope;
