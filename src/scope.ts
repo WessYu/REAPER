@@ -231,8 +231,19 @@ export function verifyAuthorizationScope(
     throw new Error("Signed scope keyId is not trusted.");
   const keyInput = trustedKeys[scope.keyId];
   if (!keyInput) throw new Error("Signed scope keyId is not trusted.");
+  if (keyInput instanceof KeyObject && keyInput.type !== "public")
+    throw new Error("Authorization scope verifier accepts public keys only.");
+  if (
+    !(keyInput instanceof KeyObject) &&
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(
+      typeof keyInput === "string" ? keyInput : keyInput.toString("utf8"),
+    )
+  )
+    throw new Error("Authorization scope verifier accepts public keys only.");
   const key =
     keyInput instanceof KeyObject ? keyInput : createPublicKey(keyInput);
+  if (key.type !== "public")
+    throw new Error("Authorization scope verifier accepts public keys only.");
   if (key.asymmetricKeyType !== "ed25519")
     throw new Error("Authorization scope verification key must be Ed25519.");
   const payload = scopePayload(scope.payload);

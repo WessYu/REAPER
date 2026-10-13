@@ -88,6 +88,11 @@ test("signed scope rejects tampering, expired scope, untrusted keys and context 
   ) => verifyAuthorizationScope(scope, trusted, current);
 
   assert.throws(
+    () => verify(signed, { "test-2026": keys.privateKey }),
+    /public keys only/,
+  );
+
+  assert.throws(
     () =>
       verify({
         ...signed,
