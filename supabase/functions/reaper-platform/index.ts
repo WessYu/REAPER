@@ -272,7 +272,7 @@ Deno.serve(async (request: Request) => {
         const body = await readBody(request);
         const rows = await tx`
           INSERT INTO reaper_control.projects(id,workspace_id,name)
-          VALUES (${crypto.randomUUID()}::uuid,${context.workspaceId}::uuid,${textValue(body.name,"name")})
+          VALUES (${crypto.randomUUID()}::uuid,${context.workspaceId}::uuid,${textValue(body.name, "name")})
           RETURNING id,name,created_at
         `;
         return json(201, rows[0]);
@@ -297,8 +297,8 @@ Deno.serve(async (request: Request) => {
           VALUES (
             ${crypto.randomUUID()}::uuid,
             ${context.workspaceId}::uuid,
-            ${uuid(body.projectId,"projectId")}::uuid,
-            ${textValue(body.reference,"reference")}
+            ${uuid(body.projectId, "projectId")}::uuid,
+            ${textValue(body.reference, "reference")}
           )
           RETURNING id,project_id,reference,created_at
         `;
@@ -324,24 +324,37 @@ Deno.serve(async (request: Request) => {
         const assessmentId = uuid(body.assessmentId, "assessmentId");
         const targetOrigin = exactOrigin(body.targetOrigin);
         const environment = textValue(body.environment, "environment", 20);
-        if (!["local","preview","staging","production"].includes(environment)) {
+        if (
+          !["local", "preview", "staging", "production"].includes(environment)
+        ) {
           throw new Error("environment is invalid.");
         }
         const configPath = relativePath(body.configPath);
-        const permissions = Array.isArray(body.permissions) ? body.permissions : ["read"];
-        const allowed = new Set(["read","mutations","syntheticIdentities","internalNetwork"]);
+        const permissions = Array.isArray(body.permissions)
+          ? body.permissions
+          : ["read"];
+        const allowed = new Set([
+          "read",
+          "mutations",
+          "syntheticIdentities",
+          "internalNetwork",
+        ]);
         if (
           permissions.length < 1 ||
           permissions.length > 4 ||
           !permissions.includes("read") ||
           new Set(permissions).size !== permissions.length ||
-          !permissions.every((value) => typeof value === "string" && allowed.has(value))
+          !permissions.every(
+            (value) => typeof value === "string" && allowed.has(value),
+          )
         ) {
           throw new Error("permissions are invalid.");
         }
         const rawLimits =
-          body.limits && typeof body.limits === "object" && !Array.isArray(body.limits)
-            ? body.limits as Record<string,unknown>
+          body.limits &&
+          typeof body.limits === "object" &&
+          !Array.isArray(body.limits)
+            ? (body.limits as Record<string, unknown>)
             : {};
         const limits = {
           maxRequests: rawLimits.maxRequests ?? 20,
@@ -350,14 +363,18 @@ Deno.serve(async (request: Request) => {
           deadlineMs: rawLimits.deadlineMs ?? 120000,
         };
         const bounds = [
-          ["maxRequests",1,500],
-          ["maxCleanupRequests",1,200],
-          ["rateLimitPerSecond",1,20],
-          ["deadlineMs",1000,1800000],
+          ["maxRequests", 1, 500],
+          ["maxCleanupRequests", 1, 200],
+          ["rateLimitPerSecond", 1, 20],
+          ["deadlineMs", 1000, 1800000],
         ] as const;
-        for (const [name,min,max] of bounds) {
+        for (const [name, min, max] of bounds) {
           const value = limits[name];
-          if (!Number.isSafeInteger(value) || Number(value) < min || Number(value) > max) {
+          if (
+            !Number.isSafeInteger(value) ||
+            Number(value) < min ||
+            Number(value) > max
+          ) {
             throw new Error(`${name} is outside the supported bounds.`);
           }
         }
@@ -368,7 +385,10 @@ Deno.serve(async (request: Request) => {
             AND project_id=${projectId}::uuid
             AND workspace_id=${context.workspaceId}::uuid
         `;
-        if (!match[0]) throw new Error("Assessment does not belong to the selected project.");
+        if (!match[0])
+          throw new Error(
+            "Assessment does not belong to the selected project.",
+          );
 
         const runId = crypto.randomUUID();
         const jobId = crypto.randomUUID();
@@ -408,7 +428,7 @@ Deno.serve(async (request: Request) => {
           SELECT id,rule_id,severity,payload,created_at
           FROM reaper_control.findings
           WHERE workspace_id=${context.workspaceId}::uuid
-            AND run_id=${uuid(findingsRun,"runId")}::uuid
+            AND run_id=${uuid(findingsRun, "runId")}::uuid
           ORDER BY created_at,id
           LIMIT 2000
         `;
@@ -421,7 +441,7 @@ Deno.serve(async (request: Request) => {
           SELECT sequence,previous_hash,event_hash,event_type,payload,created_at
           FROM reaper_control.audit_events
           WHERE workspace_id=${context.workspaceId}::uuid
-            AND run_id=${uuid(auditRun,"runId")}::uuid
+            AND run_id=${uuid(auditRun, "runId")}::uuid
           ORDER BY sequence
           LIMIT 5000
         `;
@@ -435,7 +455,7 @@ Deno.serve(async (request: Request) => {
                  permissions,limits,report,error,created_at,updated_at
           FROM reaper_control.runs
           WHERE workspace_id=${context.workspaceId}::uuid
-            AND id=${uuid(runId,"runId")}::uuid
+            AND id=${uuid(runId, "runId")}::uuid
         `;
         if (!rows[0]) throw new Error("Run not found.");
         return json(200, rows[0]);
@@ -456,13 +476,20 @@ Deno.serve(async (request: Request) => {
       if (method === "POST" && path === "/v1/api-keys") {
         requireRole(context, "admin");
         const body = await readBody(request);
-        const principalId = textValue(body.principalId ?? context.principalId, "principalId");
+        const principalId = textValue(
+          body.principalId ?? context.principalId,
+          "principalId",
+        );
         const name = textValue(body.name, "name");
         const expiresAt =
           body.expiresAt === undefined || body.expiresAt === null
             ? null
             : textValue(body.expiresAt, "expiresAt", 50);
-        if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) {
+        if (
+          expiresAt &&
+          (!Number.isFinite(Date.parse(expiresAt)) ||
+            Date.parse(expiresAt) <= Date.now())
+        ) {
           throw new Error("expiresAt must be a future timestamp.");
         }
         const material = apiKeyMaterial();
@@ -479,16 +506,19 @@ Deno.serve(async (request: Request) => {
       if (method === "DELETE" && keyId) {
         requireRole(context, "admin");
         const rows = await tx<Array<{ revoked: boolean }>>`
-          SELECT reaper_control.revoke_api_key(${uuid(keyId,"keyId")}::uuid) AS revoked
+          SELECT reaper_control.revoke_api_key(${uuid(keyId, "keyId")}::uuid) AS revoked
         `;
-        return json(rows[0]?.revoked ? 200 : 404, { revoked: rows[0]?.revoked === true });
+        return json(rows[0]?.revoked ? 200 : 404, {
+          revoked: rows[0]?.revoked === true,
+        });
       }
 
       return json(404, { error: "Route not found." });
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed.";
-    if (/authentication failed/i.test(message)) return json(401, { error: "Authentication failed." });
+    if (/authentication failed/i.test(message))
+      return json(401, { error: "Authentication failed." });
     return json(clientError(message) ? 400 : 500, {
       error: clientError(message) ? message : "Internal server error.",
     });
