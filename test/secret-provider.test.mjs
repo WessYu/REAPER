@@ -125,3 +125,57 @@ test("secret provider failures produce sanitized diagnostics", async () => {
     await once(server, "close");
   }
 });
+
+test("oversized secrets are rejected and their provider lease is revoked", async () => {
+  let requests = 0;
+  let revocations = 0;
+  const server = http.createServer((_req, res) => {
+    requests++;
+    res.end("unexpected request");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const target = `http://127.0.0.1:${address.port}`;
+  const provider = {
+    get() {
+      return "x".repeat(16_385);
+    },
+    revoke() {
+      revocations++;
+    },
+  };
+  try {
+    const result = await runAttack(
+      target,
+      {
+        attack: {
+          allowedTargets: [target],
+          authorization: {
+            acknowledged: true,
+            reference: "oversized-secret-test",
+            environment: "staging",
+          },
+          identities: { testUser: { tokenEnv: "REAPER_TEST_TOKEN" } },
+          scenarios: [
+            {
+              id: "oversized-secret",
+              title: "Reject an oversized leased secret",
+              dimension: "session",
+              steps: [{ name: "read", path: "/private", actor: "testUser" }],
+            },
+          ],
+        },
+      },
+      { secretProvider: provider },
+    );
+    assert.equal(requests, 0);
+    assert.equal(revocations, 1);
+    assert.ok(JSON.stringify(result).includes("16 KiB limit"));
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await once(server, "close");
+  }
+});

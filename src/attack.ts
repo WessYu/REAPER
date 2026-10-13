@@ -306,6 +306,9 @@ async function requiredSecret(
     targetOrigin: context.target.origin,
     purpose,
   };
+  // A provider may allocate a lease before returning or throwing. Register the
+  // reference first so the run-level finally block always attempts revocation.
+  context.secretReferences.add(reference);
   let value: string | undefined;
   try {
     value = await context.secrets.get(reference, requestContext);
@@ -318,7 +321,6 @@ async function requiredSecret(
     throw new Error(
       `Configured secret exceeds the 16 KiB limit for ${purpose}.`,
     );
-  context.secretReferences.add(reference);
   return value;
 }
 
