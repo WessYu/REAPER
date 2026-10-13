@@ -59,21 +59,26 @@ process.on("message", (message: unknown) => {
             application_name: "reaper-cloud-runner",
           })
         : undefined;
-      const journalStore = pool && workspaceId
-        ? new PostgresExecutionJournalStore(pool, workspaceId)
-        : stateDirectory
-          ? new FileExecutionJournalStore(path.join(stateDirectory, "journal"))
-          : undefined;
-      const scopeReplayStore = pool && workspaceId
-        ? new PostgresScopeReplayStore(pool, workspaceId)
-        : stateDirectory
-          ? new FileScopeReplayStore(path.join(stateDirectory, "replay"))
-          : undefined;
-      const auditStore = pool && workspaceId
-        ? new PostgresAuditStore(pool, workspaceId)
-        : stateDirectory
-          ? new FileAuditStore(path.join(stateDirectory, "audit"))
-          : undefined;
+      const journalStore =
+        pool && workspaceId
+          ? new PostgresExecutionJournalStore(pool, workspaceId)
+          : stateDirectory
+            ? new FileExecutionJournalStore(
+                path.join(stateDirectory, "journal"),
+              )
+            : undefined;
+      const scopeReplayStore =
+        pool && workspaceId
+          ? new PostgresScopeReplayStore(pool, workspaceId)
+          : stateDirectory
+            ? new FileScopeReplayStore(path.join(stateDirectory, "replay"))
+            : undefined;
+      const auditStore =
+        pool && workspaceId
+          ? new PostgresAuditStore(pool, workspaceId)
+          : stateDirectory
+            ? new FileAuditStore(path.join(stateDirectory, "audit"))
+            : undefined;
       activeController = new AbortController();
       let result;
       try {
