@@ -27,13 +27,6 @@ function safeConfigFile(root: string, relative: string): string {
   return resolved;
 }
 
-function encodeEnvelope(value: unknown): string {
-  const json = JSON.stringify(value);
-  if (Buffer.byteLength(json, "utf8") > 650_000)
-    throw new Error("Cloud Run execution envelope is too large.");
-  return Buffer.from(json, "utf8").toString("base64url");
-}
-
 async function buildAttackJob(job: PlatformJob, workerId: string): Promise<unknown> {
   const rootDist = new URL("../../dist/", import.meta.url);
   const configModule = (await import(new URL("config.js", rootDist).href)) as {
@@ -145,13 +138,23 @@ async function main(): Promise<void> {
     if (!job) return;
     try {
       const attackJob = await buildAttackJob(job, workerId);
+      const envelopeExpiry = new Date(
+        Date.now() + (job.payload.limits?.deadlineMs ?? 120_000) + 60_000,
+      ).toISOString();
+      await repository.prepareExecutionEnvelope(
+        job,
+        workerId,
+        attackJob,
+        envelopeExpiry,
+      );
       const client = new CloudRunJobClient({
         projectId: required("REAPER_GCP_PROJECT_ID"),
         region: required("REAPER_GCP_REGION"),
         jobName: required("REAPER_GCP_RUNNER_JOB"),
       });
       const execution = await client.execute({
-        executionEnvelope: encodeEnvelope(attackJob),
+        jobId: job.id,
+        workerId,
         timeoutMs: job.payload.limits?.deadlineMs ?? 120_000,
       });
       console.log(
