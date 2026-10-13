@@ -15,7 +15,9 @@ export async function googleMetadataAccessToken(
       signal: controller.signal,
     });
     if (!response.ok)
-      throw new Error(`Google metadata token endpoint returned HTTP ${response.status}.`);
+      throw new Error(
+        `Google metadata token endpoint returned HTTP ${response.status}.`,
+      );
     const value = (await response.json()) as {
       access_token?: unknown;
       token_type?: unknown;
