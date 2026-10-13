@@ -182,9 +182,16 @@ function validateCleanup(value: unknown): JournalCleanupPlan {
   ]);
   if (Object.keys(value).some((key) => !allowed.has(key)))
     throw new Error("Execution journal cleanup entry has an unknown field.");
-  for (const field of ["id", "scenarioId", "stepName"] as const)
+  for (const field of ["id", "scenarioId"] as const)
     if (typeof value[field] !== "string" || !ID.test(value[field]))
       throw new Error(`Execution journal cleanup ${field} is invalid.`);
+  if (
+    typeof value.stepName !== "string" ||
+    !value.stepName.trim() ||
+    value.stepName.length > 200 ||
+    /[\u0000-\u001f\u007f]/.test(value.stepName)
+  )
+    throw new Error("Execution journal cleanup stepName is invalid.");
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(String(value.method)))
     throw new Error("Execution journal cleanup method is invalid.");
   if (
