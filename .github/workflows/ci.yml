@@ -32,7 +32,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
       - run: npm run check
-      - run: node --test test/integration/postgres.mjs
+      - run: node --test test/integration/*.mjs
         env:
           REAPER_TEST_DATABASE_URL: postgres://postgres:reaper_synthetic_test@localhost:5432/reaper_test
       - run: npm pack
