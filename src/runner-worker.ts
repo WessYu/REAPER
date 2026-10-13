@@ -1,8 +1,14 @@
 import path from "node:path";
+import { Pool } from "pg";
 import { runAttack } from "./attack.js";
 import { FileExecutionJournalStore } from "./journal.js";
 import { FileScopeReplayStore } from "./replay.js";
 import { FileAuditStore } from "./audit.js";
+import {
+  PostgresExecutionJournalStore,
+  PostgresScopeReplayStore,
+  PostgresAuditStore,
+} from "./postgres-state.js";
 import type { AttackJob } from "./runner.js";
 
 let activeController: AbortController | undefined;
@@ -36,18 +42,38 @@ process.on("message", (message: unknown) => {
         throw new Error("invalid job envelope");
       const job = JSON.parse((message as { json: string }).json) as AttackJob;
       const stateDirectory = process.env.REAPER_RUNNER_STATE_DIR;
+      const databaseUrl = process.env.REAPER_RUNNER_DATABASE_URL;
+      const workspaceId = process.env.REAPER_RUNNER_WORKSPACE_ID;
       const strictCommercial = process.env.REAPER_RUNNER_MODE === "strict";
-      if (strictCommercial && !stateDirectory)
-        throw new Error("strict runner state directory is unavailable");
-      const journalStore = stateDirectory
-        ? new FileExecutionJournalStore(path.join(stateDirectory, "journal"))
+      if (strictCommercial && !stateDirectory && !databaseUrl)
+        throw new Error("strict runner durable state backend is unavailable");
+      if (databaseUrl && !workspaceId)
+        throw new Error("PostgreSQL runner state requires a workspace id");
+      if (stateDirectory && databaseUrl)
+        throw new Error("runner state backend is ambiguous");
+
+      const pool = databaseUrl
+        ? new Pool({
+            connectionString: databaseUrl,
+            max: 1,
+            application_name: "reaper-cloud-runner",
+          })
         : undefined;
-      const scopeReplayStore = stateDirectory
-        ? new FileScopeReplayStore(path.join(stateDirectory, "replay"))
-        : undefined;
-      const auditStore = stateDirectory
-        ? new FileAuditStore(path.join(stateDirectory, "audit"))
-        : undefined;
+      const journalStore = pool && workspaceId
+        ? new PostgresExecutionJournalStore(pool, workspaceId)
+        : stateDirectory
+          ? new FileExecutionJournalStore(path.join(stateDirectory, "journal"))
+          : undefined;
+      const scopeReplayStore = pool && workspaceId
+        ? new PostgresScopeReplayStore(pool, workspaceId)
+        : stateDirectory
+          ? new FileScopeReplayStore(path.join(stateDirectory, "replay"))
+          : undefined;
+      const auditStore = pool && workspaceId
+        ? new PostgresAuditStore(pool, workspaceId)
+        : stateDirectory
+          ? new FileAuditStore(path.join(stateDirectory, "audit"))
+          : undefined;
       activeController = new AbortController();
       const result = await runAttack(job.target, job.config, {
         signal: activeController.signal,
@@ -62,6 +88,7 @@ process.on("message", (message: unknown) => {
         scopeReplayStore,
         auditStore,
       });
+      await pool?.end();
       const json = JSON.stringify(result);
       if (typeof json !== "string")
         throw new Error("result serialization failed");
