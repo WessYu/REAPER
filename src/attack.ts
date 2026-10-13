@@ -1335,7 +1335,7 @@ export async function runAttack(
   }
   const result = resultFor(parsed);
   result.attack = {
-    runId: options.runId ?? randomUUID(),
+    runId,
     engineVersion: ENGINE_VERSION,
     ...(options.rulePackVersion
       ? { rulePackVersion: options.rulePackVersion }
@@ -1367,6 +1367,70 @@ export async function runAttack(
   };
   const baselineAddresses = await resolvedAddresses(parsed);
   assertNetworkScope(baselineAddresses, attack);
+
+  if (options.journalStore)
+    await options.journalStore.create({
+      version: 1,
+      runId,
+      workspaceId: options.workspaceId!,
+      projectId: options.projectId!,
+      assessmentId: attack.authorization.reference,
+      targetOrigin: parsed.origin,
+      environment: attack.authorization.environment,
+      allowPrivateNetwork: attack.allowPrivateNetwork === true,
+      timeoutMs: attack.timeoutMs ?? 5000,
+      rateLimitPerSecond: attack.rateLimitPerSecond ?? 3,
+      maxCleanupRequests: attack.maxCleanupRequests ?? 100,
+      createdAt: startedAt,
+      status: "PENDING",
+    });
+
+  if (options.scopeManifest && verifiedScope && options.scopeReplayStore) {
+    const accepted = await options.scopeReplayStore.consume({
+      issuer: verifiedScope.issuer,
+      assessmentId: verifiedScope.assessmentId,
+      nonce: verifiedScope.nonce,
+      targetOrigin: parsed.origin,
+      expiresAt: verifiedScope.expiresAt,
+    });
+    if (!accepted) {
+      if (options.journalStore)
+        await options.journalStore.update(runId, (record) => {
+          record.status = "FAILED";
+        });
+      if (options.auditStore)
+        await options.auditStore.append(runId, {
+          type: "RUN_FAILED",
+          data: { phase: "scope-replay", error: "signed scope replay rejected" },
+        });
+      throw new Error("Signed authorization scope has already been consumed.");
+    }
+    if (options.auditStore)
+      await options.auditStore.append(runId, {
+        type: "SCOPE_CONSUMED",
+        data: {
+          issuer: verifiedScope.issuer,
+          assessmentId: verifiedScope.assessmentId,
+          nonceDigest: authorizationScopeDigest(options.scopeManifest),
+        },
+      });
+  } else if (options.strictCommercial) {
+    throw new Error("Strict commercial execution requires scope replay protection.");
+  }
+
+  if (options.journalStore)
+    await options.journalStore.update(runId, (record) => {
+      record.status = "RUNNING";
+    });
+  if (options.auditStore)
+    await options.auditStore.append(runId, {
+      type: "RUN_STARTED",
+      data: {
+        workspaceId: options.workspaceId ?? "",
+        projectId: options.projectId ?? "",
+      },
+    });
+
   const context: AttackContext = {
     target: parsed,
     config: attack,
@@ -1383,6 +1447,10 @@ export async function runAttack(
     secrets: options.secretProvider ?? new EnvironmentSecretProvider(),
     secretReferences: new Set<string>(),
     secretValues: new Set<string>(),
+    journal: options.journalStore,
+    audit: options.auditStore,
+    plannedJournalScenarios: new Set<string>(),
+    executionFailed: false,
   };
 
   try {
