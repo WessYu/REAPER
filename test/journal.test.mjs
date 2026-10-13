@@ -101,3 +101,19 @@ test("execution journal rejects symlinked run files", async (t) => {
     await rm(outside, { force: true });
   }
 });
+
+
+test("journal update removes an abandoned lock from a dead process", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "reaper-journal-lock-"));
+  try {
+    const store = new FileExecutionJournalStore(root);
+    const created = await store.create(record());
+    await writeFile(path.join(root, `${created.runId}.lock`), "2147483647");
+    const updated = await store.update(created.runId, (current) => {
+      current.status = "RUNNING";
+    });
+    assert.equal(updated.status, "RUNNING");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
