@@ -827,7 +827,10 @@ async function requestStep(
   scenario: AttackScenario,
   step: AttackStep,
   cleanup: boolean,
-): Promise<void> {
+): Promise<{
+  status: number;
+  outcome: "passed" | "confirmed" | "inconclusive" | "cleanup";
+}> {
   if (!(await pace(context, cleanup))) throw new Error("Attack run cancelled.");
   assertAuthorizationActive(context, cleanup);
   consumeBudget(context, cleanup);
@@ -842,7 +845,11 @@ async function requestStep(
       );
     if (context.config.authorization.environment === "production")
       throw new Error("Mutating attack steps are blocked in production.");
+    if (!cleanup) await ensureJournalCleanupPlanned(context, scenario);
   }
+  const cleanupPlan = cleanup
+    ? await journalCleanupStarted(context, scenario, step)
+    : undefined;
   const path = requestPath(step.path, context.variables);
   const url = new URL(path, context.target);
   if (url.origin !== context.target.origin)
@@ -893,6 +900,15 @@ async function requestStep(
   }
   try {
     context.result.metrics.sinks++;
+    await persistentAudit(context, "REQUEST_EXECUTED", {
+      scenarioId: scenario.id,
+      step: step.name,
+      actor: step.actor ?? "anonymous",
+      method,
+      path: step.path,
+      status: response.status,
+      cleanup,
+    });
 
     if (step.captureCookies && Object.keys(step.captureCookies).length) {
       for (const [variableName, cookieName] of Object.entries(
@@ -1054,6 +1070,11 @@ async function requestStep(
       const findingId = `finding:${created.id}`;
       graphNode(context.result, findingId, "finding", created.title);
       graphEdge(context.result, routeId, findingId, "confirms");
+      await persistentAudit(context, "FINDING_CONFIRMED", {
+        scenarioId: scenario.id,
+        findingId: created.id,
+        ruleId: created.ruleId,
+      });
       outcome = "confirmed";
     } else if (allowed && !allowed.includes(response.status)) {
       outcome = "inconclusive";
@@ -1077,6 +1098,14 @@ async function requestStep(
       durationMs: Math.round(performance.now() - started),
       outcome,
     });
+    if (cleanupPlan) {
+      if (!cleanupPlan.allowedStatuses.includes(response.status))
+        throw new Error(
+          `Cleanup step ${step.name} returned HTTP ${response.status}; expected one of ${cleanupPlan.allowedStatuses.join(", ")}.`,
+        );
+      await journalCleanupSucceeded(context, cleanupPlan, response.status);
+    }
+    return { status: response.status, outcome };
   } finally {
     clearTimeout(timeout);
     if (!response.bodyUsed) await response.body?.cancel().catch(() => {});
