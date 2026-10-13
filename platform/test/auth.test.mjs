@@ -11,10 +11,7 @@ const pepper = "p".repeat(64);
 
 test("API keys expose the secret once and derive a stable lookup digest", () => {
   const issued = createApiKeyMaterial(pepper);
-  assert.match(
-    issued.token,
-    /^reaper_live_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/,
-  );
+  assert.match(issued.token, /^reaper_live_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/);
   const lookup = apiKeyLookup(issued.token, pepper);
   assert.equal(lookup.id, issued.id);
   assert.equal(lookup.secretHash, issued.secretHash);
@@ -31,5 +28,7 @@ test("Bearer parser and role hierarchy fail closed", () => {
     apiKeyId: "00000000-0000-4000-8000-000000000002",
   };
   assert.throws(() => requireRole(viewer, "analyst"), /analyst/);
-  assert.doesNotThrow(() => requireRole({ ...viewer, role: "admin" }, "analyst"));
+  assert.doesNotThrow(() =>
+    requireRole({ ...viewer, role: "admin" }, "analyst"),
+  );
 });

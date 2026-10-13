@@ -7,14 +7,18 @@ import pg from "pg";
 
 const connectionString = process.env.REAPER_TEST_DATABASE_URL;
 if (!connectionString)
-  throw new Error("Set REAPER_TEST_DATABASE_URL to a disposable PostgreSQL database.");
+  throw new Error(
+    "Set REAPER_TEST_DATABASE_URL to a disposable PostgreSQL database.",
+  );
 
 const baseMigration = await readFile(
   fileURLToPath(new URL("../../control-plane/001_init.sql", import.meta.url)),
   "utf8",
 );
 const platformMigration = await readFile(
-  fileURLToPath(new URL("../../control-plane/002_platform.sql", import.meta.url)),
+  fileURLToPath(
+    new URL("../../control-plane/002_platform.sql", import.meta.url),
+  ),
   "utf8",
 );
 

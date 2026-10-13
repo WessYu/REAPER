@@ -29,7 +29,8 @@ async function main(): Promise<void> {
     outputRoot: required("REAPER_PLATFORM_OUTPUT_ROOT"),
     signer,
   });
-  const workerId = process.env.REAPER_PLATFORM_WORKER_ID ?? `worker-${randomUUID()}`;
+  const workerId =
+    process.env.REAPER_PLATFORM_WORKER_ID ?? `worker-${randomUUID()}`;
   let stopping = false;
   process.once("SIGINT", () => {
     stopping = true;
@@ -48,7 +49,11 @@ async function main(): Promise<void> {
       try {
         const outcome = await runner.run(job);
         if (outcome.status === "COMPLETED") {
-          await repository.completeJob(job, workerId, outcome.result ?? outcome);
+          await repository.completeJob(
+            job,
+            workerId,
+            outcome.result ?? outcome,
+          );
         } else {
           await repository.failJob(
             job,

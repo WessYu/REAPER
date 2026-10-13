@@ -15,12 +15,14 @@ async function main(): Promise<void> {
     application_name: "reaper-platform-bootstrap",
   });
   const pepper = required("REAPER_PLATFORM_API_KEY_PEPPER");
-  const principalId = process.env.REAPER_PLATFORM_BOOTSTRAP_PRINCIPAL ?? "owner";
+  const principalId =
+    process.env.REAPER_PLATFORM_BOOTSTRAP_PRINCIPAL ?? "owner";
   const organizationName =
     process.env.REAPER_PLATFORM_BOOTSTRAP_ORGANIZATION ?? "REAPER";
   const workspaceName =
     process.env.REAPER_PLATFORM_BOOTSTRAP_WORKSPACE ?? "Default";
-  const keyName = process.env.REAPER_PLATFORM_BOOTSTRAP_KEY_NAME ?? "bootstrap-admin";
+  const keyName =
+    process.env.REAPER_PLATFORM_BOOTSTRAP_KEY_NAME ?? "bootstrap-admin";
   const organizationId = randomUUID();
   const workspaceId = randomUUID();
   const material = createApiKeyMaterial(pepper);
@@ -50,7 +52,8 @@ async function main(): Promise<void> {
           principalId,
           apiKeyId: material.id,
           apiKey: material.token,
-          warning: "Store this API key now; REAPER stores only its HMAC digest.",
+          warning:
+            "Store this API key now; REAPER stores only its HMAC digest.",
         },
         null,
         2,

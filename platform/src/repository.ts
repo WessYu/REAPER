@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import {
-  createApiKeyMaterial,
-  requireRole,
-} from "./auth.js";
+import { createApiKeyMaterial, requireRole } from "./auth.js";
 import { withWorkspaceContext } from "./db.js";
 import type {
   CreateAssessmentInput,
@@ -254,10 +251,7 @@ export class PlatformRepository {
     });
   }
 
-  async listAudit(
-    context: RequestContext,
-    runId: string,
-  ): Promise<unknown[]> {
+  async listAudit(context: RequestContext, runId: string): Promise<unknown[]> {
     return withWorkspaceContext(this.pool, context, async (client) => {
       const result = await client.query(
         `SELECT sequence,previous_hash,event_hash,event_type,payload,created_at
@@ -318,10 +312,7 @@ export class PlatformRepository {
     };
   }
 
-  async revokeApiKey(
-    context: RequestContext,
-    keyId: string,
-  ): Promise<boolean> {
+  async revokeApiKey(context: RequestContext, keyId: string): Promise<boolean> {
     requireRole(context, "admin");
     return withWorkspaceContext(this.pool, context, async (client) => {
       const result = await client.query<{ revoked: boolean }>(
@@ -332,7 +323,10 @@ export class PlatformRepository {
     });
   }
 
-  async leaseJob(workerId: string, leaseSeconds = 120): Promise<PlatformJob | null> {
+  async leaseJob(
+    workerId: string,
+    leaseSeconds = 120,
+  ): Promise<PlatformJob | null> {
     const result = await this.pool.query<{
       id: string;
       workspace_id: string;
@@ -340,10 +334,10 @@ export class PlatformRepository {
       attempt: number;
       payload: CreateRunInput;
       lease_expires_at: Date;
-    }>(
-      "SELECT * FROM reaper_control.lease_platform_job($1,$2)",
-      [text(workerId, "workerId"), leaseSeconds],
-    );
+    }>("SELECT * FROM reaper_control.lease_platform_job($1,$2)", [
+      text(workerId, "workerId"),
+      leaseSeconds,
+    ]);
     const row = result.rows[0];
     if (!row) return null;
     return {

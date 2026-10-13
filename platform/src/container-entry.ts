@@ -63,7 +63,9 @@ async function main(): Promise<void> {
   const configFile = required("REAPER_CONFIG_FILE");
   const outputFile = required("REAPER_OUTPUT_FILE");
   const stateDirectory = required("REAPER_STATE_DIRECTORY");
-  const scope = JSON.parse(required("REAPER_SCOPE_MANIFEST")) as SignedAuthorizationScope;
+  const scope = JSON.parse(
+    required("REAPER_SCOPE_MANIFEST"),
+  ) as SignedAuthorizationScope;
   const publicKey = required("REAPER_SCOPE_PUBLIC_KEY");
 
   const base = await configModule.readConfig(configFile);
@@ -108,13 +110,18 @@ async function main(): Promise<void> {
     config,
     limits: {
       deadlineMs: scope.payload.limits.deadlineMs,
-      cleanupGraceMs: Math.min(60_000, Math.max(5_000, scope.payload.limits.deadlineMs / 10)),
+      cleanupGraceMs: Math.min(
+        60_000,
+        Math.max(5_000, scope.payload.limits.deadlineMs / 10),
+      ),
       memoryMb: 384,
       maxOutputBytes: 8 * 1024 * 1024,
     },
     engineVersion: model.ENGINE_VERSION,
     createdAt: now.toISOString(),
-    deadline: new Date(now.getTime() + scope.payload.limits.deadlineMs).toISOString(),
+    deadline: new Date(
+      now.getTime() + scope.payload.limits.deadlineMs,
+    ).toISOString(),
     workspaceId,
     projectId,
     scopeManifest: scope,

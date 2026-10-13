@@ -44,7 +44,9 @@ export class RemoteScopeSigner implements ScopeSigner {
       throw new Error("Scope signing public key is invalid.");
   }
 
-  async sign(payload: AuthorizationScopePayload): Promise<SignedAuthorizationScope> {
+  async sign(
+    payload: AuthorizationScopePayload,
+  ): Promise<SignedAuthorizationScope> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5_000);
     try {
@@ -55,12 +57,16 @@ export class RemoteScopeSigner implements ScopeSigner {
           authorization: `Bearer ${this.token}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ purpose: "reaper-authorization-scope-v1", payload }),
+        body: JSON.stringify({
+          purpose: "reaper-authorization-scope-v1",
+          payload,
+        }),
         signal: controller.signal,
       });
       if (!response.ok)
         throw new Error(`Scope signer returned HTTP ${response.status}.`);
-      const value = (await response.json()) as Partial<SignedAuthorizationScope>;
+      const value =
+        (await response.json()) as Partial<SignedAuthorizationScope>;
       if (
         typeof value.keyId !== "string" ||
         !/^[A-Za-z0-9._-]{1,100}$/.test(value.keyId) ||
@@ -87,7 +93,8 @@ export function buildScopePayload(input: {
 }): AuthorizationScopePayload {
   const issuedAt = new Date();
   const expiresAt = new Date(
-    issuedAt.getTime() + Math.min(input.limits.deadlineMs + 60_000, 24 * 60 * 60_000),
+    issuedAt.getTime() +
+      Math.min(input.limits.deadlineMs + 60_000, 24 * 60 * 60_000),
   );
   return {
     version: 1,

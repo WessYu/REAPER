@@ -15,7 +15,9 @@ async function main(): Promise<void> {
   });
   await client.connect();
   try {
-    await client.query("SELECT pg_advisory_lock(hashtext('reaper-platform-migrations'))");
+    await client.query(
+      "SELECT pg_advisory_lock(hashtext('reaper-platform-migrations'))",
+    );
     for (const relative of [
       "../../control-plane/001_init.sql",
       "../../control-plane/002_platform.sql",
@@ -28,7 +30,9 @@ async function main(): Promise<void> {
     }
   } finally {
     await client
-      .query("SELECT pg_advisory_unlock(hashtext('reaper-platform-migrations'))")
+      .query(
+        "SELECT pg_advisory_unlock(hashtext('reaper-platform-migrations'))",
+      )
       .catch(() => {});
     await client.end();
   }

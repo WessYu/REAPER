@@ -5,11 +5,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import type { Pool } from "pg";
-import type {
-  IssuedApiKey,
-  PlatformRole,
-  RequestContext,
-} from "./types.js";
+import type { IssuedApiKey, PlatformRole, RequestContext } from "./types.js";
 
 const KEY_PREFIX = "reaper_live_";
 const ROLE_WEIGHT: Record<PlatformRole, number> = {
@@ -20,7 +16,9 @@ const ROLE_WEIGHT: Record<PlatformRole, number> = {
 
 function hmacHex(value: string, pepper: string): string {
   if (pepper.length < 32)
-    throw new Error("REAPER_PLATFORM_API_KEY_PEPPER must be at least 32 characters.");
+    throw new Error(
+      "REAPER_PLATFORM_API_KEY_PEPPER must be at least 32 characters.",
+    );
   return createHmac("sha256", pepper).update(value).digest("hex");
 }
 
@@ -56,7 +54,9 @@ export function apiKeyLookup(
   token: string,
   pepper: string,
 ): { id: string; secretHash: string } {
-  const match = /^reaper_live_([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/.exec(token);
+  const match = /^reaper_live_([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/.exec(
+    token,
+  );
   if (!match?.[1]) throw new Error("API key format is invalid.");
   return { id: match[1], secretHash: hmacHex(token, pepper) };
 }
@@ -72,10 +72,10 @@ export async function authenticateApiKey(
     workspace_id: string;
     principal_id: string;
     role: PlatformRole;
-  }>(
-    "SELECT * FROM reaper_control.authenticate_api_key($1::uuid, $2::text)",
-    [lookup.id, lookup.secretHash],
-  );
+  }>("SELECT * FROM reaper_control.authenticate_api_key($1::uuid, $2::text)", [
+    lookup.id,
+    lookup.secretHash,
+  ]);
   const row = result.rows[0];
   if (!row) throw new Error("API key is invalid, expired or revoked.");
   return {

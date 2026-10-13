@@ -1,4 +1,8 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { authenticateApiKey, parseBearerHeader } from "./auth.js";
@@ -13,7 +17,9 @@ function required(name: string): string {
   return value;
 }
 
-async function jsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+async function jsonBody(
+  request: IncomingMessage,
+): Promise<Record<string, unknown>> {
   const contentType = request.headers["content-type"];
   if (!contentType?.toLowerCase().startsWith("application/json"))
     throw new Error("Content-Type must be application/json.");
@@ -32,7 +38,11 @@ async function jsonBody(request: IncomingMessage): Promise<Record<string, unknow
   return parsed as Record<string, unknown>;
 }
 
-function sendJson(response: ServerResponse, status: number, value: unknown): void {
+function sendJson(
+  response: ServerResponse,
+  status: number,
+  value: unknown,
+): void {
   const body = JSON.stringify(value);
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -43,13 +53,20 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.end(body);
 }
 
-function sendError(response: ServerResponse, status: number, message: string): void {
+function sendError(
+  response: ServerResponse,
+  status: number,
+  message: string,
+): void {
   sendJson(response, status, { error: message });
 }
 
 function routeId(pathname: string, prefix: string, suffix = ""): string | null {
   if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
-  const value = pathname.slice(prefix.length, suffix ? -suffix.length : undefined);
+  const value = pathname.slice(
+    prefix.length,
+    suffix ? -suffix.length : undefined,
+  );
   return value && !value.includes("/") ? value : null;
 }
 
@@ -59,7 +76,9 @@ function clientError(message: string): boolean {
   );
 }
 
-export async function startApiServer(): Promise<ReturnType<typeof createServer>> {
+export async function startApiServer(): Promise<
+  ReturnType<typeof createServer>
+> {
   const pool = createPlatformPool(required("REAPER_PLATFORM_DATABASE_URL"));
   const pepper = required("REAPER_PLATFORM_API_KEY_PEPPER");
   const repository = new PlatformRepository(pool, pepper);
@@ -75,11 +94,16 @@ export async function startApiServer(): Promise<ReturnType<typeof createServer>>
     try {
       if (method === "GET" && url.pathname === "/health") {
         const probe = await pool.query("SELECT 1 AS ok");
-        sendJson(response, 200, { status: probe.rows[0]?.ok === 1 ? "ok" : "degraded" });
+        sendJson(response, 200, {
+          status: probe.rows[0]?.ok === 1 ? "ok" : "degraded",
+        });
         return;
       }
 
-      if (method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
+      if (
+        method === "GET" &&
+        (url.pathname === "/" || url.pathname === "/dashboard")
+      ) {
         response.writeHead(200, {
           "content-type": "text/html; charset=utf-8",
           "content-security-policy":
@@ -111,7 +135,9 @@ export async function startApiServer(): Promise<ReturnType<typeof createServer>>
       }
 
       if (method === "GET" && url.pathname === "/v1/projects") {
-        sendJson(response, 200, { items: await repository.listProjects(context) });
+        sendJson(response, 200, {
+          items: await repository.listProjects(context),
+        });
         return;
       }
       if (method === "POST" && url.pathname === "/v1/projects") {
@@ -119,13 +145,17 @@ export async function startApiServer(): Promise<ReturnType<typeof createServer>>
         sendJson(
           response,
           201,
-          await repository.createProject(context, { name: body.name as string }),
+          await repository.createProject(context, {
+            name: body.name as string,
+          }),
         );
         return;
       }
 
       if (method === "GET" && url.pathname === "/v1/assessments") {
-        sendJson(response, 200, { items: await repository.listAssessments(context) });
+        sendJson(response, 200, {
+          items: await repository.listAssessments(context),
+        });
         return;
       }
       if (method === "POST" && url.pathname === "/v1/assessments") {
@@ -147,7 +177,11 @@ export async function startApiServer(): Promise<ReturnType<typeof createServer>>
       }
       if (method === "POST" && url.pathname === "/v1/runs") {
         const body = await jsonBody(request);
-        sendJson(response, 202, await repository.createRun(context, body as never));
+        sendJson(
+          response,
+          202,
+          await repository.createRun(context, body as never),
+        );
         return;
       }
 
@@ -174,7 +208,9 @@ export async function startApiServer(): Promise<ReturnType<typeof createServer>>
       }
 
       if (method === "GET" && url.pathname === "/v1/api-keys") {
-        sendJson(response, 200, { items: await repository.listApiKeys(context) });
+        sendJson(response, 200, {
+          items: await repository.listApiKeys(context),
+        });
         return;
       }
       if (method === "POST" && url.pathname === "/v1/api-keys") {
@@ -200,8 +236,13 @@ export async function startApiServer(): Promise<ReturnType<typeof createServer>>
 
       sendError(response, 404, "Route not found.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed.";
-      sendError(response, clientError(message) ? 400 : 500, clientError(message) ? message : "Internal server error.");
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
+      sendError(
+        response,
+        clientError(message) ? 400 : 500,
+        clientError(message) ? message : "Internal server error.",
+      );
     }
   });
 
@@ -221,7 +262,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startApiServer()
     .then((server) => {
       const address = server.address();
-      console.log(`REAPER Platform API listening on ${typeof address === "string" ? address : `${address?.address}:${address?.port}`}`);
+      console.log(
+        `REAPER Platform API listening on ${typeof address === "string" ? address : `${address?.address}:${address?.port}`}`,
+      );
     })
     .catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : error);

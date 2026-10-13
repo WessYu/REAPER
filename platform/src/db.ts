@@ -4,7 +4,8 @@ import type { RequestContext } from "./types.js";
 const DEFAULT_STATEMENT_TIMEOUT_MS = 15_000;
 
 export function createPlatformPool(connectionString: string): Pool {
-  if (!connectionString) throw new Error("REAPER_PLATFORM_DATABASE_URL is required.");
+  if (!connectionString)
+    throw new Error("REAPER_PLATFORM_DATABASE_URL is required.");
   const config: PoolConfig = {
     connectionString,
     max: 10,
@@ -22,10 +23,9 @@ export async function withTransaction<T>(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(
-      "SELECT set_config('statement_timeout', $1, true)",
-      [String(DEFAULT_STATEMENT_TIMEOUT_MS)],
-    );
+    await client.query("SELECT set_config('statement_timeout', $1, true)", [
+      String(DEFAULT_STATEMENT_TIMEOUT_MS),
+    ]);
     const result = await work(client);
     await client.query("COMMIT");
     return result;

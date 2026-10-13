@@ -2,10 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PlatformJob } from "./types.js";
-import {
-  buildScopePayload,
-  type ScopeSigner,
-} from "./scope-signer.js";
+import { buildScopePayload, type ScopeSigner } from "./scope-signer.js";
 
 interface RunnerOutcome {
   status: "COMPLETED" | "FAILED" | "INTERRUPTED" | "CLEANUP_FAILED";
@@ -28,7 +25,9 @@ function numericIdentity(): string {
   const configured = process.env.REAPER_PLATFORM_CONTAINER_UID;
   if (configured) {
     if (!/^\d+(?::\d+)?$/.test(configured) || configured.startsWith("0"))
-      throw new Error("REAPER_PLATFORM_CONTAINER_UID must be a non-root numeric uid[:gid].");
+      throw new Error(
+        "REAPER_PLATFORM_CONTAINER_UID must be a non-root numeric uid[:gid].",
+      );
     return configured;
   }
   const uid = process.getuid?.();
@@ -143,7 +142,8 @@ export class DockerRunner {
       });
       child.once("error", reject);
       child.once("close", (code) => {
-        if (code !== 0 && stderr.trim()) process.stderr.write(stderr.slice(0, 16_384));
+        if (code !== 0 && stderr.trim())
+          process.stderr.write(stderr.slice(0, 16_384));
         resolve(code ?? 2);
       });
     });
