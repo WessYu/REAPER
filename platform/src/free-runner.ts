@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(name + " is required.");
@@ -195,8 +197,17 @@ function freeConfig(job: {
   };
 }
 
+async function loadLease(): Promise<{ job: unknown }> {
+  const file = process.env.REAPER_FREE_RUNNER_LEASE_FILE;
+  if (!file) return gateway<{ job: unknown }>("/runner/lease", {});
+  const raw = await readFile(file, "utf8");
+  if (Buffer.byteLength(raw, "utf8") > 128 * 1024)
+    throw new Error("Free runner lease file is too large.");
+  return JSON.parse(raw) as { job: unknown };
+}
+
 async function main(): Promise<void> {
-  const lease = await gateway<{ job: unknown }>("/runner/lease", {});
+  const lease = await loadLease();
   if (!lease.job) {
     console.log(
       JSON.stringify({
@@ -218,6 +229,7 @@ async function main(): Promise<void> {
   );
 
   try {
+    await gateway("/runner/heartbeat", { jobId: job.id });
     const rootDist = new URL("../../dist/", import.meta.url);
     const engine = (await import(new URL("index.js", rootDist).href)) as {
       runAttack: (
