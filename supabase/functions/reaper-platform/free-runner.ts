@@ -249,7 +249,7 @@ export async function handleFreeRunnerRequest(input: {
   if (method === "POST" && path === "/runner/lease") {
     return await sql.begin(async (tx: any) => {
       const rows = await tx.unsafe(
-        "SELECT * FROM reaper_control.lease_free_platform_job($1,300)",
+        "SELECT * FROM reaper_control.lease_free_platform_job($1,600)",
         [identity.workerId],
       );
       const row = rows[0];
@@ -287,7 +287,7 @@ export async function handleFreeRunnerRequest(input: {
     return await sql.begin(async (tx: any) => {
       await activeJob(tx, id, identity.workerId);
       const rows = await tx.unsafe(
-        "SELECT reaper_control.renew_platform_job_lease($1::uuid,$2,300) AS renewed",
+        "SELECT reaper_control.renew_platform_job_lease($1::uuid,$2,600) AS renewed",
         [id, identity.workerId],
       );
       if (rows[0]?.renewed !== true)
