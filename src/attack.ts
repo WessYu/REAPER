@@ -1213,13 +1213,13 @@ export async function executeRecordedCleanup(
   } finally {
     if (context.secrets.revoke)
       for (const reference of context.secretReferences)
-        await context.secrets
-          .revoke(reference, {
+        await Promise.resolve(
+          context.secrets.revoke(reference, {
             runId: record.runId,
             targetOrigin: record.targetOrigin,
             purpose: "crash-recovery cleanup",
-          })
-          .catch(() => {});
+          }),
+        ).catch(() => {});
   }
 }
 
