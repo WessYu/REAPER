@@ -7,7 +7,9 @@ function fail(message) {
 }
 
 async function sha256(file) {
-  return createHash("sha256").update(await readFile(file)).digest("hex");
+  return createHash("sha256")
+    .update(await readFile(file))
+    .digest("hex");
 }
 
 const cwd = process.cwd();
@@ -85,8 +87,7 @@ for (const [file, expected] of entries) {
   } catch {
     fail(`manifest artifact ${file} is missing.`);
   }
-  if (actual !== expected)
-    fail(`manifest digest mismatch for ${file}.`);
+  if (actual !== expected) fail(`manifest digest mismatch for ${file}.`);
 }
 
 process.stdout.write(

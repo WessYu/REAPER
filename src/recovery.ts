@@ -42,7 +42,9 @@ async function claimCleanup(
 ): Promise<JournalCleanupPlan | undefined> {
   let claimed: JournalCleanupPlan | undefined;
   await store.update(runId, (record) => {
-    const plan = record.cleanups.find((candidate) => candidate.id === cleanupId);
+    const plan = record.cleanups.find(
+      (candidate) => candidate.id === cleanupId,
+    );
     if (!plan || plan.status === "SUCCEEDED") return;
     if (
       plan.status === "RUNNING" &&
@@ -65,7 +67,9 @@ async function completeCleanup(
   cleanupId: string,
 ): Promise<void> {
   await store.update(runId, (record) => {
-    const plan = record.cleanups.find((candidate) => candidate.id === cleanupId);
+    const plan = record.cleanups.find(
+      (candidate) => candidate.id === cleanupId,
+    );
     if (!plan) throw new Error("Recovery cleanup plan disappeared.");
     plan.status = "SUCCEEDED";
     plan.updatedAt = new Date().toISOString();
@@ -80,7 +84,9 @@ async function failCleanup(
   error: unknown,
 ): Promise<void> {
   await store.update(runId, (record) => {
-    const plan = record.cleanups.find((candidate) => candidate.id === cleanupId);
+    const plan = record.cleanups.find(
+      (candidate) => candidate.id === cleanupId,
+    );
     if (!plan) throw new Error("Recovery cleanup plan disappeared.");
     plan.status = "FAILED";
     plan.updatedAt = new Date().toISOString();
@@ -178,12 +184,13 @@ export async function recoverAttackRun(
   const remaining = after.cleanups.filter(
     (plan) => plan.status !== "SUCCEEDED",
   );
-  const terminal: RecoveryResult["status"] =
-    remaining.some((plan) => plan.status === "FAILED")
-      ? "CLEANUP_FAILED"
-      : remaining.length > 0
-        ? "INCOMPLETE"
-        : "COMPLETED";
+  const terminal: RecoveryResult["status"] = remaining.some(
+    (plan) => plan.status === "FAILED",
+  )
+    ? "CLEANUP_FAILED"
+    : remaining.length > 0
+      ? "INCOMPLETE"
+      : "COMPLETED";
 
   if (terminal !== "INCOMPLETE")
     await journalStore.update(runId, (record) => {

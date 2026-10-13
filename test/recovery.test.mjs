@@ -27,8 +27,7 @@ async function server(handler) {
 
 async function createRecoveryRecord(store, target, overrides = {}) {
   const runId = randomUUID();
-  const createdAt =
-    overrides.createdAt ?? new Date().toISOString();
+  const createdAt = overrides.createdAt ?? new Date().toISOString();
   await store.create({
     version: 1,
     runId,
@@ -253,7 +252,6 @@ test("write-ahead journal survives worker SIGKILL and recovery performs only dec
     await rm(stateDirectory, { recursive: true, force: true });
   }
 });
-
 
 test("concurrent recovery claims a cleanup at most once", async () => {
   let deletes = 0;

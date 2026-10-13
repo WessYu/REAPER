@@ -4,15 +4,15 @@ REAPER now distinguishes **standard** runner isolation from **strict** commercia
 
 ## Status
 
-| Control | Status | Current guarantee |
-| --- | --- | --- |
-| Child-process boundary | IMPLEMENTED | The standard runner executes the trusted engine in a separate Node process with a filtered environment, temporary working directory, deadline, bounded IPC/output and V8 heap limit. |
-| Strict capability contract | IMPLEMENTED | Strict mode refuses to start unless its injected isolation provider declares process, filesystem, network and enforceable resource-limit capabilities. There is no silent fallback to the standard child-process provider. |
-| Persistent journal / replay / audit state | IMPLEMENTED | A strict worker requires a persistent state directory and uses separate journal, replay and audit stores. |
-| OS filesystem sandbox | DEPLOYMENT-DEPENDENT | A container, VM or equivalent sandbox must enforce the filesystem boundary. The built-in child-process provider does not. |
-| Network egress policy | DEPLOYMENT-DEPENDENT | Deployment infrastructure must restrict egress to the approved target path/network. REAPER's application transport still performs exact-origin, address-class, DNS stability and pinned-address checks. |
-| CPU / RSS / PID limits | DEPLOYMENT-DEPENDENT | The built-in V8 heap limit is not a complete OS resource limit. Strict providers must enforce actual CPU, memory and process limits. |
-| Kernel/container escape resistance | DEPLOYMENT-DEPENDENT | Requires a hardened runtime and independent deployment/security review. |
+| Control                                   | Status               | Current guarantee                                                                                                                                                                                                          |
+| ----------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Child-process boundary                    | IMPLEMENTED          | The standard runner executes the trusted engine in a separate Node process with a filtered environment, temporary working directory, deadline, bounded IPC/output and V8 heap limit.                                       |
+| Strict capability contract                | IMPLEMENTED          | Strict mode refuses to start unless its injected isolation provider declares process, filesystem, network and enforceable resource-limit capabilities. There is no silent fallback to the standard child-process provider. |
+| Persistent journal / replay / audit state | IMPLEMENTED          | A strict worker requires a persistent state directory and uses separate journal, replay and audit stores.                                                                                                                  |
+| OS filesystem sandbox                     | DEPLOYMENT-DEPENDENT | A container, VM or equivalent sandbox must enforce the filesystem boundary. The built-in child-process provider does not.                                                                                                  |
+| Network egress policy                     | DEPLOYMENT-DEPENDENT | Deployment infrastructure must restrict egress to the approved target path/network. REAPER's application transport still performs exact-origin, address-class, DNS stability and pinned-address checks.                    |
+| CPU / RSS / PID limits                    | DEPLOYMENT-DEPENDENT | The built-in V8 heap limit is not a complete OS resource limit. Strict providers must enforce actual CPU, memory and process limits.                                                                                       |
+| Kernel/container escape resistance        | DEPLOYMENT-DEPENDENT | Requires a hardened runtime and independent deployment/security review.                                                                                                                                                    |
 
 The isolation provider is a **trusted deployment component**. A provider that lies about its capabilities defeats the strict-mode contract; production code should ship only reviewed provider implementations.
 

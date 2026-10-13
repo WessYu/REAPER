@@ -130,7 +130,8 @@ function validateTimestamp(value: unknown): string {
 function parseEvents(raw: string, expectedRunId: string): AuditEvent[] {
   if (!raw.trim()) return [];
   const lines = raw.trimEnd().split("\n");
-  if (lines.length > MAX_EVENTS) throw new Error("Audit trail exceeds its event limit.");
+  if (lines.length > MAX_EVENTS)
+    throw new Error("Audit trail exceeds its event limit.");
   const events: AuditEvent[] = [];
   let previous = GENESIS;
   for (let index = 0; index < lines.length; index++) {
@@ -212,16 +213,18 @@ export class FileAuditStore implements AuditStore {
 
   async append(runId: string, input: AuditInput): Promise<AuditEvent> {
     if (!RUN_ID.test(runId)) throw new Error("Audit runId is invalid.");
-    if (!EVENT_TYPES.has(input.type)) throw new Error("Audit event type is invalid.");
+    if (!EVENT_TYPES.has(input.type))
+      throw new Error("Audit event type is invalid.");
     const root = await ensureSecureDirectory(this.#root);
     return withExclusiveFileLock(root, `${runId}.audit`, async () => {
       const events = await readAudit(root, runId);
       if (events.length >= MAX_EVENTS)
         throw new Error("Audit trail exceeds its event limit.");
       const previous = events.at(-1)?.eventHash ?? GENESIS;
-      const data = sanitizeValue(
-        (input.data ?? {}) as AuditJson,
-      ) as Record<string, AuditJson>;
+      const data = sanitizeValue((input.data ?? {}) as AuditJson) as Record<
+        string,
+        AuditJson
+      >;
       const base = {
         version: 1 as const,
         runId,
@@ -233,7 +236,8 @@ export class FileAuditStore implements AuditStore {
       };
       const next: AuditEvent = { ...base, eventHash: hashEvent(base) };
       const serialized =
-        [...events, next].map((event) => canonicalJson(event)).join("\n") + "\n";
+        [...events, next].map((event) => canonicalJson(event)).join("\n") +
+        "\n";
       if (Buffer.byteLength(serialized, "utf8") > MAX_AUDIT_BYTES)
         throw new Error("Audit trail exceeds its size limit.");
       await atomicWriteFile(root, `${runId}.audit.jsonl`, serialized);

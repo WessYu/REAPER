@@ -77,7 +77,6 @@ test("audit appends are serialized for one run", async () => {
   }
 });
 
-
 test("audit head anchor detects valid-prefix tail truncation", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "reaper-audit-truncate-"));
   const runId = randomUUID();

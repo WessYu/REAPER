@@ -21,7 +21,10 @@ export type TrustedKeySource =
 
 const KEY_ID = /^[A-Za-z0-9._-]{1,100}$/;
 
-function timestamp(value: string | undefined, name: string): number | undefined {
+function timestamp(
+  value: string | undefined,
+  name: string,
+): number | undefined {
   if (value === undefined) return undefined;
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value)

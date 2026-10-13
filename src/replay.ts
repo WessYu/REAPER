@@ -106,7 +106,11 @@ export class FileScopeReplayStore implements ScopeReplayStore {
   }
 
   async collectExpired(now = Date.now(), maxDeletes = 100): Promise<number> {
-    if (!Number.isSafeInteger(maxDeletes) || maxDeletes < 1 || maxDeletes > 1000)
+    if (
+      !Number.isSafeInteger(maxDeletes) ||
+      maxDeletes < 1 ||
+      maxDeletes > 1000
+    )
       throw new Error("Replay-store collection limit is invalid.");
     const root = await ensureSecureDirectory(this.#root);
     let removed = 0;

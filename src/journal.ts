@@ -67,7 +67,10 @@ export interface ExecutionJournalRecord {
 
 export interface ExecutionJournalStore {
   create(
-    input: Omit<ExecutionJournalRecord, "integrity" | "updatedAt" | "cleanups"> & {
+    input: Omit<
+      ExecutionJournalRecord,
+      "integrity" | "updatedAt" | "cleanups"
+    > & {
       cleanups?: JournalCleanupPlan[];
     },
   ): Promise<ExecutionJournalRecord>;
@@ -127,7 +130,9 @@ function validateIdentity(value: unknown): JournalIdentityRef | undefined {
     throw new Error("Execution journal cleanup identity is invalid.");
   for (const key of Object.keys(value))
     if (!["tokenEnv", "cookie", "headerEnvs"].includes(key))
-      throw new Error("Execution journal cleanup identity has an unknown field.");
+      throw new Error(
+        "Execution journal cleanup identity has an unknown field.",
+      );
   if (
     value.tokenEnv !== undefined &&
     (typeof value.tokenEnv !== "string" || !ENV_REF.test(value.tokenEnv))
@@ -215,7 +220,9 @@ function validateCleanup(value: unknown): JournalCleanupPlan {
     value.allowedStatuses.length > 20 ||
     !value.allowedStatuses.every(
       (status) =>
-        Number.isSafeInteger(status) && Number(status) >= 100 && Number(status) <= 599,
+        Number.isSafeInteger(status) &&
+        Number(status) >= 100 &&
+        Number(status) <= 599,
     )
   )
     throw new Error("Execution journal cleanup statuses are invalid.");
@@ -225,7 +232,11 @@ function validateCleanup(value: unknown): JournalCleanupPlan {
     Number(value.attempts) > 100
   )
     throw new Error("Execution journal cleanup attempt count is invalid.");
-  if (!["PENDING", "RUNNING", "SUCCEEDED", "FAILED"].includes(String(value.status)))
+  if (
+    !["PENDING", "RUNNING", "SUCCEEDED", "FAILED"].includes(
+      String(value.status),
+    )
+  )
     throw new Error("Execution journal cleanup status is invalid.");
   timestamp(value.plannedAt, "cleanup plannedAt");
   timestamp(value.updatedAt, "cleanup updatedAt");
@@ -291,7 +302,7 @@ function validateRecord(value: unknown): ExecutionJournalRecord {
     /[\u0000-\u001f\u007f]/.test(value.assessmentId)
   )
     throw new Error("Execution journal assessmentId is invalid.");
-  if (typeof value.targetOrigin !== "string") 
+  if (typeof value.targetOrigin !== "string")
     throw new Error("Execution journal target is invalid.");
   const target = new URL(value.targetOrigin);
   if (
@@ -301,7 +312,11 @@ function validateRecord(value: unknown): ExecutionJournalRecord {
     target.password
   )
     throw new Error("Execution journal target is invalid.");
-  if (!["local", "preview", "staging", "production"].includes(String(value.environment)))
+  if (
+    !["local", "preview", "staging", "production"].includes(
+      String(value.environment),
+    )
+  )
     throw new Error("Execution journal environment is invalid.");
   if (typeof value.allowPrivateNetwork !== "boolean")
     throw new Error("Execution journal network flag is invalid.");
@@ -341,7 +356,10 @@ function validateRecord(value: unknown): ExecutionJournalRecord {
   )
     throw new Error("Execution journal cleanup list is invalid.");
   const cleanups = value.cleanups.map(validateCleanup);
-  if (typeof value.integrity !== "string" || !/^[a-f0-9]{64}$/.test(value.integrity))
+  if (
+    typeof value.integrity !== "string" ||
+    !/^[a-f0-9]{64}$/.test(value.integrity)
+  )
     throw new Error("Execution journal integrity marker is invalid.");
   const checked = { ...(value as unknown as ExecutionJournalRecord), cleanups };
   const expected = sha256(canonicalJson(withoutIntegrity(checked)));
@@ -362,7 +380,10 @@ export class FileExecutionJournalStore implements ExecutionJournalStore {
   }
 
   async create(
-    input: Omit<ExecutionJournalRecord, "integrity" | "updatedAt" | "cleanups"> & {
+    input: Omit<
+      ExecutionJournalRecord,
+      "integrity" | "updatedAt" | "cleanups"
+    > & {
       cleanups?: JournalCleanupPlan[];
     },
   ): Promise<ExecutionJournalRecord> {
@@ -381,13 +402,18 @@ export class FileExecutionJournalStore implements ExecutionJournalStore {
         cleanups: input.cleanups ?? [],
       });
       const checked = validateRecord(record);
-      await atomicWriteFile(root, `${input.runId}.json`, canonicalJson(checked) + "\n");
+      await atomicWriteFile(
+        root,
+        `${input.runId}.json`,
+        canonicalJson(checked) + "\n",
+      );
       return checked;
     });
   }
 
   async read(runId: string): Promise<ExecutionJournalRecord> {
-    if (!RUN_ID.test(runId)) throw new Error("Execution journal runId is invalid.");
+    if (!RUN_ID.test(runId))
+      throw new Error("Execution journal runId is invalid.");
     const root = await this.#resolvedRoot();
     const raw = await readLimitedFile(
       safeStateFile(root, `${runId}.json`),
@@ -406,7 +432,8 @@ export class FileExecutionJournalStore implements ExecutionJournalStore {
     runId: string,
     mutate: (record: ExecutionJournalRecord) => void,
   ): Promise<ExecutionJournalRecord> {
-    if (!RUN_ID.test(runId)) throw new Error("Execution journal runId is invalid.");
+    if (!RUN_ID.test(runId))
+      throw new Error("Execution journal runId is invalid.");
     const root = await this.#resolvedRoot();
     return withExclusiveFileLock(root, runId, async () => {
       const raw = await readLimitedFile(
@@ -419,7 +446,11 @@ export class FileExecutionJournalStore implements ExecutionJournalStore {
       next.updatedAt = new Date().toISOString();
       const sealed = seal(withoutIntegrity(next));
       const checked = validateRecord(sealed);
-      await atomicWriteFile(root, `${runId}.json`, canonicalJson(checked) + "\n");
+      await atomicWriteFile(
+        root,
+        `${runId}.json`,
+        canonicalJson(checked) + "\n",
+      );
       return checked;
     });
   }
@@ -431,7 +462,11 @@ export class FileExecutionJournalStore implements ExecutionJournalStore {
       const runId = name.slice(0, -5);
       if (!RUN_ID.test(runId)) continue;
       const record = await this.read(runId);
-      if (["RUNNING", "INTERRUPTED", "CLEANING", "CLEANUP_FAILED"].includes(record.status))
+      if (
+        ["RUNNING", "INTERRUPTED", "CLEANING", "CLEANUP_FAILED"].includes(
+          record.status,
+        )
+      )
         records.push(record);
     }
     return records.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -439,5 +474,7 @@ export class FileExecutionJournalStore implements ExecutionJournalStore {
 }
 
 export function journalError(error: unknown): string {
-  return sanitizeAuditText(error instanceof Error ? error.message : "unknown error");
+  return sanitizeAuditText(
+    error instanceof Error ? error.message : "unknown error",
+  );
 }

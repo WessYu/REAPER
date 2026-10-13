@@ -74,7 +74,10 @@ test("execution journal rejects tampering and partial/corrupted JSON", async () 
     const parsed = JSON.parse(await readFile(file, "utf8"));
     parsed.workspaceId = "workspace-b";
     await writeFile(file, JSON.stringify(parsed));
-    await assert.rejects(store.read(created.runId), /integrity verification failed/);
+    await assert.rejects(
+      store.read(created.runId),
+      /integrity verification failed/,
+    );
 
     await writeFile(file, '{"version":1');
     await assert.rejects(store.read(created.runId), /invalid JSON/);
@@ -89,7 +92,11 @@ test("execution journal rejects symlinked run files", async (t) => {
     return;
   }
   const root = await mkdtemp(path.join(tmpdir(), "reaper-journal-link-"));
-  const outside = path.join(root, "..", `reaper-journal-outside-${randomUUID()}`);
+  const outside = path.join(
+    root,
+    "..",
+    `reaper-journal-outside-${randomUUID()}`,
+  );
   try {
     const current = record();
     await writeFile(outside, "{}");
@@ -101,7 +108,6 @@ test("execution journal rejects symlinked run files", async (t) => {
     await rm(outside, { force: true });
   }
 });
-
 
 test("journal update removes an abandoned lock from a dead process", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "reaper-journal-lock-"));

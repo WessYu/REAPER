@@ -178,7 +178,8 @@ function childEnvironment(
   const env: NodeJS.ProcessEnv = {};
   for (const name of ["SystemRoot", "WINDIR", "TEMP", "TMP"])
     if (process.env[name]) env[name] = process.env[name];
-  if (stateDirectory) env.REAPER_RUNNER_STATE_DIR = path.resolve(stateDirectory);
+  if (stateDirectory)
+    env.REAPER_RUNNER_STATE_DIR = path.resolve(stateDirectory);
   env.REAPER_RUNNER_MODE = isolationMode;
   for (const ref of secretReferences(job.config))
     if (process.env[ref] !== undefined) {
@@ -207,11 +208,15 @@ export async function runAttackJob(
     : undefined;
   if (isolationMode === "strict") {
     if (!stateDirectory)
-      throw new Error("Strict runner mode requires a persistent state directory.");
+      throw new Error(
+        "Strict runner mode requires a persistent state directory.",
+      );
     if (!job.workspaceId || !job.projectId)
       throw new Error("Strict runner mode requires workspaceId and projectId.");
     if (!job.scopeManifest || job.config.attack?.requireSignedScope !== true)
-      throw new Error("Strict runner mode requires a signed authorization scope.");
+      throw new Error(
+        "Strict runner mode requires a signed authorization scope.",
+      );
   }
 
   const serializedJob = JSON.stringify(job);

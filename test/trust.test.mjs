@@ -104,7 +104,6 @@ test("trust store rejects revoked not-yet-valid and expired keys", () => {
   }
 });
 
-
 test("rule-pack verification uses the same revocation lifecycle boundary", () => {
   const keys = generateKeyPairSync("ed25519");
   const pack = createSignedRulePack(
@@ -136,8 +135,5 @@ test("rule-pack verification uses the same revocation lifecycle boundary", () =>
       revokedAt: new Date().toISOString(),
     },
   ]);
-  assert.throws(
-    () => verifySignedRulePack(pack, store),
-    /revoked/,
-  );
+  assert.throws(() => verifySignedRulePack(pack, store), /revoked/);
 });

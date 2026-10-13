@@ -48,7 +48,8 @@ export async function ensureSecureDirectory(root: string): Promise<string> {
 }
 
 export function safeStateFile(root: string, name: string): string {
-  if (!SAFE_FILE.test(name)) throw new Error("Persistent state filename is invalid.");
+  if (!SAFE_FILE.test(name))
+    throw new Error("Persistent state filename is invalid.");
   const file = path.join(root, name);
   if (path.dirname(file) !== root)
     throw new Error("Persistent state path escaped its root.");

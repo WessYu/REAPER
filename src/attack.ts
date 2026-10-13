@@ -503,10 +503,7 @@ function journalTemplate(
   );
 }
 
-function journalBody(
-  value: VerifyJson,
-  context: AttackContext,
-): VerifyJson {
+function journalBody(value: VerifyJson, context: AttackContext): VerifyJson {
   if (typeof value === "string") {
     if (value.startsWith("$env:")) return value;
     return journalTemplate(value, context, false);
@@ -635,8 +632,11 @@ async function journalCleanupSucceeded(
   const runId = context.result.attack?.runId;
   if (!runId) throw new Error("Execution journal requires an attack run id.");
   await context.journal.update(runId, (record) => {
-    const current = record.cleanups.find((candidate) => candidate.id === plan.id);
-    if (!current) throw new Error("Execution journal cleanup plan disappeared.");
+    const current = record.cleanups.find(
+      (candidate) => candidate.id === plan.id,
+    );
+    if (!current)
+      throw new Error("Execution journal cleanup plan disappeared.");
     current.status = "SUCCEEDED";
     current.updatedAt = new Date().toISOString();
     delete current.lastError;
@@ -1120,9 +1120,7 @@ export async function executeRecordedCleanup(
   const parsed = targetUrl(record.targetOrigin);
   const identity: AttackIdentity | undefined = plan.identity
     ? {
-        ...(plan.identity.tokenEnv
-          ? { tokenEnv: plan.identity.tokenEnv }
-          : {}),
+        ...(plan.identity.tokenEnv ? { tokenEnv: plan.identity.tokenEnv } : {}),
         ...(plan.identity.cookie
           ? {
               cookie: {
@@ -1348,10 +1346,7 @@ export async function runAttack(
         "Strict commercial execution requires replay, journal and audit stores.",
       );
   }
-  if (
-    options.journalStore &&
-    (!options.workspaceId || !options.projectId)
-  )
+  if (options.journalStore && (!options.workspaceId || !options.projectId))
     throw new Error(
       "Persistent execution journals require workspaceId and projectId.",
     );
@@ -1515,7 +1510,10 @@ export async function runAttack(
       if (options.auditStore)
         await options.auditStore.append(runId, {
           type: "RUN_FAILED",
-          data: { phase: "scope-replay", error: "signed scope replay rejected" },
+          data: {
+            phase: "scope-replay",
+            error: "signed scope replay rejected",
+          },
         });
       throw new Error("Signed authorization scope has already been consumed.");
     }
@@ -1529,7 +1527,9 @@ export async function runAttack(
         },
       });
   } else if (options.strictCommercial) {
-    throw new Error("Strict commercial execution requires scope replay protection.");
+    throw new Error(
+      "Strict commercial execution requires scope replay protection.",
+    );
   }
 
   if (options.journalStore)
