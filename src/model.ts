@@ -1,4 +1,5 @@
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+export const ENGINE_VERSION = "0.2.0" as const;
 export type Confidence = "CONFIRMED" | "HIGH" | "MEDIUM" | "LOW";
 export type Category =
   | "SQL Safety"
@@ -211,6 +212,10 @@ export interface AttackAuditEvent {
 
 export interface AttackRunMetadata {
   runId: string;
+  engineVersion?: string;
+  rulePackVersion?: string;
+  workspaceId?: string;
+  projectId?: string;
   target: string;
   authorizationReference: string;
   authorizationExpiresAt?: string;

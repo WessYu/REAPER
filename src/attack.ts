@@ -17,6 +17,7 @@ import {
   type SignedAuthorizationScope,
 } from "./scope.js";
 import type { KeyLike } from "node:crypto";
+import { ENGINE_VERSION } from "./model.js";
 import type {
   AttackConfig,
   AttackIdentity,
@@ -881,6 +882,10 @@ export async function runAttack(
   config: Config,
   options: {
     signal?: AbortSignal;
+    runId?: string;
+    rulePackVersion?: string;
+    workspaceId?: string;
+    projectId?: string;
     scopeManifest?: SignedAuthorizationScope;
     trustedScopeKeys?: Record<string, KeyLike | string | Buffer>;
     secretProvider?: SecretProvider;
@@ -952,7 +957,13 @@ export async function runAttack(
   const startedAt = new Date().toISOString();
   const result = resultFor(parsed);
   result.attack = {
-    runId: randomUUID(),
+    runId: options.runId ?? randomUUID(),
+    engineVersion: ENGINE_VERSION,
+    ...(options.rulePackVersion
+      ? { rulePackVersion: options.rulePackVersion }
+      : {}),
+    ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+    ...(options.projectId ? { projectId: options.projectId } : {}),
     target: parsed.origin,
     authorizationReference: attack.authorization.reference,
     authorizationExpiresAt: attack.authorization.expiresAt,

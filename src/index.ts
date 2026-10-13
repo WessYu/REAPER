@@ -40,6 +40,9 @@ export {
   InMemorySecretProvider,
 } from "./secrets.js";
 export type { SecretProvider, SecretRequestContext } from "./secrets.js";
+export { createAttackJob, runAttackJob } from "./runner.js";
+export type { AttackJob, AttackJobOutcome } from "./runner.js";
+export { ENGINE_VERSION } from "./model.js";
 export {
   correlateAttackSource,
   normalizeAttackRoute,

@@ -223,6 +223,8 @@ REAPER can optionally discover GET/HEAD operations from an allowlisted target's 
 
 Redirect following is disabled. Concurrency, request rate, total request budget, response-capture size and per-request timeout are bounded, and Ctrl+C cancellation is propagated through the scenario. A runtime finding means a security property that **you explicitly declared** did not produce the expected HTTP status. REAPER does not brute-force credentials, crawl arbitrary internet targets or invent destructive requests.
 
+Library callers can use `createAttackJob` and `runAttackJob` to execute the trusted engine in a separate Node child process. The runner validates a job envelope, limits input/report/stdout/stderr sizes, filters the worker environment to referenced secrets and platform variables, sets a V8 heap limit and uses a temporary working directory. Deadline or caller cancellation reaches the engine first so it can attempt declared cleanup; the runner force-kills the worker after the bounded cleanup grace period. This is not an OS sandbox: the worker retains the current user's filesystem permissions, heap limits do not cap total RSS, and deployment controls must enforce CPU, filesystem and network egress policy. The existing CLI and direct `runAttack` API remain in-process.
+
 ## Authorized adversarial validation
 
 `reaper attack` is a stateful authorization-focused validation mode. It is intentionally configuration-driven rather than an unrestricted crawler or exploit framework.
