@@ -76,3 +76,21 @@ test("audit appends are serialized for one run", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+
+test("audit head anchor detects valid-prefix tail truncation", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "reaper-audit-truncate-"));
+  const runId = randomUUID();
+  try {
+    const store = new FileAuditStore(root);
+    await store.append(runId, { type: "RUN_CREATED", data: {} });
+    await store.append(runId, { type: "RUN_STARTED", data: {} });
+    await store.append(runId, { type: "RUN_COMPLETED", data: {} });
+    const file = path.join(root, `${runId}.audit.jsonl`);
+    const lines = (await readFile(file, "utf8")).trimEnd().split("\n");
+    await writeFile(file, lines.slice(0, -1).join("\n") + "\n");
+    await assert.rejects(store.verify(runId), /truncation|head mismatch/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
