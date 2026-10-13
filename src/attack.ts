@@ -1112,6 +1112,119 @@ async function requestStep(
   }
 }
 
+export async function executeRecordedCleanup(
+  record: ExecutionJournalRecord,
+  plan: JournalCleanupPlan,
+  options: { secretProvider?: SecretProvider } = {},
+): Promise<{ status: number }> {
+  const parsed = targetUrl(record.targetOrigin);
+  const identity: AttackIdentity | undefined = plan.identity
+    ? {
+        ...(plan.identity.tokenEnv
+          ? { tokenEnv: plan.identity.tokenEnv }
+          : {}),
+        ...(plan.identity.cookie
+          ? {
+              cookie: {
+                name: plan.identity.cookie.name,
+                valueEnv: plan.identity.cookie.valueEnv,
+              },
+            }
+          : {}),
+        ...(plan.identity.headerEnvs
+          ? { headerEnvs: { ...plan.identity.headerEnvs } }
+          : {}),
+      }
+    : undefined;
+  const config: AttackConfig = {
+    allowedTargets: [parsed.origin],
+    authorization: {
+      acknowledged: true,
+      reference: record.assessmentId,
+      environment: record.environment,
+    },
+    allowMutations: true,
+    allowPrivateNetwork: record.allowPrivateNetwork,
+    maxCleanupRequests: Math.max(1, record.maxCleanupRequests),
+    timeoutMs: record.timeoutMs,
+    rateLimitPerSecond: record.rateLimitPerSecond,
+    maxConsecutiveServerErrors: 1,
+    ...(plan.actor && identity
+      ? { identities: { [plan.actor]: identity } }
+      : {}),
+    scenarios: [],
+  };
+  const result = resultFor(parsed);
+  const now = new Date().toISOString();
+  result.attack = {
+    runId: record.runId,
+    engineVersion: ENGINE_VERSION,
+    workspaceId: record.workspaceId,
+    projectId: record.projectId,
+    target: parsed.origin,
+    authorizationReference: record.assessmentId,
+    environment: record.environment,
+    startedAt: now,
+    completedAt: now,
+    requests: 0,
+    cleanupRequests: 0,
+    cleanupFailures: 0,
+    confirmed: [],
+    audit: [],
+  };
+  const baselineAddresses = await resolvedAddresses(parsed);
+  assertNetworkScope(baselineAddresses, config);
+  const context: AttackContext = {
+    target: parsed,
+    config,
+    result,
+    variables: new Map<string, string>(),
+    requestCount: 0,
+    cleanupRequestCount: 0,
+    nextRequestAt: 0,
+    pacing: Promise.resolve(),
+    consecutiveServerErrors: 0,
+    baselineAddresses,
+    secrets: options.secretProvider ?? new EnvironmentSecretProvider(),
+    secretReferences: new Set<string>(),
+    secretValues: new Set<string>(),
+    plannedJournalScenarios: new Set<string>(),
+    executionFailed: false,
+  };
+  const scenario: AttackScenario = {
+    id: plan.scenarioId,
+    title: "Crash-recovery cleanup",
+    dimension: "business-logic",
+    steps: [],
+  };
+  const step: AttackStep = {
+    name: plan.stepName,
+    path: plan.path,
+    method: plan.method,
+    ...(plan.actor ? { actor: plan.actor } : {}),
+    ...(plan.body !== undefined ? { body: plan.body } : {}),
+    expect: { allowedStatuses: [...plan.allowedStatuses] },
+  };
+  try {
+    const executed = await requestStep(context, scenario, step, true);
+    if (!plan.allowedStatuses.includes(executed.status))
+      throw new Error(
+        `Recovered cleanup returned HTTP ${executed.status}; expected one of ${plan.allowedStatuses.join(", ")}.`,
+      );
+    return { status: executed.status };
+  } finally {
+    if (context.secrets.revoke)
+      for (const reference of context.secretReferences)
+        await context.secrets
+          .revoke(reference, {
+            runId: record.runId,
+            targetOrigin: record.targetOrigin,
+            purpose: "crash-recovery cleanup",
+          })
+          .catch(() => {});
+  }
+}
+
 async function runMatrix(
   context: AttackContext,
   matrix: AttackMatrix,
