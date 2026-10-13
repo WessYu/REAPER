@@ -446,6 +446,237 @@ function responseCookie(
   return undefined;
 }
 
+async function persistentAudit(
+  context: AttackContext,
+  type: AuditEventType,
+  data: Record<string, AuditJson> = {},
+): Promise<void> {
+  if (!context.audit) return;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Persistent audit requires an attack run id.");
+  await context.audit.append(runId, { type, data });
+}
+
+function journalIdentity(
+  identity: AttackIdentity | undefined,
+): JournalIdentityRef | undefined {
+  if (!identity) return undefined;
+  if (
+    identity.tokenVar ||
+    identity.cookie?.valueVar ||
+    Object.keys(identity.headerVars ?? {}).length > 0
+  )
+    throw new Error(
+      "Crash-safe cleanup cannot depend on captured credential values; use environment-backed secret references.",
+    );
+  const result: JournalIdentityRef = {};
+  if (identity.tokenEnv) result.tokenEnv = identity.tokenEnv;
+  if (identity.cookie?.valueEnv)
+    result.cookie = {
+      name: identity.cookie.name,
+      valueEnv: identity.cookie.valueEnv,
+    };
+  if (Object.keys(identity.headerEnvs ?? {}).length)
+    result.headerEnvs = { ...identity.headerEnvs };
+  return Object.keys(result).length ? result : undefined;
+}
+
+function journalTemplate(
+  value: string,
+  context: AttackContext,
+  encode: boolean,
+): string {
+  return value.replace(
+    /\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g,
+    (_, name: string) => {
+      const replacement = context.variables.get(name);
+      if (replacement === undefined)
+        throw new Error(
+          `Crash-safe cleanup requires captured variable ${name} before the mutating request.`,
+        );
+      if (context.secretValues.has(replacement))
+        throw new Error(
+          `Crash-safe cleanup cannot persist secret captured variable ${name}.`,
+        );
+      return encode ? encodeURIComponent(replacement) : replacement;
+    },
+  );
+}
+
+function journalBody(
+  value: VerifyJson,
+  context: AttackContext,
+): VerifyJson {
+  if (typeof value === "string") {
+    if (value.startsWith("$env:")) return value;
+    return journalTemplate(value, context, false);
+  }
+  if (Array.isArray(value))
+    return value.map((entry) => journalBody(entry, context));
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        journalBody(entry, context),
+      ]),
+    );
+  return value;
+}
+
+async function ensureJournalCleanupPlanned(
+  context: AttackContext,
+  scenario: AttackScenario,
+): Promise<void> {
+  if (!context.journal || context.plannedJournalScenarios.has(scenario.id))
+    return;
+  const cleanup = [...(scenario.cleanup ?? [])].reverse();
+  if (cleanup.length < 1)
+    throw new Error(
+      `Crash-safe mutation scenario ${scenario.id} requires cleanup steps.`,
+    );
+  const names = new Set<string>();
+  const now = new Date().toISOString();
+  const plans: JournalCleanupPlan[] = cleanup.map((step, index) => {
+    if (names.has(step.name))
+      throw new Error(
+        `Crash-safe cleanup step names must be unique in scenario ${scenario.id}.`,
+      );
+    names.add(step.name);
+    const method = step.method ?? "GET";
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(method))
+      throw new Error(
+        `Crash-safe cleanup step ${step.name} must use a mutating HTTP method.`,
+      );
+    const allowedStatuses = step.expect?.allowedStatuses;
+    if (
+      !allowedStatuses?.length ||
+      allowedStatuses.some((status) => status >= 500)
+    )
+      throw new Error(
+        `Crash-safe cleanup step ${step.name} requires explicit non-5xx allowedStatuses.`,
+      );
+    const identity = step.actor
+      ? journalIdentity(context.config.identities?.[step.actor])
+      : undefined;
+    return {
+      id: `cleanup-${index + 1}-${scenario.id}`,
+      scenarioId: scenario.id,
+      stepName: step.name,
+      method: method as "POST" | "PUT" | "PATCH" | "DELETE",
+      path: journalTemplate(step.path, context, true),
+      ...(step.actor ? { actor: step.actor } : {}),
+      ...(identity ? { identity } : {}),
+      ...(step.body !== undefined
+        ? { body: journalBody(step.body, context) }
+        : {}),
+      allowedStatuses: [...allowedStatuses],
+      attempts: 0,
+      status: "PENDING" as const,
+      plannedAt: now,
+      updatedAt: now,
+    };
+  });
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  await context.journal.update(runId, (record) => {
+    if (record.cleanups.some((plan) => plan.scenarioId === scenario.id)) return;
+    record.cleanups.push(...plans);
+  });
+  context.plannedJournalScenarios.add(scenario.id);
+  for (const plan of plans)
+    await persistentAudit(context, "CLEANUP_PLANNED", {
+      scenarioId: plan.scenarioId,
+      step: plan.stepName,
+      method: plan.method,
+      path: plan.path,
+    });
+}
+
+async function journalCleanupStarted(
+  context: AttackContext,
+  scenario: AttackScenario,
+  step: AttackStep,
+): Promise<JournalCleanupPlan | undefined> {
+  if (!context.journal) return undefined;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  let selected: JournalCleanupPlan | undefined;
+  await context.journal.update(runId, (record) => {
+    const plan = record.cleanups.find(
+      (candidate) =>
+        candidate.scenarioId === scenario.id &&
+        candidate.stepName === step.name &&
+        candidate.status !== "SUCCEEDED",
+    );
+    if (!plan)
+      throw new Error(
+        `No write-ahead cleanup plan exists for ${scenario.id}/${step.name}.`,
+      );
+    plan.status = "RUNNING";
+    plan.attempts++;
+    plan.updatedAt = new Date().toISOString();
+    delete plan.lastError;
+    record.status = "CLEANING";
+    selected = structuredClone(plan);
+  });
+  await persistentAudit(context, "CLEANUP_STARTED", {
+    scenarioId: scenario.id,
+    step: step.name,
+  });
+  return selected;
+}
+
+async function journalCleanupSucceeded(
+  context: AttackContext,
+  plan: JournalCleanupPlan,
+  status: number,
+): Promise<void> {
+  if (!context.journal) return;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  await context.journal.update(runId, (record) => {
+    const current = record.cleanups.find((candidate) => candidate.id === plan.id);
+    if (!current) throw new Error("Execution journal cleanup plan disappeared.");
+    current.status = "SUCCEEDED";
+    current.updatedAt = new Date().toISOString();
+    delete current.lastError;
+  });
+  await persistentAudit(context, "CLEANUP_SUCCEEDED", {
+    scenarioId: plan.scenarioId,
+    step: plan.stepName,
+    status,
+  });
+}
+
+async function journalCleanupFailed(
+  context: AttackContext,
+  scenario: AttackScenario,
+  step: AttackStep,
+  error: unknown,
+): Promise<void> {
+  if (!context.journal) return;
+  const runId = context.result.attack?.runId;
+  if (!runId) throw new Error("Execution journal requires an attack run id.");
+  await context.journal.update(runId, (record) => {
+    const current = record.cleanups.find(
+      (candidate) =>
+        candidate.scenarioId === scenario.id &&
+        candidate.stepName === step.name &&
+        candidate.status !== "SUCCEEDED",
+    );
+    if (!current) return;
+    current.status = "FAILED";
+    current.lastError = journalError(error);
+    current.updatedAt = new Date().toISOString();
+    record.status = "CLEANUP_FAILED";
+  });
+  await persistentAudit(context, "CLEANUP_FAILED", {
+    scenarioId: scenario.id,
+    step: step.name,
+    error: journalError(error),
+  });
+}
+
 async function pace(context: AttackContext, cleanup = false): Promise<boolean> {
   let release!: () => void;
   const previous = context.pacing;
