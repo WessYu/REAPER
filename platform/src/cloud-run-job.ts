@@ -1,7 +1,4 @@
-import {
-  googleApiJson,
-  type AccessTokenProvider,
-} from "./gcp-auth.js";
+import { googleApiJson, type AccessTokenProvider } from "./gcp-auth.js";
 
 const NAME = /^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 

@@ -27,7 +27,10 @@ function safeConfigFile(root: string, relative: string): string {
   return resolved;
 }
 
-async function buildAttackJob(job: PlatformJob, workerId: string): Promise<unknown> {
+async function buildAttackJob(
+  job: PlatformJob,
+  workerId: string,
+): Promise<unknown> {
   const rootDist = new URL("../../dist/", import.meta.url);
   const configModule = (await import(new URL("config.js", rootDist).href)) as {
     readConfig: (file: string) => Promise<Record<string, unknown>>;
@@ -128,7 +131,8 @@ async function main(): Promise<void> {
   const pool = createPlatformPool(required("REAPER_PLATFORM_DATABASE_URL"));
   const repository = new PlatformRepository(
     pool,
-    process.env.REAPER_PLATFORM_API_KEY_PEPPER ?? "dispatcher-does-not-use-api-keys-00000000",
+    process.env.REAPER_PLATFORM_API_KEY_PEPPER ??
+      "dispatcher-does-not-use-api-keys-00000000",
   );
   const workerId =
     process.env.REAPER_PLATFORM_WORKER_ID ?? `cloud-dispatcher-${randomUUID()}`;
@@ -180,6 +184,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "cloud dispatcher failed");
+  console.error(
+    error instanceof Error ? error.message : "cloud dispatcher failed",
+  );
   process.exitCode = 2;
 });

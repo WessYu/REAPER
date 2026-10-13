@@ -26,8 +26,13 @@ class CloudRunIsolationProvider {
   }): ChildProcess {
     if (!process.env.CLOUD_RUN_JOB || !process.env.CLOUD_RUN_EXECUTION)
       throw new Error("Cloud Run job execution identity is unavailable.");
-    if (!this.capabilities.networkIsolation || !this.capabilities.resourceLimits)
-      throw new Error("Cloud Run strict isolation attestations are incomplete.");
+    if (
+      !this.capabilities.networkIsolation ||
+      !this.capabilities.resourceLimits
+    )
+      throw new Error(
+        "Cloud Run strict isolation attestations are incomplete.",
+      );
     return fork(input.modulePath, [], {
       cwd: input.cwd,
       env: input.env,
@@ -78,13 +83,15 @@ async function main(): Promise<void> {
       workspace_id: string;
       run_id: string;
       envelope: ExecutionEnvelope & Record<string, unknown>;
-    }>(
-      "SELECT * FROM reaper_control.load_platform_execution_envelope($1,$2)",
-      [jobId, workerId],
-    );
+    }>("SELECT * FROM reaper_control.load_platform_execution_envelope($1,$2)", [
+      jobId,
+      workerId,
+    ]);
     const row = loaded.rows[0];
     if (!row)
-      throw new Error("Cloud Run execution envelope is unavailable or expired.");
+      throw new Error(
+        "Cloud Run execution envelope is unavailable or expired.",
+      );
     envelope = row.envelope;
     if (
       envelope.version !== 1 ||
@@ -111,7 +118,9 @@ async function main(): Promise<void> {
   const timer = setInterval(() => {
     void renew().catch((error: unknown) => {
       heartbeatFailure =
-        error instanceof Error ? error : new Error("job lease heartbeat failed");
+        error instanceof Error
+          ? error
+          : new Error("job lease heartbeat failed");
     });
   }, 5 * 60_000);
   timer.unref();
@@ -133,11 +142,7 @@ async function main(): Promise<void> {
     if (outcome.status === "COMPLETED") {
       const result = await pool.query<{ completed: boolean }>(
         "SELECT reaper_control.complete_platform_job($1,$2,$3::jsonb) AS completed",
-        [
-          jobId,
-          workerId,
-          JSON.stringify(outcome.result ?? outcome),
-        ],
+        [jobId, workerId, JSON.stringify(outcome.result ?? outcome)],
       );
       if (result.rows[0]?.completed !== true)
         throw new Error("Cloud Run completion lost its durable job lease.");
@@ -150,11 +155,7 @@ async function main(): Promise<void> {
 
     const failed = await pool.query<{ failed: boolean }>(
       "SELECT reaper_control.fail_platform_job($1,$2,$3,0) AS failed",
-      [
-        jobId,
-        workerId,
-        outcome.reason ?? outcome.status,
-      ],
+      [jobId, workerId, outcome.reason ?? outcome.status],
     );
     if (failed.rows[0]?.failed !== true)
       throw new Error("Cloud Run failure could not be persisted.");
@@ -165,14 +166,11 @@ async function main(): Promise<void> {
     process.exitCode = 2;
   } catch (error) {
     await pool
-      .query(
-        "SELECT reaper_control.fail_platform_job($1,$2,$3,0) AS failed",
-        [
-          jobId,
-          workerId,
-          error instanceof Error ? error.message : "cloud runner failed",
-        ],
-      )
+      .query("SELECT reaper_control.fail_platform_job($1,$2,$3,0) AS failed", [
+        jobId,
+        workerId,
+        error instanceof Error ? error.message : "cloud runner failed",
+      ])
       .catch(() => {});
     throw error;
   } finally {
