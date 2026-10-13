@@ -91,7 +91,6 @@ async function authenticate(tx: postgres.TransactionSql, request: Request) {
   if (!match?.[1]) throw new Error("Authentication failed.");
   const secretHash = await sha256(token);
 
-  await tx.unsafe("SET LOCAL ROLE reaper_platform_api");
   const rows = await tx<
     Array<{
       api_key_id: string;
@@ -261,6 +260,7 @@ Deno.serve(async (request: Request) => {
         const items = await tx`
           SELECT id,name,created_at
           FROM reaper_control.projects
+          WHERE workspace_id=${context.workspaceId}::uuid
           ORDER BY created_at DESC
           LIMIT 200
         `;
@@ -282,6 +282,7 @@ Deno.serve(async (request: Request) => {
         const items = await tx`
           SELECT id,project_id,reference,created_at
           FROM reaper_control.assessments
+          WHERE workspace_id=${context.workspaceId}::uuid
           ORDER BY created_at DESC
           LIMIT 500
         `;
@@ -309,6 +310,7 @@ Deno.serve(async (request: Request) => {
           SELECT id,project_id,assessment_id,status,target_origin,environment,
                  created_at,updated_at,error
           FROM reaper_control.runs
+          WHERE workspace_id=${context.workspaceId}::uuid
           ORDER BY created_at DESC
           LIMIT 500
         `;
@@ -362,7 +364,9 @@ Deno.serve(async (request: Request) => {
         const match = await tx`
           SELECT 1
           FROM reaper_control.assessments
-          WHERE id=${assessmentId}::uuid AND project_id=${projectId}::uuid
+          WHERE id=${assessmentId}::uuid
+            AND project_id=${projectId}::uuid
+            AND workspace_id=${context.workspaceId}::uuid
         `;
         if (!match[0]) throw new Error("Assessment does not belong to the selected project.");
 
@@ -403,7 +407,8 @@ Deno.serve(async (request: Request) => {
         const items = await tx`
           SELECT id,rule_id,severity,payload,created_at
           FROM reaper_control.findings
-          WHERE run_id=${uuid(findingsRun,"runId")}::uuid
+          WHERE workspace_id=${context.workspaceId}::uuid
+            AND run_id=${uuid(findingsRun,"runId")}::uuid
           ORDER BY created_at,id
           LIMIT 2000
         `;
@@ -415,7 +420,8 @@ Deno.serve(async (request: Request) => {
         const items = await tx`
           SELECT sequence,previous_hash,event_hash,event_type,payload,created_at
           FROM reaper_control.audit_events
-          WHERE run_id=${uuid(auditRun,"runId")}::uuid
+          WHERE workspace_id=${context.workspaceId}::uuid
+            AND run_id=${uuid(auditRun,"runId")}::uuid
           ORDER BY sequence
           LIMIT 5000
         `;
@@ -428,7 +434,8 @@ Deno.serve(async (request: Request) => {
           SELECT id,project_id,assessment_id,status,target_origin,environment,
                  permissions,limits,report,error,created_at,updated_at
           FROM reaper_control.runs
-          WHERE id=${uuid(runId,"runId")}::uuid
+          WHERE workspace_id=${context.workspaceId}::uuid
+            AND id=${uuid(runId,"runId")}::uuid
         `;
         if (!rows[0]) throw new Error("Run not found.");
         return json(200, rows[0]);
@@ -439,6 +446,7 @@ Deno.serve(async (request: Request) => {
         const items = await tx`
           SELECT id,principal_id,name,expires_at,revoked_at,created_at,last_used_at
           FROM reaper_control.api_keys
+          WHERE workspace_id=${context.workspaceId}::uuid
           ORDER BY created_at DESC
           LIMIT 200
         `;
