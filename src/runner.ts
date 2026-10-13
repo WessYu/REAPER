@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,6 +6,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ENGINE_VERSION, type Config, type ScanResult } from "./model.js";
 import type { SignedAuthorizationScope } from "./scope.js";
+import {
+  ProcessIsolationProvider,
+  assertRunnerIsolation,
+  type RunnerIsolationMode,
+  type RunnerIsolationProvider,
+} from "./isolation.js";
 
 export interface AttackJob {
   version: 1;
@@ -163,10 +169,16 @@ function secretReferences(config: Config): Set<string> {
   return refs;
 }
 
-function childEnvironment(job: AttackJob): NodeJS.ProcessEnv {
+function childEnvironment(
+  job: AttackJob,
+  stateDirectory: string | undefined,
+  isolationMode: RunnerIsolationMode,
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const name of ["SystemRoot", "WINDIR", "TEMP", "TMP"])
     if (process.env[name]) env[name] = process.env[name];
+  if (stateDirectory) env.REAPER_RUNNER_STATE_DIR = path.resolve(stateDirectory);
+  env.REAPER_RUNNER_MODE = isolationMode;
   for (const ref of secretReferences(job.config))
     if (process.env[ref] !== undefined) {
       if (Buffer.byteLength(process.env[ref]!, "utf8") > 16_384)
@@ -178,8 +190,26 @@ function childEnvironment(job: AttackJob): NodeJS.ProcessEnv {
 
 export async function runAttackJob(
   job: AttackJob,
-  options: { signal?: AbortSignal } = {},
+  options: {
+    signal?: AbortSignal;
+    isolationMode?: RunnerIsolationMode;
+    isolationProvider?: RunnerIsolationProvider;
+    stateDirectory?: string;
+  } = {},
 ): Promise<AttackJobOutcome> {
+  const isolationMode = options.isolationMode ?? "standard";
+  const isolationProvider =
+    options.isolationProvider ?? new ProcessIsolationProvider();
+  assertRunnerIsolation(isolationMode, isolationProvider);
+  if (isolationMode === "strict") {
+    if (!options.stateDirectory)
+      throw new Error("Strict runner mode requires a persistent state directory.");
+    if (!job.workspaceId || !job.projectId)
+      throw new Error("Strict runner mode requires workspaceId and projectId.");
+    if (!job.scopeManifest || job.config.attack?.requireSignedScope !== true)
+      throw new Error("Strict runner mode requires a signed authorization scope.");
+  }
+
   const serializedJob = JSON.stringify(job);
   if (Buffer.byteLength(serializedJob, "utf8") > MAX_JOB_BYTES)
     throw new Error("Attack job exceeds the 5 MiB input limit.");
@@ -191,12 +221,11 @@ export async function runAttackJob(
   const workingDirectory = await mkdtemp(path.join(tmpdir(), "reaper-run-"));
   let child: ChildProcess;
   try {
-    child = fork(JOB_FILE, [], {
+    child = isolationProvider.spawn({
+      modulePath: JOB_FILE,
       cwd: workingDirectory,
-      env: childEnvironment(snapshot),
+      env: childEnvironment(snapshot, options.stateDirectory, isolationMode),
       execArgv: [`--max-old-space-size=${snapshot.limits.memoryMb}`],
-      stdio: ["ignore", "pipe", "pipe", "ipc"],
-      serialization: "json",
     });
   } catch {
     await rm(workingDirectory, { recursive: true, force: true });
