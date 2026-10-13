@@ -137,6 +137,9 @@ export class DockerRunner {
         env: { PATH: process.env.PATH },
       });
       let stderr = "";
+      child.stdout.on("data", () => {
+        // Drain stdout so a noisy container cannot block on a full pipe.
+      });
       child.stderr.on("data", (chunk: Buffer) => {
         if (stderr.length < 16_384) stderr += chunk.toString("utf8");
       });
