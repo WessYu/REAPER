@@ -21,15 +21,26 @@ function safeRelative(value: string): string {
   return value;
 }
 
-function numericIdentity(): string {
+function numericIdentity(): { value: string; uid: number; gid: number } {
   const configured = process.env.REAPER_PLATFORM_CONTAINER_UID;
   if (configured) {
     if (!/^\d+(?::\d+)?$/.test(configured) || configured.startsWith("0"))
       throw new Error(
         "REAPER_PLATFORM_CONTAINER_UID must be a non-root numeric uid[:gid].",
       );
-    return configured;
+    const parts = configured.split(":");
+    const uid = Number(parts[0]);
+    const gid = Number(parts[1] ?? parts[0]);
+    if (
+      !Number.isSafeInteger(uid) ||
+      !Number.isSafeInteger(gid) ||
+      uid < 1 ||
+      gid < 1
+    )
+      throw new Error("REAPER_PLATFORM_CONTAINER_UID is invalid.");
+    return { value: configured, uid, gid };
   }
+
   const uid = process.getuid?.();
   const gid = process.getgid?.();
   if (!uid || uid === 0 || gid === undefined || gid === 0)
