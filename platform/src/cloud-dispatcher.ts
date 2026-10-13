@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { createPlatformPool } from "./db.js";
 import { PlatformRepository } from "./repository.js";
 import { buildScopePayload } from "./scope-signer.js";
@@ -37,14 +36,12 @@ function encodeEnvelope(value: unknown): string {
 
 async function buildAttackJob(job: PlatformJob, workerId: string): Promise<unknown> {
   const rootDist = new URL("../../dist/", import.meta.url);
-  const configModule = (await import(
-    pathToFileURL(new URL("config.js", rootDist).pathname).href
-  )) as {
+  const configModule = (await import(new URL("config.js", rootDist).href)) as {
     readConfig: (file: string) => Promise<Record<string, unknown>>;
   };
-  const model = (await import(
-    pathToFileURL(new URL("model.js", rootDist).pathname).href
-  )) as { ENGINE_VERSION: string };
+  const model = (await import(new URL("model.js", rootDist).href)) as {
+    ENGINE_VERSION: string;
+  };
 
   const permissions = job.payload.permissions ?? ["read"];
   const limits = {
