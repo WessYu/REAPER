@@ -122,7 +122,7 @@ export async function recoverAttackRun(
   let attempted = 0;
   let succeeded = 0;
   let failed = 0;
-  const ordered = [...initial.cleanups].reverse();
+  const ordered = [...initial.cleanups];
   for (const candidate of ordered) {
     if (candidate.status === "SUCCEEDED") continue;
     const plan = await claimCleanup(
