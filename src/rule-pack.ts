@@ -17,6 +17,7 @@ import {
   type ScanResult,
   type Severity,
 } from "./model.js";
+import { resolveTrustedPublicKey, type TrustedKeySource } from "./trust.js";
 
 export interface RulePackRule {
   id: string;
@@ -336,7 +337,7 @@ export function createSignedRulePack(
 
 export function verifySignedRulePack(
   pack: SignedRulePack,
-  trustedKeys: Record<string, KeyLike | string | Buffer>,
+  trustedKeys: TrustedKeySource,
   engineVersion = ENGINE_VERSION,
 ): SignedRulePack {
   if (!pack || typeof pack !== "object" || Array.isArray(pack))
@@ -356,23 +357,7 @@ export function verifySignedRulePack(
     !/^[A-Za-z0-9_-]{86}$/.test(pack.signature)
   )
     throw new Error("Rule pack integrity fields are invalid.");
-  if (
-    !trustedKeys ||
-    typeof trustedKeys !== "object" ||
-    (Object.getPrototypeOf(trustedKeys) !== Object.prototype &&
-      Object.getPrototypeOf(trustedKeys) !== null) ||
-    !Object.hasOwn(trustedKeys, pack.keyId)
-  )
-    throw new Error("Rule pack signing key is not trusted.");
-  const keyDescriptor = Object.getOwnPropertyDescriptor(
-    trustedKeys,
-    pack.keyId,
-  );
-  if (!keyDescriptor || !Object.hasOwn(keyDescriptor, "value"))
-    throw new Error("Rule pack trust keys must be data properties.");
-  const keyInput = keyDescriptor.value as KeyLike | string | Buffer;
-  if (!keyInput) throw new Error("Rule pack signing key is not trusted.");
-  const key = publicKey(keyInput);
+  const key = publicKey(resolveTrustedPublicKey(trustedKeys, pack.keyId));
   if (key.asymmetricKeyType !== "ed25519")
     throw new Error("Rule pack verification key must be Ed25519.");
   const payload = validatePayload(pack.payload);
