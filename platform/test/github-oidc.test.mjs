@@ -69,6 +69,12 @@ test("GitHub OIDC verifier accepts only the REAPER main free-runner workflow", a
   assert.equal(identity.workerId, "gha:123456789:2");
   assert.equal(identity.repository, "WessYu/REAPER");
 
+  const pushIdentity = await verifyGitHubRunnerToken(
+    token(privateKey, { ...payload, event_name: "push" }),
+    { fetchImpl },
+  );
+  assert.equal(pushIdentity.eventName, "push");
+
   await assert.rejects(
     () =>
       verifyGitHubRunnerToken(

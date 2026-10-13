@@ -142,7 +142,7 @@ export async function verifyGitHubRunnerToken(
     claims.repository !== REPOSITORY ||
     claims.ref !== "refs/heads/main" ||
     claims.workflow_ref !== WORKFLOW_REF ||
-    !["schedule", "workflow_dispatch"].includes(claims.event_name) ||
+    !["schedule", "workflow_dispatch", "push"].includes(claims.event_name) ||
     !/^[0-9]{1,30}$/.test(String(claims.run_id ?? "")) ||
     !/^[0-9]{1,10}$/.test(String(claims.run_attempt ?? ""))
   )
