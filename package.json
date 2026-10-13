@@ -38,7 +38,9 @@
     "platform:migrate": "npm run platform:build && node platform/dist/migrate.js",
     "platform:bootstrap": "npm run platform:build && node platform/dist/bootstrap.js",
     "platform:serve": "npm run build && npm run platform:build && node platform/dist/api.js",
-    "platform:worker": "npm run build && npm run platform:build && node platform/dist/worker.js"
+    "platform:worker": "npm run build && npm run platform:build && node platform/dist/worker.js",
+    "platform:cloud:dispatch": "npm run build && npm run platform:build && node platform/dist/cloud-dispatcher.js",
+    "platform:cloud:run": "npm run build && npm run platform:build && node platform/dist/cloud-run-entry.js"
   },
   "dependencies": {
     "pg": "8.16.3",

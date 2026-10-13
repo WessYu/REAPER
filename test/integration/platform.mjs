@@ -27,6 +27,18 @@ const hardeningMigration = await readFile(
   ),
   "utf8",
 );
+const cloudRunMigration = await readFile(
+  fileURLToPath(
+    new URL("../../control-plane/004_cloud_run.sql", import.meta.url),
+  ),
+  "utf8",
+);
+const cloudRunIndexMigration = await readFile(
+  fileURLToPath(
+    new URL("../../control-plane/005_cloud_run_indexes.sql", import.meta.url),
+  ),
+  "utf8",
+);
 
 test("platform API key auth and durable job leasing respect workspace isolation", async () => {
   const admin = new pg.Client({ connectionString });
@@ -55,6 +67,8 @@ test("platform API key auth and durable job leasing respect workspace isolation"
     await admin.query(baseMigration);
     await admin.query(platformMigration);
     await admin.query(hardeningMigration);
+    await admin.query(cloudRunMigration);
+    await admin.query(cloudRunIndexMigration);
 
     await admin.query(
       "SELECT reaper_control.bootstrap_platform($1,$2,$3,$4,$5,$6,$7,$8,NULL)",

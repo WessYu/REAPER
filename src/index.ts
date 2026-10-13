@@ -69,3 +69,5 @@ export * from "./tenant.js";
 export * from "./isolation.js";
 
 export * from "./recovery.js";
+
+export * from "./postgres-state.js";
