@@ -92,7 +92,10 @@ export function resolveTrustedPublicKey(
       !Object.hasOwn(source, keyId)
     )
       throw new Error("Signed artifact keyId is not trusted.");
-    const key = source[keyId];
+    const descriptor = Object.getOwnPropertyDescriptor(source, keyId);
+    if (!descriptor || !Object.hasOwn(descriptor, "value"))
+      throw new Error("Trusted key entries must be data properties.");
+    const key = descriptor.value as KeyLike | string | Buffer | undefined;
     if (!key) throw new Error("Signed artifact keyId is not trusted.");
     return key;
   }
