@@ -72,26 +72,32 @@ async function main(): Promise<void> {
     max: 1,
     application_name: "reaper-cloud-runner",
   });
-  const loaded = await pool.query<{
-    workspace_id: string;
-    run_id: string;
-    envelope: ExecutionEnvelope & Record<string, unknown>;
-  }>(
-    "SELECT * FROM reaper_control.load_platform_execution_envelope($1,$2)",
-    [jobId, workerId],
-  );
-  const row = loaded.rows[0];
-  if (!row)
-    throw new Error("Cloud Run execution envelope is unavailable or expired.");
-  const envelope = row.envelope;
-  if (
-    envelope.version !== 1 ||
-    envelope.runId !== row.run_id ||
-    envelope.workspaceId !== row.workspace_id ||
-    envelope.platform?.jobId !== jobId ||
-    envelope.platform?.workerId !== workerId
-  )
-    throw new Error("Cloud Run execution envelope metadata is inconsistent.");
+  let envelope: ExecutionEnvelope & Record<string, unknown>;
+  try {
+    const loaded = await pool.query<{
+      workspace_id: string;
+      run_id: string;
+      envelope: ExecutionEnvelope & Record<string, unknown>;
+    }>(
+      "SELECT * FROM reaper_control.load_platform_execution_envelope($1,$2)",
+      [jobId, workerId],
+    );
+    const row = loaded.rows[0];
+    if (!row)
+      throw new Error("Cloud Run execution envelope is unavailable or expired.");
+    envelope = row.envelope;
+    if (
+      envelope.version !== 1 ||
+      envelope.runId !== row.run_id ||
+      envelope.workspaceId !== row.workspace_id ||
+      envelope.platform?.jobId !== jobId ||
+      envelope.platform?.workerId !== workerId
+    )
+      throw new Error("Cloud Run execution envelope metadata is inconsistent.");
+  } catch (error) {
+    await pool.end().catch(() => {});
+    throw error;
+  }
 
   let heartbeatFailure: Error | undefined;
   const renew = async (): Promise<void> => {
