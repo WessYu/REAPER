@@ -18,6 +18,15 @@ import {
 } from "./scope.js";
 import type { KeyLike } from "node:crypto";
 import { ENGINE_VERSION } from "./model.js";
+import {
+  journalError,
+  type ExecutionJournalRecord,
+  type ExecutionJournalStore,
+  type JournalCleanupPlan,
+  type JournalIdentityRef,
+} from "./journal.js";
+import type { ScopeReplayStore } from "./replay.js";
+import type { AuditJson, AuditStore, AuditEventType } from "./audit.js";
 import type {
   AttackConfig,
   AttackIdentity,
@@ -46,6 +55,10 @@ interface AttackContext {
   secrets: SecretProvider;
   secretReferences: Set<string>;
   secretValues: Set<string>;
+  journal?: ExecutionJournalStore;
+  audit?: AuditStore;
+  plannedJournalScenarios: Set<string>;
+  executionFailed: boolean;
 }
 
 function targetUrl(value: string): URL {
