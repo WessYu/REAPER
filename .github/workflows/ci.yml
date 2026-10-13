@@ -5,39 +5,6 @@ on:
 permissions:
   contents: read
 jobs:
-  format-managed-artifact:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/cloud-run-managed-execution'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - uses: hashicorp/setup-terraform@v3
-      - run: npm ci --ignore-scripts
-      - name: Format managed execution sources
-        run: |
-          npx prettier --write platform/src/cloud-dispatcher.ts platform/src/cloud-run-entry.ts platform/src/cloud-run-job.ts platform/src/gcp-auth.ts platform/src/gcp-kms-signer.ts platform/test/gcp.test.mjs src/postgres-state.ts src/runner-worker.ts src/runner.ts test/integration/cloud-state.mjs test/integration/platform.mjs
-          terraform fmt -recursive infra/gcp
-      - uses: actions/upload-artifact@v4
-        with:
-          name: formatted-managed-execution
-          path: |
-            platform/src/cloud-dispatcher.ts
-            platform/src/cloud-run-entry.ts
-            platform/src/cloud-run-job.ts
-            platform/src/gcp-auth.ts
-            platform/src/gcp-kms-signer.ts
-            platform/test/gcp.test.mjs
-            src/postgres-state.ts
-            src/runner-worker.ts
-            src/runner.ts
-            test/integration/cloud-state.mjs
-            test/integration/platform.mjs
-            infra/gcp
-          if-no-files-found: error
-
   quality:
     runs-on: ubuntu-latest
     strategy:
