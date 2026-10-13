@@ -8,6 +8,13 @@
 - Added Ed25519-signed, versioned data-only rule packs with strict literal-match schema, compatibility checks and bounded source scanning; arbitrary JavaScript Rule SDK callbacks remain trusted local code.
 - Added CI dependency-audit gating, CycloneDX SBOM generation, SHA-256 artifact manifests, and GitHub artifact attestations on version-tag workflows.
 - Added an implementation-backed threat model and documented the current Community/Commercial/Enterprise architecture boundaries and unimplemented controls.
+- Added persistent execution journals with integrity validation, write-ahead cleanup plans, bounded crash-recovery APIs and SIGKILL recovery tests.
+- Added atomic signed-scope nonce replay protection, including concurrent-consumption regression tests.
+- Added persistent hash-chained audit storage with bounded sanitization, serialized appends, tamper detection and truncation detection.
+- Added organization/workspace/project authorization boundaries plus a PostgreSQL control-plane schema with workspace RLS and cross-tenant integration tests.
+- Added strict runner-isolation capability contracts that fail closed without filesystem, network and enforceable resource-limit capabilities; actual OS/container isolation remains deployment-dependent.
+- Added trusted-key lifecycle metadata and revocation/not-before/not-after enforcement for scope and signed rule-pack verification.
+- Added release-evidence validation so PR CI checks package/SBOM/hash readiness while GitHub attestations remain restricted to trusted version-tag workflows.
 - Expanded bounded control-flow analysis across loops, try/catch/finally and switch with conservative environment merges.
 - Added shared-object/property mutation tracking, deeper alias propagation, `.bind`/`.call`/`.apply`, common `Object.assign`/`Object.defineProperty` and `Reflect.get`/`Reflect.set` modeling, and array mutation tracking for supported values.
 - Added sequentially resolved Express/Fastify route middleware analysis plus literal contracts for opaque middleware that establishes trusted request principals.
