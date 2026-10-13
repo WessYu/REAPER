@@ -4,6 +4,8 @@
 
 - Bounded attack-mode JSON capture to 64 KiB using incremental stream reads, including chunked responses without `Content-Length`; request timeouts now remain active through response processing, and rejected budget reservations no longer inflate request counts.
 - Added optional Ed25519 signed authorization scopes with canonical payload signing, exact target/assessment/environment binding, expiry, permission checks, request/cleanup/rate caps, and a global deadline for strict attack runs.
+- Added a bounded child-process attack-job API, credential-provider boundary and recursive redaction for values used as identity tokens, cookies or headers.
+- Added Ed25519-signed, versioned data-only rule packs with strict literal-match schema, compatibility checks and bounded source scanning; arbitrary JavaScript Rule SDK callbacks remain trusted local code.
 - Added CI dependency-audit gating, CycloneDX SBOM generation, SHA-256 artifact manifests, and GitHub artifact attestations on version-tag workflows.
 - Added an implementation-backed threat model and documented the current Community/Commercial/Enterprise architecture boundaries and unimplemented controls.
 - Expanded bounded control-flow analysis across loops, try/catch/finally and switch with conservative environment merges.
