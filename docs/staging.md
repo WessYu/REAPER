@@ -86,7 +86,6 @@ A complete production claim still requires evidence for:
 - independent penetration testing;
 - deployment review and an authorized pilot.
 
-
 ## Free staging runner
 
 For no-fixed-cost staging, REAPER can use the public repository's GitHub-hosted
