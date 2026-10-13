@@ -270,7 +270,7 @@ export async function handleFreeRunnerRequest(input: {
           workspaceId: row.workspace_id,
           runId: row.run_id,
           attempt: Number(row.attempt),
-          workerId: identity.workerId],
+          workerId: identity.workerId,
           payload: row.payload,
           leaseExpiresAt: new Date(row.lease_expires_at).toISOString(),
         },
