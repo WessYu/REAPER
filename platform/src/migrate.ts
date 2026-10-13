@@ -22,6 +22,7 @@ async function main(): Promise<void> {
       "../../control-plane/001_init.sql",
       "../../control-plane/002_platform.sql",
       "../../control-plane/003_staging_hardening.sql",
+      "../../control-plane/004_cloud_run.sql",
     ]) {
       const sql = await readFile(
         fileURLToPath(new URL(relative, import.meta.url)),
