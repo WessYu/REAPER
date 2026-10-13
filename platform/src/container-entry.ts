@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SignedAuthorizationScope } from "./scope-signer.js";
 
