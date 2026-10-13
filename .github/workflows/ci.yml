@@ -91,6 +91,18 @@ jobs:
       - name: Build hardened runner image
         run: docker build -f platform/Dockerfile -t reaper-platform-runner:ci .
 
+  terraform-gcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform format
+        run: terraform fmt -check -recursive infra/gcp
+      - name: Terraform init
+        run: terraform -chdir=infra/gcp init -backend=false
+      - name: Terraform validate
+        run: terraform -chdir=infra/gcp validate
+
   provenance:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [quality, windows-quality]
