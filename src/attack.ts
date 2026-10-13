@@ -7,6 +7,11 @@ import { Readable } from "node:stream";
 import { finding } from "./findings.js";
 import { validateAttackConfig } from "./attack-config.js";
 import {
+  EnvironmentSecretProvider,
+  type SecretProvider,
+  type SecretRequestContext,
+} from "./secrets.js";
+import {
   authorizationScopeDigest,
   verifyAuthorizationScope,
   type SignedAuthorizationScope,
@@ -37,6 +42,8 @@ interface AttackContext {
   baselineAddresses: string[];
   signal?: AbortSignal;
   scopeExpiresAt?: number;
+  secrets: SecretProvider;
+  secretReferences: Set<string>;
 }
 
 function targetUrl(value: string): URL {
@@ -264,42 +271,66 @@ function requestPath(value: string, variables: Map<string, string>): string {
 function bodyValue(
   value: VerifyJson,
   variables: Map<string, string>,
-): VerifyJson {
+  resolveSecret: (reference: string, purpose: string) => Promise<string>,
+): Promise<VerifyJson> {
   if (typeof value === "string") {
     if (value.startsWith("$env:")) {
       const name = value.slice(5);
-      const resolved = process.env[name];
-      if (resolved === undefined)
-        throw new Error(`Missing environment variable ${name}.`);
-      return resolved;
+      return resolveSecret(name, "request body");
     }
-    return interpolate(value, variables);
+    return Promise.resolve(interpolate(value, variables));
   }
   if (Array.isArray(value))
-    return value.map((entry) => bodyValue(entry, variables));
-  if (value && typeof value === "object")
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [
-        key,
-        bodyValue(entry, variables),
-      ]),
+    return Promise.all(
+      value.map((entry) => bodyValue(entry, variables, resolveSecret)),
     );
+  if (value && typeof value === "object")
+    return Promise.all(
+      Object.entries(value).map(async ([key, entry]) => [
+        key,
+        await bodyValue(entry, variables, resolveSecret),
+      ]),
+    ).then(
+      (entries) => Object.fromEntries(entries) as { [key: string]: VerifyJson },
+    );
+  return Promise.resolve(value);
+}
+
+async function requiredSecret(
+  context: AttackContext,
+  reference: string,
+  purpose: string,
+): Promise<string> {
+  const requestContext: SecretRequestContext = {
+    runId: context.result.attack?.runId ?? "unknown",
+    targetOrigin: context.target.origin,
+    purpose,
+  };
+  let value: string | undefined;
+  try {
+    value = await context.secrets.get(reference, requestContext);
+  } catch {
+    throw new Error(`Secret provider failed for ${purpose}.`);
+  }
+  if (typeof value !== "string" || value.length === 0)
+    throw new Error(`Missing configured secret reference for ${purpose}.`);
+  if (Buffer.byteLength(value, "utf8") > 16_384)
+    throw new Error(
+      `Configured secret exceeds the 16 KiB limit for ${purpose}.`,
+    );
+  context.secretReferences.add(reference);
   return value;
 }
 
-function identityToken(
+async function identityToken(
   identity: AttackIdentity | undefined,
-  variables: Map<string, string>,
-): string | undefined {
+  context: AttackContext,
+): Promise<string | undefined> {
   if (!identity) return undefined;
-  if (identity.tokenEnv) {
-    const value = process.env[identity.tokenEnv];
-    if (!value)
-      throw new Error(`Missing environment variable ${identity.tokenEnv}.`);
-    return value;
-  }
+  if (identity.tokenEnv)
+    return requiredSecret(context, identity.tokenEnv, "identity token");
   if (identity.tokenVar) {
-    const value = variables.get(identity.tokenVar);
+    const value = context.variables.get(identity.tokenVar);
     if (!value)
       throw new Error(`Missing captured variable ${identity.tokenVar}.`);
     return value;
@@ -307,60 +338,38 @@ function identityToken(
   return undefined;
 }
 
-function requiredSecret(
-  envName: string | undefined,
-  variableName: string | undefined,
-  variables: Map<string, string>,
-  label: string,
-): string | undefined {
-  if (envName) {
-    const value = process.env[envName];
-    if (!value)
-      throw new Error(`Missing environment variable ${envName} for ${label}.`);
-    return value;
-  }
-  if (variableName) {
-    const value = variables.get(variableName);
-    if (!value)
-      throw new Error(
-        `Missing captured variable ${variableName} for ${label}.`,
-      );
-    return value;
-  }
-  return undefined;
-}
-
-function applyIdentityHeaders(
+async function applyIdentityHeaders(
   headers: Headers,
   identity: AttackIdentity | undefined,
-  variables: Map<string, string>,
-): void {
+  context: AttackContext,
+): Promise<void> {
   if (!identity) return;
-  const token = identityToken(identity, variables);
+  const token = await identityToken(identity, context);
   if (token) headers.set("authorization", `Bearer ${token}`);
 
   if (identity.cookie) {
-    const value = requiredSecret(
-      identity.cookie.valueEnv,
-      identity.cookie.valueVar,
-      variables,
-      "identity cookie",
-    );
+    const value = identity.cookie.valueEnv
+      ? await requiredSecret(
+          context,
+          identity.cookie.valueEnv,
+          "identity cookie",
+        )
+      : context.variables.get(identity.cookie.valueVar!);
+    if (!value && identity.cookie.valueVar)
+      throw new Error(
+        `Missing captured variable ${identity.cookie.valueVar} for identity cookie.`,
+      );
     if (value) headers.set("cookie", `${identity.cookie.name}=${value}`);
   }
 
   for (const [header, envName] of Object.entries(identity.headerEnvs ?? {})) {
-    const value = process.env[envName];
-    if (!value)
-      throw new Error(
-        `Missing environment variable ${envName} for header ${header}.`,
-      );
+    const value = await requiredSecret(context, envName, `header ${header}`);
     headers.set(header, value);
   }
   for (const [header, variableName] of Object.entries(
     identity.headerVars ?? {},
   )) {
-    const value = variables.get(variableName);
+    const value = context.variables.get(variableName);
     if (!value)
       throw new Error(
         `Missing captured variable ${variableName} for header ${header}.`,
@@ -567,12 +576,16 @@ async function requestStep(
   const identity = step.actor
     ? context.config.identities?.[step.actor]
     : undefined;
-  applyIdentityHeaders(headers, identity, context.variables);
+  await applyIdentityHeaders(headers, identity, context);
 
   let body: string | undefined;
   if (step.body !== undefined) {
     headers.set("content-type", "application/json");
-    body = JSON.stringify(bodyValue(step.body, context.variables));
+    body = JSON.stringify(
+      await bodyValue(step.body, context.variables, (reference, purpose) =>
+        requiredSecret(context, reference, purpose),
+      ),
+    );
   }
 
   assertAuthorizationActive(context, cleanup);
@@ -868,6 +881,7 @@ export async function runAttack(
     signal?: AbortSignal;
     scopeManifest?: SignedAuthorizationScope;
     trustedScopeKeys?: Record<string, KeyLike | string | Buffer>;
+    secretProvider?: SecretProvider;
   } = {},
 ): Promise<ScanResult> {
   if (!config.attack)
@@ -975,64 +989,84 @@ export async function runAttack(
     baselineAddresses,
     signal: activeSignal,
     scopeExpiresAt: scopeExpiry,
+    secrets: options.secretProvider ?? new EnvironmentSecretProvider(),
+    secretReferences: new Set<string>(),
   };
 
-  for (const scenario of attack.scenarios ?? []) {
-    let scenarioFailed = false;
-    let currentStep: AttackStep | undefined;
-    try {
-      for (const step of scenario.steps) {
-        currentStep = step;
-        await requestStep(context, scenario, step, false);
+  try {
+    for (const scenario of attack.scenarios ?? []) {
+      let scenarioFailed = false;
+      let currentStep: AttackStep | undefined;
+      try {
+        for (const step of scenario.steps) {
+          currentStep = step;
+          await requestStep(context, scenario, step, false);
+        }
+        currentStep = undefined;
+      } catch (error) {
+        scenarioFailed = true;
+        result.diagnostics.push({
+          message: `Attack scenario ${scenario.id} stopped: ${error instanceof Error ? error.message : "unknown error"}`,
+        });
+        result.attack.audit.push({
+          scenarioId: scenario.id,
+          step: currentStep?.name ?? "scenario",
+          actor: currentStep?.actor,
+          method: currentStep?.method ?? "GET",
+          path: currentStep?.path ?? "",
+          durationMs: 0,
+          outcome: "error",
+        });
+      } finally {
+        const cleanup = [...(scenario.cleanup ?? [])].reverse();
+        for (const step of cleanup)
+          try {
+            await requestStep(context, scenario, step, true);
+          } catch (error) {
+            result.attack.cleanupFailures++;
+            result.attack.audit.push({
+              scenarioId: scenario.id,
+              step: step.name,
+              actor: step.actor,
+              method: step.method ?? "GET",
+              path: step.path,
+              durationMs: 0,
+              outcome: "cleanup-error",
+            });
+            result.diagnostics.push({
+              message: `Attack scenario ${scenario.id} cleanup failed: ${error instanceof Error ? error.message : "unknown error"}`,
+            });
+          }
       }
-      currentStep = undefined;
-    } catch (error) {
-      scenarioFailed = true;
-      result.diagnostics.push({
-        message: `Attack scenario ${scenario.id} stopped: ${error instanceof Error ? error.message : "unknown error"}`,
-      });
-      result.attack.audit.push({
-        scenarioId: scenario.id,
-        step: currentStep?.name ?? "scenario",
-        actor: currentStep?.actor,
-        method: currentStep?.method ?? "GET",
-        path: currentStep?.path ?? "",
-        durationMs: 0,
-        outcome: "error",
-      });
-    } finally {
-      const cleanup = [...(scenario.cleanup ?? [])].reverse();
-      for (const step of cleanup)
+      if (context.signal?.aborted) {
+        result.diagnostics.push({ message: "Attack run cancelled." });
+        break;
+      }
+      if (scenarioFailed && context.consecutiveServerErrors > 0) break;
+    }
+
+    if (!context.signal?.aborted && context.consecutiveServerErrors === 0)
+      for (const matrix of attack.matrices ?? []) {
+        await runMatrix(context, matrix);
+        if (context.signal?.aborted || context.consecutiveServerErrors > 0)
+          break;
+      }
+  } finally {
+    if (context.secrets.revoke)
+      for (const reference of context.secretReferences)
         try {
-          await requestStep(context, scenario, step, true);
-        } catch (error) {
-          result.attack.cleanupFailures++;
-          result.attack.audit.push({
-            scenarioId: scenario.id,
-            step: step.name,
-            actor: step.actor,
-            method: step.method ?? "GET",
-            path: step.path,
-            durationMs: 0,
-            outcome: "cleanup-error",
+          await context.secrets.revoke(reference, {
+            runId: result.attack.runId,
+            targetOrigin: parsed.origin,
+            purpose: "attack run completion",
           });
+        } catch {
           result.diagnostics.push({
-            message: `Attack scenario ${scenario.id} cleanup failed: ${error instanceof Error ? error.message : "unknown error"}`,
+            message:
+              "A configured secret lease could not be revoked after the attack run.",
           });
         }
-    }
-    if (context.signal?.aborted) {
-      result.diagnostics.push({ message: "Attack run cancelled." });
-      break;
-    }
-    if (scenarioFailed && context.consecutiveServerErrors > 0) break;
   }
-
-  if (!context.signal?.aborted && context.consecutiveServerErrors === 0)
-    for (const matrix of attack.matrices ?? []) {
-      await runMatrix(context, matrix);
-      if (context.signal?.aborted || context.consecutiveServerErrors > 0) break;
-    }
 
   result.metrics.durationMs = Math.round(performance.now() - started);
   result.metrics.memoryBytes = process.memoryUsage().rss;

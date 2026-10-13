@@ -36,6 +36,11 @@ export type {
   SignedAuthorizationScope,
 } from "./scope.js";
 export {
+  EnvironmentSecretProvider,
+  InMemorySecretProvider,
+} from "./secrets.js";
+export type { SecretProvider, SecretRequestContext } from "./secrets.js";
+export {
   correlateAttackSource,
   normalizeAttackRoute,
 } from "./attack-correlation.js";
