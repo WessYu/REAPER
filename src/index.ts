@@ -26,6 +26,16 @@ export type * from "./cfg.js";
 
 export { runAttack } from "./attack.js";
 export {
+  authorizationScopeDigest,
+  createSignedAuthorizationScope,
+  verifyAuthorizationScope,
+} from "./scope.js";
+export type {
+  AuthorizationScopePayload,
+  ScopePermission,
+  SignedAuthorizationScope,
+} from "./scope.js";
+export {
   correlateAttackSource,
   normalizeAttackRoute,
 } from "./attack-correlation.js";

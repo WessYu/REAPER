@@ -166,9 +166,37 @@ async function main(): Promise<void> {
     const { runAttack } = await import("./attack.js");
     const controller = new AbortController();
     const cancel = () => controller.abort();
+    const attackOptions: NonNullable<Parameters<typeof runAttack>[2]> = {
+      signal: controller.signal,
+    };
+    if (attackConfig.attack?.requireSignedScope) {
+      const encodedScope = process.env.REAPER_SCOPE_MANIFEST;
+      const publicKey = process.env.REAPER_SCOPE_PUBLIC_KEY;
+      if (!encodedScope || encodedScope.length > 65_536 || !publicKey)
+        throw new Error(
+          "Signed-scope attack requires REAPER_SCOPE_MANIFEST (JSON, max 64 KiB) and REAPER_SCOPE_PUBLIC_KEY.",
+        );
+      let scope: unknown;
+      try {
+        scope = JSON.parse(encodedScope) as unknown;
+      } catch {
+        throw new Error("REAPER_SCOPE_MANIFEST is not valid JSON.");
+      }
+      if (!scope || typeof scope !== "object" || Array.isArray(scope))
+        throw new Error(
+          "REAPER_SCOPE_MANIFEST must contain a signed scope object.",
+        );
+      const keyId = (scope as Record<string, unknown>).keyId;
+      if (typeof keyId !== "string")
+        throw new Error("REAPER_SCOPE_MANIFEST must contain a keyId.");
+      attackOptions.scopeManifest = scope as NonNullable<
+        Parameters<typeof runAttack>[2]
+      >["scopeManifest"];
+      attackOptions.trustedScopeKeys = { [keyId]: publicKey };
+    }
     process.once("SIGINT", cancel);
     let result = await runAttack(arg, attackConfig, {
-      signal: controller.signal,
+      ...attackOptions,
     }).finally(() => process.removeListener("SIGINT", cancel));
     if (values.input) {
       const { correlateAttackSource } = await import("./attack-correlation.js");

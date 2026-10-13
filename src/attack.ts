@@ -6,6 +6,12 @@ import { performance } from "node:perf_hooks";
 import { Readable } from "node:stream";
 import { finding } from "./findings.js";
 import { validateAttackConfig } from "./attack-config.js";
+import {
+  authorizationScopeDigest,
+  verifyAuthorizationScope,
+  type SignedAuthorizationScope,
+} from "./scope.js";
+import type { KeyLike } from "node:crypto";
 import type {
   AttackConfig,
   AttackIdentity,
@@ -30,6 +36,7 @@ interface AttackContext {
   consecutiveServerErrors: number;
   baselineAddresses: string[];
   signal?: AbortSignal;
+  scopeExpiresAt?: number;
 }
 
 function targetUrl(value: string): URL {
@@ -426,6 +433,11 @@ function assertAuthorizationActive(
   const expiresAt = context.config.authorization.expiresAt;
   if (expiresAt && Date.parse(expiresAt) <= Date.now())
     throw new Error("Attack authorization expired during the run.");
+  if (
+    context.scopeExpiresAt !== undefined &&
+    context.scopeExpiresAt <= Date.now()
+  )
+    throw new Error("Signed authorization scope expired during the run.");
 }
 
 async function limitedJson(response: Response): Promise<unknown> {
@@ -852,7 +864,11 @@ async function runMatrix(
 export async function runAttack(
   target: string,
   config: Config,
-  options: { signal?: AbortSignal } = {},
+  options: {
+    signal?: AbortSignal;
+    scopeManifest?: SignedAuthorizationScope;
+    trustedScopeKeys?: Record<string, KeyLike | string | Buffer>;
+  } = {},
 ): Promise<ScanResult> {
   if (!config.attack)
     throw new Error("Attack mode requires an attack configuration.");
@@ -860,6 +876,61 @@ export async function runAttack(
   const parsed = targetUrl(target);
   if (!authorizedTarget(parsed, attack))
     throw new Error("Attack target is blocked by the exact-origin allowlist.");
+
+  if (attack.requireSignedScope && !options.scopeManifest)
+    throw new Error(
+      "Attack configuration requires a signed authorization scope.",
+    );
+  let scopeExpiry: number | undefined;
+  let verifiedScope: ReturnType<typeof verifyAuthorizationScope> | undefined;
+  let activeSignal = options.signal;
+  if (options.scopeManifest) {
+    if (!options.trustedScopeKeys)
+      throw new Error(
+        "Trusted public keys are required to verify the signed scope.",
+      );
+    const scope = verifyAuthorizationScope(
+      options.scopeManifest,
+      options.trustedScopeKeys,
+      {
+        target: parsed.origin,
+        environment: attack.authorization.environment,
+        reference: attack.authorization.reference,
+      },
+    );
+    verifiedScope = scope;
+    if (
+      attack.allowMutations === true &&
+      !scope.permissions.includes("mutations")
+    )
+      throw new Error("Signed authorization scope does not permit mutations.");
+    if (
+      attack.allowPrivateNetwork === true &&
+      !scope.permissions.includes("internalNetwork")
+    )
+      throw new Error(
+        "Signed authorization scope does not permit internal network targets.",
+      );
+    attack.maxRequests = Math.min(
+      attack.maxRequests ?? scope.limits.maxRequests,
+      scope.limits.maxRequests,
+    );
+    attack.maxCleanupRequests = Math.min(
+      attack.maxCleanupRequests ?? scope.limits.maxCleanupRequests,
+      scope.limits.maxCleanupRequests,
+    );
+    attack.rateLimitPerSecond = Math.min(
+      attack.rateLimitPerSecond ?? scope.limits.rateLimitPerSecond,
+      scope.limits.rateLimitPerSecond,
+    );
+    scopeExpiry = Date.parse(scope.expiresAt);
+    activeSignal = activeSignal
+      ? AbortSignal.any([
+          activeSignal,
+          AbortSignal.timeout(scope.limits.deadlineMs),
+        ])
+      : AbortSignal.timeout(scope.limits.deadlineMs);
+  }
 
   const started = performance.now();
   const startedAt = new Date().toISOString();
@@ -869,6 +940,17 @@ export async function runAttack(
     target: parsed.origin,
     authorizationReference: attack.authorization.reference,
     authorizationExpiresAt: attack.authorization.expiresAt,
+    ...(options.scopeManifest && verifiedScope
+      ? {
+          signedScope: {
+            keyId: options.scopeManifest.keyId,
+            assessmentId: verifiedScope.assessmentId,
+            issuer: verifiedScope.issuer,
+            expiresAt: verifiedScope.expiresAt,
+            digest: authorizationScopeDigest(options.scopeManifest),
+          },
+        }
+      : {}),
     environment: attack.authorization.environment,
     startedAt,
     completedAt: startedAt,
@@ -891,7 +973,8 @@ export async function runAttack(
     pacing: Promise.resolve(),
     consecutiveServerErrors: 0,
     baselineAddresses,
-    signal: options.signal,
+    signal: activeSignal,
+    scopeExpiresAt: scopeExpiry,
   };
 
   for (const scenario of attack.scenarios ?? []) {

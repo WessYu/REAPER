@@ -15,6 +15,8 @@ REAPER attack scenarios are for systems the operator is explicitly authorized to
 - A cleanup declaration is not proof that cleanup succeeded. Cleanup receives a bounded best-effort attempt after cancellation, and failed cleanup must remain visible as an incomplete run that requires operator intervention.
 - Prefer disposable test tenants, nonproduction data, least-privilege credentials and isolated runners.
 
+Strict deployments can set `attack.requireSignedScope: true` and call `runAttack` with `scopeManifest` and `trustedScopeKeys`. The Ed25519 manifest binds exact target origins, assessment ID, issuer, subject, environment, permissions, expiry, request/cleanup/rate limits and a global deadline. The CLI accepts manifest JSON and a trusted PEM public key through `REAPER_SCOPE_MANIFEST` and `REAPER_SCOPE_PUBLIC_KEY`. Provision the public key through a trusted channel and keep its private key outside the repository. The nonce is signed as audit context; REAPER does not yet maintain replay prevention or key revocation.
+
 ## Commercial release gates
 
 Before claiming production readiness: independent security assessment of the pinned transport and network-scope controls, crash-safe cleanup across process termination, isolated multi-tenant execution, signed rules and artifacts, SBOM/provenance, auditable authorization and cancellation, documented incident response, secrets-redaction review, and repeated cross-platform CI with negative/adversarial fixtures.

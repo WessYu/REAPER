@@ -186,6 +186,7 @@ export interface AttackConfig {
   maxConsecutiveServerErrors?: number;
   allowMutations?: boolean;
   allowPrivateNetwork?: boolean;
+  requireSignedScope?: boolean;
   identities?: Record<string, AttackIdentity>;
   scenarios?: AttackScenario[];
   matrices?: AttackMatrix[];
@@ -213,6 +214,13 @@ export interface AttackRunMetadata {
   target: string;
   authorizationReference: string;
   authorizationExpiresAt?: string;
+  signedScope?: {
+    keyId: string;
+    assessmentId: string;
+    issuer: string;
+    expiresAt: string;
+    digest: string;
+  };
   environment: AttackAuthorization["environment"];
   startedAt: string;
   completedAt: string;
