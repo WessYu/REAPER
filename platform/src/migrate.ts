@@ -21,6 +21,7 @@ async function main(): Promise<void> {
     for (const relative of [
       "../../control-plane/001_init.sql",
       "../../control-plane/002_platform.sql",
+      "../../control-plane/003_staging_hardening.sql",
     ]) {
       const sql = await readFile(
         fileURLToPath(new URL(relative, import.meta.url)),
