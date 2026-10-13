@@ -1208,63 +1208,131 @@ export async function runAttack(
   if (!authorizedTarget(parsed, attack))
     throw new Error("Attack target is blocked by the exact-origin allowlist.");
 
+  const runId = options.runId ?? randomUUID();
+  const started = performance.now();
+  const startedAt = new Date().toISOString();
+
+  if (options.strictCommercial) {
+    if (
+      attack.requireSignedScope !== true ||
+      !options.scopeManifest ||
+      !options.trustedScopeKeys
+    )
+      throw new Error(
+        "Strict commercial execution requires a verified signed authorization scope.",
+      );
+    if (!options.workspaceId || !options.projectId)
+      throw new Error(
+        "Strict commercial execution requires workspaceId and projectId.",
+      );
+    if (
+      !options.scopeReplayStore ||
+      !options.journalStore ||
+      !options.auditStore
+    )
+      throw new Error(
+        "Strict commercial execution requires replay, journal and audit stores.",
+      );
+  }
+  if (
+    options.journalStore &&
+    (!options.workspaceId || !options.projectId)
+  )
+    throw new Error(
+      "Persistent execution journals require workspaceId and projectId.",
+    );
+
+  if (options.auditStore)
+    await options.auditStore.append(runId, {
+      type: "RUN_CREATED",
+      at: startedAt,
+      data: {
+        target: parsed.origin,
+        workspaceId: options.workspaceId ?? "",
+        projectId: options.projectId ?? "",
+        authorizationReference: attack.authorization.reference,
+      },
+    });
+
   if (attack.requireSignedScope && !options.scopeManifest)
     throw new Error(
       "Attack configuration requires a signed authorization scope.",
     );
+
   let scopeExpiry: number | undefined;
   let verifiedScope: ReturnType<typeof verifyAuthorizationScope> | undefined;
   let activeSignal = options.signal;
-  if (options.scopeManifest) {
-    if (!options.trustedScopeKeys)
-      throw new Error(
-        "Trusted public keys are required to verify the signed scope.",
+  try {
+    if (options.scopeManifest) {
+      if (!options.trustedScopeKeys)
+        throw new Error(
+          "Trusted public keys are required to verify the signed scope.",
+        );
+      const scope = verifyAuthorizationScope(
+        options.scopeManifest,
+        options.trustedScopeKeys,
+        {
+          target: parsed.origin,
+          environment: attack.authorization.environment,
+          reference: attack.authorization.reference,
+        },
       );
-    const scope = verifyAuthorizationScope(
-      options.scopeManifest,
-      options.trustedScopeKeys,
-      {
-        target: parsed.origin,
-        environment: attack.authorization.environment,
-        reference: attack.authorization.reference,
-      },
-    );
-    verifiedScope = scope;
-    if (
-      attack.allowMutations === true &&
-      !scope.permissions.includes("mutations")
-    )
-      throw new Error("Signed authorization scope does not permit mutations.");
-    if (
-      attack.allowPrivateNetwork === true &&
-      !scope.permissions.includes("internalNetwork")
-    )
-      throw new Error(
-        "Signed authorization scope does not permit internal network targets.",
+      verifiedScope = scope;
+      if (
+        attack.allowMutations === true &&
+        !scope.permissions.includes("mutations")
+      )
+        throw new Error(
+          "Signed authorization scope does not permit mutations.",
+        );
+      if (
+        attack.allowPrivateNetwork === true &&
+        !scope.permissions.includes("internalNetwork")
+      )
+        throw new Error(
+          "Signed authorization scope does not permit internal network targets.",
+        );
+      attack.maxRequests = Math.min(
+        attack.maxRequests ?? scope.limits.maxRequests,
+        scope.limits.maxRequests,
       );
-    attack.maxRequests = Math.min(
-      attack.maxRequests ?? scope.limits.maxRequests,
-      scope.limits.maxRequests,
-    );
-    attack.maxCleanupRequests = Math.min(
-      attack.maxCleanupRequests ?? scope.limits.maxCleanupRequests,
-      scope.limits.maxCleanupRequests,
-    );
-    attack.rateLimitPerSecond = Math.min(
-      attack.rateLimitPerSecond ?? scope.limits.rateLimitPerSecond,
-      scope.limits.rateLimitPerSecond,
-    );
-    scopeExpiry = Date.parse(scope.expiresAt);
-    activeSignal = activeSignal
-      ? AbortSignal.any([
-          activeSignal,
-          AbortSignal.timeout(scope.limits.deadlineMs),
-        ])
-      : AbortSignal.timeout(scope.limits.deadlineMs);
+      attack.maxCleanupRequests = Math.min(
+        attack.maxCleanupRequests ?? scope.limits.maxCleanupRequests,
+        scope.limits.maxCleanupRequests,
+      );
+      attack.rateLimitPerSecond = Math.min(
+        attack.rateLimitPerSecond ?? scope.limits.rateLimitPerSecond,
+        scope.limits.rateLimitPerSecond,
+      );
+      scopeExpiry = Date.parse(scope.expiresAt);
+      activeSignal = activeSignal
+        ? AbortSignal.any([
+            activeSignal,
+            AbortSignal.timeout(scope.limits.deadlineMs),
+          ])
+        : AbortSignal.timeout(scope.limits.deadlineMs);
+      if (options.auditStore)
+        await options.auditStore.append(runId, {
+          type: "SCOPE_VERIFIED",
+          data: {
+            keyId: options.scopeManifest.keyId,
+            assessmentId: scope.assessmentId,
+            issuer: scope.issuer,
+            digest: authorizationScopeDigest(options.scopeManifest),
+          },
+        });
+    }
+  } catch (error) {
+    if (options.auditStore)
+      await options.auditStore.append(runId, {
+        type: "RUN_FAILED",
+        data: {
+          phase: "scope-validation",
+          error: error instanceof Error ? error.message : "unknown error",
+        },
+      });
+    throw error;
   }
-
-  const started = performance.now();
-  const startedAt = new Date().toISOString();
   const result = resultFor(parsed);
   result.attack = {
     runId: options.runId ?? randomUUID(),
