@@ -107,6 +107,9 @@ GRANT SELECT, INSERT, UPDATE ON
   reaper_control.consumed_scope_nonces
 TO reaper_platform_runner;
 
+GRANT DELETE ON reaper_control.consumed_scope_nonces
+TO reaper_platform_runner;
+
 GRANT SELECT ON reaper_control.runs TO reaper_platform_runner;
 
 COMMIT;
