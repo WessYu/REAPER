@@ -21,6 +21,12 @@ const platformMigration = await readFile(
   ),
   "utf8",
 );
+const hardeningMigration = await readFile(
+  fileURLToPath(
+    new URL("../../control-plane/003_staging_hardening.sql", import.meta.url),
+  ),
+  "utf8",
+);
 
 test("platform API key auth and durable job leasing respect workspace isolation", async () => {
   const admin = new pg.Client({ connectionString });
