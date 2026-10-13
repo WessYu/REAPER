@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chown, mkdir, readFile } from "node:fs/promises";
+import { chown, mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import type { PlatformJob } from "./types.js";
 import { buildScopePayload, type ScopeSigner } from "./scope-signer.js";
@@ -84,6 +84,7 @@ export class DockerRunner {
       await chown(outputDirectory, identity.uid, identity.gid);
     }
     const reportFile = path.join(outputDirectory, "outcome.json");
+    await rm(reportFile, { force: true });
     const configPath = safeRelative(job.payload.configPath);
 
     const args = [
