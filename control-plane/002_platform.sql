@@ -52,7 +52,6 @@ CREATE INDEX IF NOT EXISTS jobs_available_idx
 
 ALTER TABLE reaper_control.api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reaper_control.jobs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reaper_control.jobs FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS reaper_api_key_workspace ON reaper_control.api_keys;
 CREATE POLICY reaper_api_key_workspace
@@ -81,17 +80,31 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = reaper_control, pg_temp
 AS $$
+DECLARE
+  v_key api_keys%ROWTYPE;
 BEGIN
+  SELECT *
+  INTO v_key
+  FROM api_keys
+  WHERE id = p_key_id
+    AND secret_hash = p_secret_hash
+    AND revoked_at IS NULL
+    AND (expires_at IS NULL OR expires_at > now());
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  PERFORM set_config('reaper.workspace_id', v_key.workspace_id::text, true);
+  PERFORM set_config('reaper.principal_id', v_key.principal_id, true);
+
   RETURN QUERY
   UPDATE api_keys k
   SET last_used_at = now()
   FROM workspace_members m
-  WHERE k.id = p_key_id
-    AND k.secret_hash = p_secret_hash
-    AND k.revoked_at IS NULL
-    AND (k.expires_at IS NULL OR k.expires_at > now())
-    AND m.workspace_id = k.workspace_id
-    AND m.principal_id = k.principal_id
+  WHERE k.id = v_key.id
+    AND m.workspace_id = v_key.workspace_id
+    AND m.principal_id = v_key.principal_id
   RETURNING k.id, k.workspace_id, k.principal_id, m.role;
 END
 $$;
@@ -265,6 +278,9 @@ BEGIN
       updated_at = now()
   WHERE jobs.id = v_job.id;
 
+  PERFORM set_config('reaper.workspace_id', v_job.workspace_id::text, true);
+  PERFORM set_config('reaper.principal_id', 'reaper-platform-worker', true);
+
   UPDATE runs
   SET status = 'RUNNING', updated_at = now()
   WHERE runs.id = v_job.run_id
@@ -305,6 +321,9 @@ BEGIN
   IF NOT FOUND THEN
     RETURN false;
   END IF;
+
+  PERFORM set_config('reaper.workspace_id', v_workspace_id::text, true);
+  PERFORM set_config('reaper.principal_id', 'reaper-platform-worker', true);
 
   UPDATE runs
   SET status = 'COMPLETED',
@@ -364,6 +383,9 @@ BEGIN
       error = left(p_error, 4000)
   WHERE id = p_job_id;
 
+  PERFORM set_config('reaper.workspace_id', v_workspace_id::text, true);
+  PERFORM set_config('reaper.principal_id', 'reaper-platform-worker', true);
+
   UPDATE runs
   SET status = CASE WHEN v_retry THEN 'PENDING' ELSE 'FAILED' END,
       error = left(p_error, 4000),
@@ -374,8 +396,50 @@ BEGIN
 END
 $$;
 
+DO $
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reaper_platform_api') THEN
+    CREATE ROLE reaper_platform_api NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reaper_platform_worker') THEN
+    CREATE ROLE reaper_platform_worker NOLOGIN;
+  END IF;
+END
+$;
+
+GRANT USAGE ON SCHEMA reaper_control TO reaper_platform_api, reaper_platform_worker;
+
+GRANT SELECT ON
+  reaper_control.projects,
+  reaper_control.assessments,
+  reaper_control.runs,
+  reaper_control.findings,
+  reaper_control.audit_events,
+  reaper_control.api_keys
+TO reaper_platform_api;
+
+GRANT INSERT ON
+  reaper_control.projects,
+  reaper_control.assessments,
+  reaper_control.runs,
+  reaper_control.jobs
+TO reaper_platform_api;
+
 REVOKE ALL ON FUNCTION reaper_control.bootstrap_platform(
   uuid, text, uuid, text, text, uuid, text, text, timestamptz
 ) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reaper_control.authenticate_api_key(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reaper_control.create_api_key(uuid, text, text, text, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reaper_control.revoke_api_key(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reaper_control.lease_platform_job(text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reaper_control.complete_platform_job(uuid, text, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reaper_control.fail_platform_job(uuid, text, text, integer) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION reaper_control.authenticate_api_key(uuid, text) TO reaper_platform_api;
+GRANT EXECUTE ON FUNCTION reaper_control.create_api_key(uuid, text, text, text, timestamptz) TO reaper_platform_api;
+GRANT EXECUTE ON FUNCTION reaper_control.revoke_api_key(uuid) TO reaper_platform_api;
+GRANT EXECUTE ON FUNCTION reaper_control.lease_platform_job(text, integer) TO reaper_platform_worker;
+GRANT EXECUTE ON FUNCTION reaper_control.complete_platform_job(uuid, text, jsonb) TO reaper_platform_worker;
+GRANT EXECUTE ON FUNCTION reaper_control.fail_platform_job(uuid, text, text, integer) TO reaper_platform_worker;
 
 COMMIT;
