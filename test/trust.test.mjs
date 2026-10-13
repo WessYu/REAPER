@@ -4,7 +4,9 @@ import { generateKeyPairSync } from "node:crypto";
 import {
   InMemoryTrustStore,
   createSignedAuthorizationScope,
+  createSignedRulePack,
   verifyAuthorizationScope,
+  verifySignedRulePack,
 } from "../dist/index.js";
 
 function payload() {
@@ -100,4 +102,42 @@ test("trust store rejects revoked not-yet-valid and expired keys", () => {
       /revoked|not yet valid|expired/,
     );
   }
+});
+
+
+test("rule-pack verification uses the same revocation lifecycle boundary", () => {
+  const keys = generateKeyPairSync("ed25519");
+  const pack = createSignedRulePack(
+    {
+      formatVersion: 1,
+      packId: "trust-pack",
+      version: "1.0.0",
+      compatibility: { engineVersions: ["0.2.0"] },
+      rules: [
+        {
+          id: "literal-check",
+          title: "Literal check",
+          description: "Detect a bounded literal marker for trust testing.",
+          severity: "LOW",
+          category: "SQL Safety",
+          contains: "trustMarker",
+          recommendation: "Review the bounded test marker before release.",
+        },
+      ],
+    },
+    "rule-key",
+    keys.privateKey,
+  );
+  const store = new InMemoryTrustStore([
+    {
+      keyId: "rule-key",
+      publicKey: keys.publicKey,
+      status: "revoked",
+      revokedAt: new Date().toISOString(),
+    },
+  ]);
+  assert.throws(
+    () => verifySignedRulePack(pack, store),
+    /revoked/,
+  );
 });
