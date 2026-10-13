@@ -396,7 +396,7 @@ BEGIN
 END
 $$;
 
-DO $
+DO $platform$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reaper_platform_api') THEN
     CREATE ROLE reaper_platform_api NOLOGIN;
@@ -405,7 +405,7 @@ BEGIN
     CREATE ROLE reaper_platform_worker NOLOGIN;
   END IF;
 END
-$;
+$platform$;
 
 GRANT USAGE ON SCHEMA reaper_control TO reaper_platform_api, reaper_platform_worker;
 
