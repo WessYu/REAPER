@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import postgres from "npm:postgres@3.4.7";
+import { handleFreeRunnerRequest } from "./free-runner.ts";
 
 const DATABASE_URL = Deno.env.get("SUPABASE_DB_URL");
 if (!DATABASE_URL) throw new Error("SUPABASE_DB_URL is required.");
@@ -191,7 +192,7 @@ const DASHBOARD = `<!doctype html>
 <title>REAPER Platform Staging</title>
 <style>
 :root{color-scheme:dark;--bg:#090909;--panel:#111;--line:#262626;--muted:#898989;--text:#f2f2f2;--soft:#181818}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,sans-serif}.shell{max-width:1180px;margin:auto;padding:30px}.top{display:flex;gap:24px;justify-content:space-between;align-items:end;margin-bottom:24px}.brand h1{margin:0;font-size:24px;letter-spacing:.17em}.brand p{margin:6px 0 0;color:var(--muted)}input,button{background:var(--soft);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px 12px}button{cursor:pointer}.auth{display:flex;gap:8px}.auth input{width:360px}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.s4{grid-column:span 4}.s12{grid-column:span 12}.label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}.metric{font-size:32px;margin-top:8px}.row{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line)}.row:first-child{border-top:0}.muted{color:var(--muted)}.pill{border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:11px}.hidden{display:none}.error{border-color:#713333;color:#ffbcbc}.toolbar{display:flex;gap:8px;align-items:center}.toolbar strong{margin-right:auto}@media(max-width:780px){.shell{padding:18px}.top{flex-direction:column;align-items:stretch}.auth input{width:100%}.s4,.s12{grid-column:span 12}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,sans-serif}.shell{max-width:1180px;margin:auto;padding:30px}.top{display:flex;gap:24px;justify-content:space-between;align-items:end;margin-bottom:24px}.brand h1{margin:0;font-size:24px;letter-spacing:.17em}.brand p{margin:6px 0 0;color:var(--muted)}input,select,button{background:var(--soft);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px 12px}button{cursor:pointer}.auth{display:flex;gap:8px}.auth input{width:360px}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.s4{grid-column:span 4}.s12{grid-column:span 12}.label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}.metric{font-size:32px;margin-top:8px}.row{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line)}.row:first-child{border-top:0}.muted{color:var(--muted)}.pill{border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:11px}.hidden{display:none}.error{border-color:#713333;color:#ffbcbc}.toolbar{display:flex;gap:8px;align-items:center}.toolbar strong{margin-right:auto}.freeform{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(260px,1.5fr) auto;gap:8px;margin-top:14px}.freehint{margin-top:10px;color:var(--muted)}@media(max-width:780px){.shell{padding:18px}.top{flex-direction:column;align-items:stretch}.auth input{width:100%}.s4,.s12{grid-column:span 12}.freeform{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -202,6 +203,7 @@ const DASHBOARD = `<!doctype html>
 <article class="card s4"><div class="label">Workspace</div><div id="workspace" class="metric">—</div><div id="principal" class="muted"></div></article>
 <article class="card s4"><div class="label">Projects</div><div id="projects" class="metric">—</div></article>
 <article class="card s4"><div class="label">Runs</div><div id="runsCount" class="metric">—</div></article>
+<article class="card s12"><div class="toolbar"><strong>Free staging assessment</strong><span class="muted">GitHub Actions · read-only</span></div><div class="freeform"><select id="freeProject"><option value="">Choose a project</option></select><input id="freeTarget" type="url" placeholder="https://preview.example.com" autocomplete="off"><button id="queueFree">Queue free scan</button></div><div class="freehint">HTTPS only · max 8 requests · no credentials · no mutations · no private network · picked up automatically by the free runner.</div></article>
 <article class="card s12"><div class="toolbar"><strong>Runs</strong><button id="refresh">Refresh</button></div><div id="runs" class="muted" style="padding-top:18px">Connect with an API key.</div></article>
 </section>
 </main>
@@ -209,10 +211,15 @@ const DASHBOARD = `<!doctype html>
 const $=id=>document.getElementById(id);let token=sessionStorage.getItem("reaper.token")||"";$("token").value=token;
 const base=location.pathname.replace(/\/$/,"");
 async function api(path,options={}){const r=await fetch(base+path,{...options,headers:{authorization:"Bearer "+token,...(options.body?{"content-type":"application/json"}:{}),...(options.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed");return d}
-function fail(e){$("notice").textContent=e.message||String(e);$("notice").classList.remove("hidden")}function clear(){ $("notice").classList.add("hidden")}
+function fail(e){$("notice").textContent=e.message||String(e);$("notice").classList.remove("hidden")}
+function clear(){ $("notice").classList.add("hidden")}
 function row(run){const d=document.createElement("div");d.className="row";const a=document.createElement("div"),t=document.createElement("div"),m=document.createElement("div"),s=document.createElement("span");t.textContent=run.target_origin;m.className="muted";m.textContent=(run.environment||"—")+" · "+new Date(run.created_at).toLocaleString();s.className="pill";s.textContent=run.status;a.append(t,m);d.append(a,s);return d}
-async function refresh(){clear();try{const [me,p,r]=await Promise.all([api("/v1/me"),api("/v1/projects"),api("/v1/runs")]);$("workspace").textContent=me.workspaceId.slice(0,8);$("principal").textContent=me.principalId+" · "+me.role;$("projects").textContent=p.items.length;$("runsCount").textContent=r.items.length;$("runs").replaceChildren(...(r.items.length?r.items.map(row):[Object.assign(document.createElement("div"),{className:"muted",textContent:"No runs yet."})]))}catch(e){fail(e)}}
-$("connect").onclick=()=>{token=$("token").value.trim();sessionStorage.setItem("reaper.token",token);refresh()};$("refresh").onclick=refresh;if(token)refresh();
+function fillProjects(items){const select=$("freeProject");const current=select.value;select.replaceChildren(Object.assign(document.createElement("option"),{value:"",textContent:items.length?"Choose a project":"No projects yet — one will be created automatically"}),...items.map(project=>Object.assign(document.createElement("option"),{value:project.id,textContent:project.name})));if(items.some(project=>project.id===current))select.value=current}
+async function refresh(){clear();try{const [me,p,r]=await Promise.all([api("/v1/me"),api("/v1/projects"),api("/v1/runs")]);$("workspace").textContent=me.workspaceId.slice(0,8);$("principal").textContent=me.principalId+" · "+me.role;$("projects").textContent=p.items.length;$("runsCount").textContent=r.items.length;fillProjects(p.items);$("runs").replaceChildren(...(r.items.length?r.items.map(row):[Object.assign(document.createElement("div"),{className:"muted",textContent:"No runs yet."})]))}catch(e){fail(e)}}
+$("connect").onclick=()=>{token=$("token").value.trim();sessionStorage.setItem("reaper.token",token);refresh()};
+$("refresh").onclick=refresh;
+$("queueFree").onclick=async()=>{clear();try{let projectId=$("freeProject").value;const targetOrigin=$("freeTarget").value.trim();if(!targetOrigin)throw new Error("Enter an HTTPS target origin.");$("queueFree").disabled=true;if(!projectId){const project=await api("/v1/projects",{method:"POST",body:JSON.stringify({name:"Free Staging"})});projectId=project.id}await api("/v1/free-runs",{method:"POST",body:JSON.stringify({projectId,targetOrigin})});$("freeTarget").value="";await refresh()}catch(e){fail(e)}finally{$("queueFree").disabled=false}};
+if(token)refresh();
 </script>
 </body></html>`;
 
@@ -249,6 +256,16 @@ Deno.serve(async (request: Request) => {
     if (method === "GET" && path === "/health") {
       const probe = await sql`SELECT 1 AS ok`;
       return json(200, { status: probe[0]?.ok === 1 ? "ok" : "degraded" });
+    }
+
+    if (path.startsWith("/runner/")) {
+      return await handleFreeRunnerRequest({
+        request,
+        path,
+        method,
+        sql,
+        json,
+      });
     }
 
     return await sql.begin(async (tx) => {
@@ -315,6 +332,80 @@ Deno.serve(async (request: Request) => {
           LIMIT 500
         `;
         return json(200, { items });
+      }
+
+      if (method === "POST" && path === "/v1/free-runs") {
+        requireRole(context, "analyst");
+        const body = await readBody(request);
+        const projectId = uuid(body.projectId, "projectId");
+        const targetOrigin = exactOrigin(body.targetOrigin);
+        if (!targetOrigin.startsWith("https://"))
+          throw new Error("Free staging assessments require an HTTPS origin.");
+
+        const project = await tx`
+          SELECT id
+          FROM reaper_control.projects
+          WHERE workspace_id=${context.workspaceId}::uuid
+            AND id=${projectId}::uuid
+        `;
+        if (!project[0]) throw new Error("Project not found.");
+
+        const assessmentId = crypto.randomUUID();
+        const runId = crypto.randomUUID();
+        const jobId = crypto.randomUUID();
+        const limits = {
+          maxRequests: 8,
+          maxCleanupRequests: 1,
+          rateLimitPerSecond: 2,
+          deadlineMs: 60000,
+        };
+        const permissions = ["read"];
+        const reference = "free-" + runId;
+
+        await tx`
+          INSERT INTO reaper_control.assessments(
+            id,workspace_id,project_id,reference
+          ) VALUES (
+            ${assessmentId}::uuid,${context.workspaceId}::uuid,
+            ${projectId}::uuid,${reference}
+          )
+        `;
+
+        const rows = await tx`
+          INSERT INTO reaper_control.runs(
+            id,workspace_id,project_id,assessment_id,status,target_origin,
+            environment,config_path,permissions,limits
+          ) VALUES (
+            ${runId}::uuid,${context.workspaceId}::uuid,${projectId}::uuid,
+            ${assessmentId}::uuid,'PENDING',${targetOrigin},'staging',
+            'free-readonly.ts',${tx.json(permissions)},${tx.json(limits)}
+          )
+          RETURNING id,status,target_origin,environment,created_at,updated_at
+        `;
+
+        await tx`
+          INSERT INTO reaper_control.jobs(
+            id,workspace_id,run_id,status,payload
+          ) VALUES (
+            ${jobId}::uuid,${context.workspaceId}::uuid,${runId}::uuid,
+            'PENDING',${tx.json({
+              projectId,
+              assessmentId,
+              targetOrigin,
+              environment: "staging",
+              configPath: "free-readonly.ts",
+              permissions,
+              limits,
+            })}
+          )
+        `;
+
+        return json(202, {
+          ...rows[0],
+          assessmentId,
+          jobId,
+          runner: "github-actions-free",
+        });
       }
 
       if (method === "POST" && path === "/v1/runs") {
@@ -517,7 +608,9 @@ Deno.serve(async (request: Request) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed.";
-    if (/authentication failed/i.test(message))
+    if (
+      /authentication failed|runner authentication|github oidc/i.test(message)
+    )
       return json(401, { error: "Authentication failed." });
     return json(clientError(message) ? 400 : 500, {
       error: clientError(message) ? message : "Internal server error.",

@@ -16,13 +16,14 @@ if (!connectionString)
   );
 
 const migrations = await Promise.all(
-  [1, 2, 3, 4, 5].map(async (number) => {
+  [1, 2, 3, 4, 5, 6].map(async (number) => {
     const names = {
       1: "001_init.sql",
       2: "002_platform.sql",
       3: "003_staging_hardening.sql",
       4: "004_cloud_run.sql",
       5: "005_cloud_run_indexes.sql",
+      6: "006_free_runner.sql",
     };
     return readFile(
       fileURLToPath(

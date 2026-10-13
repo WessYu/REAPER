@@ -1,0 +1,73 @@
+name: Free staging runner
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: reaper-free-staging-runner
+  cancel-in-progress: false
+
+jobs:
+  free-staging-runner:
+    if: github.repository == 'WessYu/REAPER' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      REAPER_FREE_RUNNER_API: https://szzdstxpdopprmgdjhcn.supabase.co/functions/v1/reaper-platform
+    steps:
+      - name: Check for a pending free assessment
+        id: lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          oidc_url="$ACTIONS_ID_TOKEN_REQUEST_URL"
+          if [[ "$oidc_url" == *"?"* ]]; then
+            oidc_url="$oidc_url&audience=reaper-staging"
+          else
+            oidc_url="$oidc_url?audience=reaper-staging"
+          fi
+          oidc_json="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$oidc_url")"
+          oidc_token="$(jq -r '.value // empty' <<<"$oidc_json")"
+          test -n "$oidc_token"
+          response="$(curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $oidc_token" \
+            -H "Content-Type: application/json" \
+            --data '{}' \
+            "$REAPER_FREE_RUNNER_API/runner/lease")"
+          printf '%s' "$response" > "$RUNNER_TEMP/reaper-lease.json"
+          has_job="$(jq -r 'if .job == null then "false" else "true" end' <<<"$response")"
+          echo "has_job=$has_job" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.lease.outputs.has_job == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.lease.outputs.has_job == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact dependencies
+        if: steps.lease.outputs.has_job == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Build REAPER runner
+        if: steps.lease.outputs.has_job == 'true'
+        run: |
+          npm run build
+          npm run platform:build
+
+      - name: Execute one free staging assessment
+        if: steps.lease.outputs.has_job == 'true'
+        run: node platform/dist/free-runner.js
+        env:
+          REAPER_FREE_RUNNER_LEASE_FILE: ${{ runner.temp }}/reaper-lease.json

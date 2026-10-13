@@ -85,3 +85,15 @@ A complete production claim still requires evidence for:
 - backup/restore validation;
 - independent penetration testing;
 - deployment review and an authorized pilot.
+
+## Free staging runner
+
+For no-fixed-cost staging, REAPER can use the public repository's GitHub-hosted
+Actions runner instead of a dedicated Docker/VM host.
+
+See `docs/free-staging.md` for the OIDC trust boundary, fixed read-only safety
+profile, polling behavior and cost boundary.
+
+This path is intentionally limited to authorized HTTPS preview/staging targets
+and is not a replacement for the hardened Cloud Run/KMS or dedicated-runner
+execution plane used for commercial active assessments.
