@@ -283,7 +283,7 @@ BEGIN
 
   UPDATE jobs
   SET status = 'RUNNING',
-      attempt = attempt + 1,
+      attempt = jobs.attempt + 1,
       worker_id = p_worker_id,
       lease_expires_at = now() + make_interval(secs => p_lease_seconds),
       updated_at = now()
