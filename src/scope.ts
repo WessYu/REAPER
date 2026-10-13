@@ -7,6 +7,7 @@ import {
   type KeyLike,
   KeyObject,
 } from "node:crypto";
+import { resolveTrustedPublicKey, type TrustedKeySource } from "./trust.js";
 
 export type ScopePermission =
   | "read"
@@ -203,7 +204,7 @@ export function createSignedAuthorizationScope(
 
 export function verifyAuthorizationScope(
   scope: SignedAuthorizationScope,
-  trustedKeys: Record<string, KeyLike | string | Buffer>,
+  trustedKeys: TrustedKeySource,
   input: {
     target: string;
     environment: AuthorizationScopePayload["environment"];
@@ -220,17 +221,8 @@ export function verifyAuthorizationScope(
     !/^[A-Za-z0-9_-]{86}$/.test(scope.signature)
   )
     throw new Error("Signed scope signature encoding is invalid.");
-  if (
-    !trustedKeys ||
-    typeof trustedKeys !== "object" ||
-    (Object.getPrototypeOf(trustedKeys) !== Object.prototype &&
-      Object.getPrototypeOf(trustedKeys) !== null)
-  )
-    throw new Error("Trusted scope key set is invalid.");
-  if (!Object.hasOwn(trustedKeys, scope.keyId))
-    throw new Error("Signed scope keyId is not trusted.");
-  const keyInput = trustedKeys[scope.keyId];
-  if (!keyInput) throw new Error("Signed scope keyId is not trusted.");
+  const now = input.now ?? Date.now();
+  const keyInput = resolveTrustedPublicKey(trustedKeys, scope.keyId, now);
   if (keyInput instanceof KeyObject && keyInput.type !== "public")
     throw new Error("Authorization scope verifier accepts public keys only.");
   if (
@@ -259,7 +251,6 @@ export function verifyAuthorizationScope(
     !valid
   )
     throw new Error("Signed authorization scope signature is invalid.");
-  const now = input.now ?? Date.now();
   const issuedAt = Date.parse(payload.issuedAt);
   const expiresAt = Date.parse(payload.expiresAt);
   if (issuedAt > now + 60_000)
