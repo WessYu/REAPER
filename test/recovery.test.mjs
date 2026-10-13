@@ -253,3 +253,51 @@ test("write-ahead journal survives worker SIGKILL and recovery performs only dec
     await rm(stateDirectory, { recursive: true, force: true });
   }
 });
+
+
+test("concurrent recovery claims a cleanup at most once", async () => {
+  let deletes = 0;
+  const { instance, target } = await server((req, res) => {
+    if (req.method === "DELETE" && req.url === "/resource") {
+      deletes++;
+      setTimeout(() => {
+        res.statusCode = 204;
+        res.end();
+      }, 100);
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  const root = await mkdtemp(path.join(tmpdir(), "reaper-recovery-race-"));
+  try {
+    const journal = new FileExecutionJournalStore(path.join(root, "journal"));
+    const audit = new FileAuditStore(path.join(root, "audit"));
+    const runId = await createRecoveryRecord(journal, target);
+    const results = await Promise.all([
+      recoverAttackRun(journal, runId, {
+        auditStore: audit,
+        claimStaleMs: 10_000,
+      }),
+      recoverAttackRun(journal, runId, {
+        auditStore: audit,
+        claimStaleMs: 10_000,
+      }),
+    ]);
+    assert.equal(deletes, 1);
+    assert.ok(results.some((result) => result.status === "COMPLETED"));
+    assert.ok(
+      results.some(
+        (result) =>
+          result.status === "INCOMPLETE" || result.status === "COMPLETED",
+      ),
+    );
+    assert.equal((await journal.read(runId)).status, "COMPLETED");
+    assert.equal(await audit.verify(runId), true);
+  } finally {
+    instance.closeAllConnections?.();
+    instance.close();
+    await once(instance, "close");
+    await rm(root, { recursive: true, force: true });
+  }
+});
