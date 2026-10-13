@@ -178,6 +178,8 @@ function scopePayload(value: unknown): AuthorizationScopePayload {
     throw new Error("Signed scope timestamps are invalid.");
   if (Date.parse(expiresAt) <= Date.parse(issuedAt))
     throw new Error("Signed scope expiry must follow issue time.");
+  if (Date.parse(expiresAt) - Date.parse(issuedAt) > 24 * 60 * 60_000)
+    throw new Error("Signed scope validity cannot exceed 24 hours.");
   return input as unknown as AuthorizationScopePayload;
 }
 

@@ -129,6 +129,10 @@ test("scope payload rejects ambiguous origins, excessive bounds and unknown perm
   for (const mutate of [
     (payload) => (payload.targetOrigins = ["https://app.example.test/path"]),
     (payload) => (payload.limits.maxRequests = 501),
+    (payload) =>
+      (payload.expiresAt = new Date(
+        Date.parse(payload.issuedAt) + 25 * 60 * 60_000,
+      ).toISOString()),
     (payload) => (payload.permissions = ["read", "execute"]),
   ]) {
     const payload = scopePayload();

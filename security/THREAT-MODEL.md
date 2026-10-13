@@ -1,7 +1,7 @@
 # REAPER threat model
 
 **Status:** implementation-backed baseline, not a claim of complete mitigation
-**Reviewed against:** `main` at `1554402e0676e11dbc7958a7d6ea242b4315c5ea` and this branch's bounded-response change
+**Reviewed against:** `main` at `1554402e0676e11dbc7958a7d6ea242b4315c5ea` and this branch's bounded-response, signed-scope, secret-provider, and supply-chain changes
 **Scope:** Node.js CLI/library, local review server, static analysis of scanned projects, PostgreSQL catalog introspection, runtime verification, and authorized attack mode. Hosted control plane, remote multi-user service, operating-system sandboxing, and commercial release infrastructure are outside the current runtime.
 
 ## System and trust boundaries
@@ -55,11 +55,11 @@ The following are **not implemented** by this repository revision and must not b
 1. A trusted key-distribution/rotation policy, nonce replay prevention, and mandatory signed authorization for commercial deployments. The signed payload binds issuer and subject, but REAPER does not map issuers to keys beyond the externally supplied key ID trust map.
 2. Isolated worker process/container with enforceable CPU, memory, and filesystem limits.
 3. Persistent execution journal, startup recovery, and crash-safe cleanup.
-4. Secret-provider lease/revocation abstraction and a cross-artifact sentinel proof suite.
+4. Hosted vault integration and guaranteed credential revocation/zeroing. A provider boundary and in-memory revocation implementation exist; the environment compatibility provider cannot revoke OS environment variables, and JavaScript strings cannot be reliably zeroed.
 5. Signed, versioned rule packs or a sandbox for third-party rules. The current Rule SDK is trusted, in-process JavaScript.
 6. Hosted organization/workspace/project persistence, API authorization, scoped queries, and PostgreSQL RLS.
 7. Durable append-only, tamper-evident audit storage.
-8. Consumer-facing release verification guidance and npm registry publication verification. CI now generates a CycloneDX SBOM and hashes; version-tag workflows request GitHub artifact attestations.
+8. Verification that npm registry downloads match the attested GitHub package. CI emits consumer verification guidance and produces CycloneDX SBOM/hash artifacts; version-tag workflows request GitHub artifact attestations, but registry publication is not part of the workflow.
 9. Independent penetration test, architecture review, deployment hardening review, incident response, and a real-world pilot.
 
 Until these gaps are closed and independently reviewed, REAPER remains an experimental local tool. A successful scan, score, or authorized runtime scenario does not establish that a target is secure.
