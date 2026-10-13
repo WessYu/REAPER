@@ -5,6 +5,23 @@ on:
 permissions:
   contents: read
 jobs:
+  format-edge-artifact:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/staging-serverless-runtime'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --write supabase/functions/reaper-platform/index.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formatted-edge-function
+          path: supabase/functions/reaper-platform/index.ts
+          if-no-files-found: error
+
   quality:
     runs-on: ubuntu-latest
     strategy:
