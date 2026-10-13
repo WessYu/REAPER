@@ -237,6 +237,16 @@ export class FileAuditStore implements AuditStore {
       if (Buffer.byteLength(serialized, "utf8") > MAX_AUDIT_BYTES)
         throw new Error("Audit trail exceeds its size limit.");
       await atomicWriteFile(root, `${runId}.audit.jsonl`, serialized);
+      await atomicWriteFile(
+        root,
+        `${runId}.audit.head.json`,
+        canonicalJson({
+          version: 1,
+          runId,
+          sequence: next.sequence,
+          eventHash: next.eventHash,
+        }) + "\n",
+      );
       return next;
     });
   }
@@ -248,7 +258,31 @@ export class FileAuditStore implements AuditStore {
   }
 
   async verify(runId: string): Promise<boolean> {
-    await this.read(runId);
+    const events = await this.read(runId);
+    if (events.length === 0) return true;
+    const root = await ensureSecureDirectory(this.#root);
+    let head: unknown;
+    try {
+      head = JSON.parse(
+        await readLimitedFile(
+          safeStateFile(root, `${runId}.audit.head.json`),
+          4096,
+        ),
+      ) as unknown;
+    } catch {
+      throw new Error("Audit trail head anchor is missing or invalid.");
+    }
+    if (!head || typeof head !== "object" || Array.isArray(head))
+      throw new Error("Audit trail head anchor is invalid.");
+    const record = head as Record<string, unknown>;
+    const last = events.at(-1)!;
+    if (
+      record.version !== 1 ||
+      record.runId !== runId ||
+      record.sequence !== last.sequence ||
+      record.eventHash !== last.eventHash
+    )
+      throw new Error("Audit trail truncation or head mismatch detected.");
     return true;
   }
 }
