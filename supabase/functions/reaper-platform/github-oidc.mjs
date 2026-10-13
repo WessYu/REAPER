@@ -38,7 +38,9 @@ async function fetchJson(url, fetchImpl) {
       headers: { accept: "application/json" },
     });
     if (!response.ok)
-      throw new Error(`OIDC metadata request failed with HTTP ${response.status}.`);
+      throw new Error(
+        `OIDC metadata request failed with HTTP ${response.status}.`,
+      );
     return await response.json();
   } finally {
     clearTimeout(timeout);

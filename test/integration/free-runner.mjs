@@ -71,12 +71,7 @@ test("free runner leases only the fixed read-only staging profile", async () => 
     );
     await db.query(
       "INSERT INTO reaper_control.assessments(id,workspace_id,project_id,reference) VALUES ($1,$2,$3,'unsafe'),($4,$2,$3,'safe')",
-      [
-        ids.unsafeAssessment,
-        ids.workspace,
-        ids.project,
-        ids.safeAssessment,
-      ],
+      [ids.unsafeAssessment, ids.workspace, ids.project, ids.safeAssessment],
     );
 
     await db.query(

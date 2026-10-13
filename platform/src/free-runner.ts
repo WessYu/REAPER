@@ -19,8 +19,7 @@ async function githubOidcToken(): Promise<string> {
   try {
     const response = await fetch(requestUrl, {
       headers: {
-        authorization:
-          "Bearer " + required("ACTIONS_ID_TOKEN_REQUEST_TOKEN"),
+        authorization: "Bearer " + required("ACTIONS_ID_TOKEN_REQUEST_TOKEN"),
       },
       redirect: "error",
       signal: controller.signal,
@@ -165,10 +164,7 @@ function freeConfig(job: {
       maxRequests: Math.min(8, job.payload.limits.maxRequests),
       maxCleanupRequests: 1,
       timeoutMs: Math.min(5_000, job.payload.limits.deadlineMs),
-      rateLimitPerSecond: Math.min(
-        2,
-        job.payload.limits.rateLimitPerSecond,
-      ),
+      rateLimitPerSecond: Math.min(2, job.payload.limits.rateLimitPerSecond),
       maxConsecutiveServerErrors: 2,
       allowMutations: false,
       allowPrivateNetwork: false,

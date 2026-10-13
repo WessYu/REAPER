@@ -1,7 +1,4 @@
-import {
-  parseRunnerBearer,
-  verifyGitHubRunnerToken,
-} from "./github-oidc.mjs";
+import { parseRunnerBearer, verifyGitHubRunnerToken } from "./github-oidc.mjs";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -273,7 +270,7 @@ export async function handleFreeRunnerRequest(input: {
           workspaceId: row.workspace_id,
           runId: row.run_id,
           attempt: Number(row.attempt),
-          workerId: identity.workerId,
+          workerId: identity.workerId],
           payload: row.payload,
           leaseExpiresAt: new Date(row.lease_expires_at).toISOString(),
         },

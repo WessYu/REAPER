@@ -1,12 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  generateKeyPairSync,
-  createSign,
-} from "node:crypto";
-import {
-  verifyGitHubRunnerToken,
-} from "../../supabase/functions/reaper-platform/github-oidc.mjs";
+import { generateKeyPairSync, createSign } from "node:crypto";
+import { verifyGitHubRunnerToken } from "../../supabase/functions/reaper-platform/github-oidc.mjs";
 
 function encode(value) {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
