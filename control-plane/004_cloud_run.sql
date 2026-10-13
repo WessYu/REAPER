@@ -78,7 +78,7 @@ RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = reaper_control, pg_temp
-AS $
+AS $prepare$
 DECLARE
   v_workspace_id uuid;
   v_run_id uuid;
@@ -119,7 +119,7 @@ BEGIN
 
   RETURN true;
 END
-$;
+$prepare$;
 
 CREATE OR REPLACE FUNCTION reaper_control.load_platform_execution_envelope(
   p_job_id uuid,
@@ -133,7 +133,7 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = reaper_control, pg_temp
-AS $
+AS $load$
 BEGIN
   RETURN QUERY
   SELECT e.workspace_id, e.run_id, e.envelope
@@ -149,7 +149,7 @@ BEGIN
     AND j.worker_id = p_worker_id
     AND j.lease_expires_at > now();
 END
-$;
+$load$;
 
 CREATE OR REPLACE FUNCTION reaper_control.delete_platform_execution_envelope(
   p_job_id uuid,
@@ -159,7 +159,7 @@ RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = reaper_control, pg_temp
-AS $
+AS $delete$
 BEGIN
   DELETE FROM execution_envelopes
   WHERE job_id = p_job_id
@@ -167,7 +167,7 @@ BEGIN
 
   RETURN FOUND;
 END
-$;
+$delete$;
 
 CREATE OR REPLACE FUNCTION reaper_control.collect_expired_execution_envelopes(
   p_max_deletes integer DEFAULT 100
@@ -176,7 +176,7 @@ RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = reaper_control, pg_temp
-AS $
+AS $collect$
 DECLARE
   v_deleted integer;
 BEGIN
@@ -198,7 +198,7 @@ BEGIN
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
   RETURN v_deleted;
 END
-$;
+$collect$;
 
 CREATE OR REPLACE FUNCTION reaper_control.renew_platform_job_lease(
   p_job_id uuid,
