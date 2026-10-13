@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { chown, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PlatformJob } from "./types.js";
 import { buildScopePayload, type ScopeSigner } from "./scope-signer.js";
@@ -32,11 +32,11 @@ function numericIdentity(): string {
   }
   const uid = process.getuid?.();
   const gid = process.getgid?.();
-  if (!uid || uid === 0 || gid === undefined)
+  if (!uid || uid === 0 || gid === undefined || gid === 0)
     throw new Error(
       "A non-root REAPER_PLATFORM_CONTAINER_UID is required when the worker runs as root.",
     );
-  return `${uid}:${gid}`;
+  return { value: `${uid}:${gid}`, uid, gid };
 }
 
 export class DockerRunner {
@@ -74,10 +74,15 @@ export class DockerRunner {
     });
     const scope = await this.options.signer.sign(scopePayload);
 
+    const identity = numericIdentity();
     const stateDirectory = path.resolve(this.options.stateRoot, job.runId);
     const outputDirectory = path.resolve(this.options.outputRoot, job.runId);
     await mkdir(stateDirectory, { recursive: true, mode: 0o700 });
     await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
+    if (process.getuid?.() === 0) {
+      await chown(stateDirectory, identity.uid, identity.gid);
+      await chown(outputDirectory, identity.uid, identity.gid);
+    }
     const reportFile = path.join(outputDirectory, "outcome.json");
     const configPath = safeRelative(job.payload.configPath);
 
@@ -95,7 +100,7 @@ export class DockerRunner {
       "--cpus=1",
       "--pids-limit=128",
       "--user",
-      numericIdentity(),
+      identity.value,
       "--tmpfs",
       "/tmp:rw,noexec,nosuid,size=64m",
       "--mount",
