@@ -1154,6 +1154,7 @@ async function runMatrix(
         try {
           await requestStep(context, scenario, step, false);
         } catch (error) {
+          context.executionFailed = true;
           context.result.diagnostics.push({
             message: `Attack matrix ${matrix.id} stopped at ${actor} -> ${resource.owner}: ${error instanceof Error ? error.message : "unknown error"}`,
           });
@@ -1465,6 +1466,7 @@ export async function runAttack(
         currentStep = undefined;
       } catch (error) {
         scenarioFailed = true;
+        context.executionFailed = true;
         result.diagnostics.push({
           message: `Attack scenario ${scenario.id} stopped: ${error instanceof Error ? error.message : "unknown error"}`,
         });
@@ -1484,6 +1486,8 @@ export async function runAttack(
             await requestStep(context, scenario, step, true);
           } catch (error) {
             result.attack.cleanupFailures++;
+            context.executionFailed = true;
+            await journalCleanupFailed(context, scenario, step, error);
             result.attack.audit.push({
               scenarioId: scenario.id,
               step: step.name,
@@ -1533,6 +1537,36 @@ export async function runAttack(
   result.attack.requests = context.requestCount + context.cleanupRequestCount;
   result.attack.cleanupRequests = context.cleanupRequestCount;
   result.attack.completedAt = new Date().toISOString();
+  const terminalStatus =
+    result.attack.cleanupFailures > 0
+      ? "CLEANUP_FAILED"
+      : context.signal?.aborted
+        ? "INTERRUPTED"
+        : context.executionFailed
+          ? "FAILED"
+          : "COMPLETED";
+  if (context.journal)
+    await context.journal.update(runId, (record) => {
+      record.status = terminalStatus;
+    });
+  if (context.audit) {
+    const type =
+      terminalStatus === "COMPLETED"
+        ? "RUN_COMPLETED"
+        : terminalStatus === "INTERRUPTED"
+          ? "RUN_INTERRUPTED"
+          : "RUN_FAILED";
+    await context.audit.append(runId, {
+      type,
+      data: {
+        status: terminalStatus,
+        requests: result.attack.requests,
+        cleanupRequests: result.attack.cleanupRequests,
+        cleanupFailures: result.attack.cleanupFailures,
+        confirmedFindings: result.attack.confirmed.length,
+      },
+    });
+  }
   redactKnownSecrets(result, context.secretValues);
   return result;
 }
