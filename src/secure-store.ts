@@ -40,6 +40,10 @@ export async function ensureSecureDirectory(root: string): Promise<string> {
   const stat = await lstat(resolved);
   if (!stat.isDirectory() || stat.isSymbolicLink())
     throw new Error("Persistent state root must be a real directory.");
+  if (process.platform !== "win32" && (stat.mode & 0o077) !== 0)
+    throw new Error(
+      "Persistent state root must not be accessible by group or other users.",
+    );
   return resolved;
 }
 
