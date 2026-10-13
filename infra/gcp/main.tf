@@ -59,8 +59,8 @@ resource "google_service_account" "scheduler" {
 }
 
 resource "google_kms_key_ring" "reaper" {
-  name     = "reaper"
-  location = var.region
+  name       = "reaper"
+  location   = var.region
   depends_on = [google_project_service.kms]
 }
 
