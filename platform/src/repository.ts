@@ -352,6 +352,25 @@ export class PlatformRepository {
     };
   }
 
+  async prepareExecutionEnvelope(
+    job: PlatformJob,
+    workerId: string,
+    envelope: unknown,
+    expiresAt: string,
+  ): Promise<void> {
+    if (
+      !Number.isFinite(Date.parse(expiresAt)) ||
+      Date.parse(expiresAt) <= Date.now()
+    )
+      throw new Error("Execution envelope expiry is invalid.");
+    const result = await this.pool.query<{ prepared: boolean }>(
+      "SELECT reaper_control.prepare_platform_execution_envelope($1,$2,$3::jsonb,$4::timestamptz) AS prepared",
+      [job.id, text(workerId, "workerId"), JSON.stringify(envelope), expiresAt],
+    );
+    if (result.rows[0]?.prepared !== true)
+      throw new Error("Job lease was lost before execution preparation.");
+  }
+
   async completeJob(
     job: PlatformJob,
     workerId: string,
