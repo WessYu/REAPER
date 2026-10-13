@@ -12,6 +12,7 @@ import {
   type RunnerIsolationMode,
   type RunnerIsolationProvider,
 } from "./isolation.js";
+import { ensureSecureDirectory } from "./secure-store.js";
 
 export interface AttackJob {
   version: 1;
@@ -201,8 +202,11 @@ export async function runAttackJob(
   const isolationProvider =
     options.isolationProvider ?? new ProcessIsolationProvider();
   assertRunnerIsolation(isolationMode, isolationProvider);
+  const stateDirectory = options.stateDirectory
+    ? await ensureSecureDirectory(options.stateDirectory)
+    : undefined;
   if (isolationMode === "strict") {
-    if (!options.stateDirectory)
+    if (!stateDirectory)
       throw new Error("Strict runner mode requires a persistent state directory.");
     if (!job.workspaceId || !job.projectId)
       throw new Error("Strict runner mode requires workspaceId and projectId.");
@@ -224,7 +228,7 @@ export async function runAttackJob(
     child = isolationProvider.spawn({
       modulePath: JOB_FILE,
       cwd: workingDirectory,
-      env: childEnvironment(snapshot, options.stateDirectory, isolationMode),
+      env: childEnvironment(snapshot, stateDirectory, isolationMode),
       execArgv: [`--max-old-space-size=${snapshot.limits.memoryMb}`],
     });
   } catch {
