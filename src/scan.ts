@@ -8,18 +8,33 @@ import { discover, inferResources } from "./project.js";
 import { readConfig, validateConfig } from "./config.js";
 import type { Config, ScanResult } from "./model.js";
 import { runRules, type ReaperRule } from "./rules.js";
+import {
+  applySignedRulePack,
+  verifySignedRulePack,
+  type SignedRulePack,
+} from "./rule-pack.js";
+import type { KeyLike } from "node:crypto";
 export async function scan(options: {
   root: string;
   config?: Config;
   configFile?: string;
   baseline?: string[];
   rules?: ReaperRule[];
+  rulePack?: SignedRulePack;
+  trustedRulePackKeys?: Record<string, KeyLike | string | Buffer>;
 }): Promise<ScanResult> {
   const start = performance.now();
   const root = await realpath(options.root);
   const config = options.configFile
     ? await readConfig(options.configFile)
     : validateConfig(options.config ?? {});
+  if (options.rulePack || options.trustedRulePackKeys) {
+    if (!options.rulePack || !options.trustedRulePackKeys)
+      throw new Error(
+        "Signed rule packs require both a pack and trusted keys.",
+      );
+    verifySignedRulePack(options.rulePack, options.trustedRulePackKeys);
+  }
   const result: ScanResult = {
     version: "0.2.0",
     root,
@@ -35,6 +50,14 @@ export async function scan(options: {
   await analyzeMigrations(root, files, result);
   await analyzeSecurity(root, files, result);
   await runRules(result, config, options.rules ?? []);
+  if (options.rulePack && options.trustedRulePackKeys)
+    await applySignedRulePack(
+      result,
+      root,
+      files,
+      options.rulePack,
+      options.trustedRulePackKeys,
+    );
   const baseline = new Set(options.baseline ?? []);
   const contents = new Map<string, string[]>();
   const scannableFiles = new Set(

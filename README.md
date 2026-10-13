@@ -235,6 +235,8 @@ Strict deployments can set `attack.requireSignedScope: true` and pass an Ed25519
 
 Release SBOM, SHA-256 hashes and tag provenance details are documented in [supply-chain evidence](docs/supply-chain.md).
 
+Signed, data-only literal-matching rule packs can be applied through the `scan` API. They are versioned, engine-compatible, size-bounded, and verified against caller-supplied Ed25519 public keys; they do not execute code. See [rule pack format and limits](docs/rule-packs.md). The separate `ReaperRule` callback API remains trusted local JavaScript.
+
 Stateful flows can capture JSON values and session cookies, then reuse them through bearer, cookie or secret-backed header identities. Ownership/tenant matrices can systematically test each configured actor against foreign-owned test resources. For ownership, tenant and vertical-authorization confirmation, a denial expectation must identify both a configured actor and a known test resource. HTTP 5xx, redirects and ambiguous 4xx responses remain inconclusive by default: confirmation defaults to HTTP 2xx unless `confirmStatuses` narrows that set. Optional `jsonEquals` response proof can additionally require the returned JSON to match known resource identity/ownership fields before a `REAPER-ATTACK-001` finding becomes CONFIRMED.
 
 A saved source/database report can be supplied with `--input`. REAPER then correlates the confirmed runtime route with matching source graph routes, reachable data resources and related static/catalog findings; this adds evidence but does not replace the runtime proof.

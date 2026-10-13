@@ -44,6 +44,17 @@ export { createAttackJob, runAttackJob } from "./runner.js";
 export type { AttackJob, AttackJobOutcome } from "./runner.js";
 export { ENGINE_VERSION } from "./model.js";
 export {
+  applySignedRulePack,
+  canonicalRulePackPayload,
+  createSignedRulePack,
+  verifySignedRulePack,
+} from "./rule-pack.js";
+export type {
+  RulePackPayload,
+  RulePackRule,
+  SignedRulePack,
+} from "./rule-pack.js";
+export {
   correlateAttackSource,
   normalizeAttackRoute,
 } from "./attack-correlation.js";

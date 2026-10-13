@@ -276,6 +276,7 @@ export interface ScanResult {
     memoryBytes: number;
   };
   coverage: { source: boolean; database: boolean; runtime: boolean };
+  rulePacks?: Array<{ packId: string; version: string; hash: string }>;
   attack?: AttackRunMetadata;
 }
 export const severities: Severity[] = [
