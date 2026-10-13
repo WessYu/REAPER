@@ -58,3 +58,7 @@ export {
   correlateAttackSource,
   normalizeAttackRoute,
 } from "./attack-correlation.js";
+
+export * from "./journal.js";
+export * from "./replay.js";
+export * from "./audit.js";
