@@ -62,3 +62,4 @@ export {
 export * from "./journal.js";
 export * from "./replay.js";
 export * from "./audit.js";
+export * from "./trust.js";
