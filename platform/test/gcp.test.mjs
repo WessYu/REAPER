@@ -107,12 +107,18 @@ test("Cloud Run client executes one task with bounded overrides", async () => {
     },
   });
   const result = await client.execute({
-    executionEnvelope: Buffer.from('{"version":1}').toString("base64url"),
+    jobId: "30000000-0000-4000-8000-000000000001",
+    workerId: "cloud-dispatcher-test",
     timeoutMs: 120_000,
   });
   assert.match(result.operationName, /operations\/op-1$/);
   const body = JSON.parse(String(request.init.body));
   assert.equal(body.overrides.taskCount, 1);
-  assert.equal(body.overrides.containerOverrides[0].env[0].name, "REAPER_EXECUTION_ENVELOPE_B64");
+  assert.equal(body.overrides.containerOverrides[0].env[0].name, "REAPER_EXECUTION_JOB_ID");
+  assert.equal(
+    body.overrides.containerOverrides[0].env[0].value,
+    "30000000-0000-4000-8000-000000000001",
+  );
+  assert.equal(body.overrides.containerOverrides[0].env[1].name, "REAPER_EXECUTION_WORKER_ID");
   assert.equal(body.overrides.timeout, "180s");
 });
