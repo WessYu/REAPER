@@ -107,6 +107,30 @@ export async function atomicWriteFile(
   }
 }
 
+async function removeAbandonedLock(lock: string): Promise<boolean> {
+  try {
+    const raw = (await readFile(lock, "utf8")).trim();
+    const pid = Number(raw);
+    if (Number.isSafeInteger(pid) && pid > 0) {
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ESRCH") return false;
+      }
+    } else {
+      const info = await lstat(lock);
+      if (Date.now() - info.mtimeMs < 60_000) return false;
+    }
+    await rm(lock, { force: true });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    return false;
+  }
+}
+
 export async function withExclusiveFileLock<T>(
   rootInput: string,
   name: string,
@@ -124,6 +148,7 @@ export async function withExclusiveFileLock<T>(
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (await removeAbandonedLock(lock)) continue;
       if (attempt === attempts - 1)
         throw new Error("Persistent state lock acquisition timed out.");
       await new Promise((resolve) => setTimeout(resolve, delayMs));
