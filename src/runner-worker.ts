@@ -1,4 +1,8 @@
+import path from "node:path";
 import { runAttack } from "./attack.js";
+import { FileExecutionJournalStore } from "./journal.js";
+import { FileScopeReplayStore } from "./replay.js";
+import { FileAuditStore } from "./audit.js";
 import type { AttackJob } from "./runner.js";
 
 let activeController: AbortController | undefined;
@@ -31,6 +35,19 @@ process.on("message", (message: unknown) => {
       )
         throw new Error("invalid job envelope");
       const job = JSON.parse((message as { json: string }).json) as AttackJob;
+      const stateDirectory = process.env.REAPER_RUNNER_STATE_DIR;
+      const strictCommercial = process.env.REAPER_RUNNER_MODE === "strict";
+      if (strictCommercial && !stateDirectory)
+        throw new Error("strict runner state directory is unavailable");
+      const journalStore = stateDirectory
+        ? new FileExecutionJournalStore(path.join(stateDirectory, "journal"))
+        : undefined;
+      const scopeReplayStore = stateDirectory
+        ? new FileScopeReplayStore(path.join(stateDirectory, "replay"))
+        : undefined;
+      const auditStore = stateDirectory
+        ? new FileAuditStore(path.join(stateDirectory, "audit"))
+        : undefined;
       activeController = new AbortController();
       const result = await runAttack(job.target, job.config, {
         signal: activeController.signal,
@@ -40,6 +57,10 @@ process.on("message", (message: unknown) => {
         projectId: job.projectId,
         scopeManifest: job.scopeManifest,
         trustedScopeKeys: job.trustedScopeKeys,
+        strictCommercial,
+        journalStore,
+        scopeReplayStore,
+        auditStore,
       });
       const json = JSON.stringify(result);
       if (typeof json !== "string")
