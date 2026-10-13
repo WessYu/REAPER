@@ -8,9 +8,11 @@ function required(name: string): string {
 
 async function githubOidcToken(): Promise<string> {
   const requestUrl = new URL(required("ACTIONS_ID_TOKEN_REQUEST_URL"));
+  const oidcHost = requestUrl.hostname.toLowerCase();
   if (
     requestUrl.protocol !== "https:" ||
-    !requestUrl.hostname.endsWith("actions.githubusercontent.com")
+    (oidcHost !== "actions.githubusercontent.com" &&
+      !oidcHost.endsWith(".actions.githubusercontent.com"))
   )
     throw new Error("GitHub OIDC request URL is invalid.");
   requestUrl.searchParams.set("audience", "reaper-staging");
