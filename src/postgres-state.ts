@@ -12,11 +12,7 @@ import type {
   AuditJson,
   AuditStore,
 } from "./audit.js";
-import {
-  canonicalJson,
-  sanitizeAuditText,
-  sha256,
-} from "./secure-store.js";
+import { canonicalJson, sanitizeAuditText, sha256 } from "./secure-store.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -98,7 +94,9 @@ function verifyJournal(value: unknown): ExecutionJournalRecord {
     throw new Error("PostgreSQL execution journal metadata is invalid.");
   const expected = sha256(canonicalJson(withoutJournalIntegrity(record)));
   if (expected !== record.integrity)
-    throw new Error("PostgreSQL execution journal integrity verification failed.");
+    throw new Error(
+      "PostgreSQL execution journal integrity verification failed.",
+    );
   return structuredClone(record);
 }
 
@@ -117,41 +115,51 @@ export class PostgresExecutionJournalStore implements ExecutionJournalStore {
     > & { cleanups?: JournalCleanupPlan[] },
   ): Promise<ExecutionJournalRecord> {
     if (input.workspaceId !== this.workspaceId)
-      throw new Error("Execution journal workspace does not match runner context.");
+      throw new Error(
+        "Execution journal workspace does not match runner context.",
+      );
     const record = sealJournal({
       ...input,
       updatedAt: input.createdAt,
       cleanups: input.cleanups ?? [],
     });
-    await withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const result = await client.query(
-        `INSERT INTO reaper_control.execution_journals(
+    await withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const result = await client.query(
+          `INSERT INTO reaper_control.execution_journals(
            workspace_id,run_id,record,updated_at
          ) VALUES ($1,$2,$3::jsonb,now())
          ON CONFLICT (workspace_id,run_id) DO NOTHING
          RETURNING run_id`,
-        [this.workspaceId, record.runId, JSON.stringify(record)],
-      );
-      if (!result.rows[0])
-        throw new Error("Execution journal run already exists.");
-    });
+          [this.workspaceId, record.runId, JSON.stringify(record)],
+        );
+        if (!result.rows[0])
+          throw new Error("Execution journal run already exists.");
+      },
+    );
     return verifyJournal(record);
   }
 
   async read(runId: string): Promise<ExecutionJournalRecord> {
     if (!UUID.test(runId))
       throw new Error("Execution journal runId is invalid.");
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const result = await client.query<{ record: unknown }>(
-        `SELECT record
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const result = await client.query<{ record: unknown }>(
+          `SELECT record
          FROM reaper_control.execution_journals
          WHERE workspace_id=$1 AND run_id=$2`,
-        [this.workspaceId, runId],
-      );
-      if (!result.rows[0])
-        throw new Error("Execution journal run does not exist.");
-      return verifyJournal(result.rows[0].record);
-    });
+          [this.workspaceId, runId],
+        );
+        if (!result.rows[0])
+          throw new Error("Execution journal run does not exist.");
+        return verifyJournal(result.rows[0].record);
+      },
+    );
   }
 
   async update(
@@ -160,56 +168,60 @@ export class PostgresExecutionJournalStore implements ExecutionJournalStore {
   ): Promise<ExecutionJournalRecord> {
     if (!UUID.test(runId))
       throw new Error("Execution journal runId is invalid.");
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const selected = await client.query<{ record: unknown }>(
-        `SELECT record
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const selected = await client.query<{ record: unknown }>(
+          `SELECT record
          FROM reaper_control.execution_journals
          WHERE workspace_id=$1 AND run_id=$2
          FOR UPDATE`,
-        [this.workspaceId, runId],
-      );
-      if (!selected.rows[0])
-        throw new Error("Execution journal run does not exist.");
-      const current = verifyJournal(selected.rows[0].record);
-      const next = structuredClone(current);
-      mutate(next);
-      next.updatedAt = new Date().toISOString();
-      const sealed = sealJournal(withoutJournalIntegrity(next));
-      await client.query(
-        `UPDATE reaper_control.execution_journals
+          [this.workspaceId, runId],
+        );
+        if (!selected.rows[0])
+          throw new Error("Execution journal run does not exist.");
+        const current = verifyJournal(selected.rows[0].record);
+        const next = structuredClone(current);
+        mutate(next);
+        next.updatedAt = new Date().toISOString();
+        const sealed = sealJournal(withoutJournalIntegrity(next));
+        await client.query(
+          `UPDATE reaper_control.execution_journals
          SET record=$3::jsonb, updated_at=now()
          WHERE workspace_id=$1 AND run_id=$2`,
-        [this.workspaceId, runId, JSON.stringify(sealed)],
-      );
-      return verifyJournal(sealed);
-    });
+          [this.workspaceId, runId, JSON.stringify(sealed)],
+        );
+        return verifyJournal(sealed);
+      },
+    );
   }
 
   async listRecoverable(): Promise<ExecutionJournalRecord[]> {
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const result = await client.query<{ record: unknown }>(
-        `SELECT record
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const result = await client.query<{ record: unknown }>(
+          `SELECT record
          FROM reaper_control.execution_journals
          WHERE workspace_id=$1
            AND record->>'status' = ANY($2::text[])
          ORDER BY record->>'createdAt'
          LIMIT 1000`,
-        [
-          this.workspaceId,
-          ["RUNNING", "INTERRUPTED", "CLEANING", "CLEANUP_FAILED"],
-        ],
-      );
-      return result.rows.map((row) => verifyJournal(row.record));
-    });
+          [
+            this.workspaceId,
+            ["RUNNING", "INTERRUPTED", "CLEANING", "CLEANUP_FAILED"],
+          ],
+        );
+        return result.rows.map((row) => verifyJournal(row.record));
+      },
+    );
   }
 }
 
 function replayText(value: string, name: string): void {
-  if (
-    !value ||
-    value.length > 200 ||
-    /[\u0000-\u001f\u007f]/.test(value)
-  )
+  if (!value || value.length > 200 || /[\u0000-\u001f\u007f]/.test(value))
     throw new Error(`Scope replay ${name} is invalid.`);
 }
 
@@ -242,24 +254,28 @@ export class PostgresScopeReplayStore implements ScopeReplayStore {
 
   async consume(input: ScopeReplayInput): Promise<boolean> {
     validateReplay(input);
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const result = await client.query(
-        `INSERT INTO reaper_control.consumed_scope_nonces(
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const result = await client.query(
+          `INSERT INTO reaper_control.consumed_scope_nonces(
            workspace_id,issuer,assessment_id,nonce,target_origin,expires_at
          ) VALUES ($1,$2,$3,$4,$5,$6::timestamptz)
          ON CONFLICT DO NOTHING
          RETURNING nonce`,
-        [
-          this.workspaceId,
-          input.issuer,
-          input.assessmentId,
-          input.nonce,
-          input.targetOrigin,
-          input.expiresAt,
-        ],
-      );
-      return Boolean(result.rows[0]);
-    });
+          [
+            this.workspaceId,
+            input.issuer,
+            input.assessmentId,
+            input.nonce,
+            input.targetOrigin,
+            input.expiresAt,
+          ],
+        );
+        return Boolean(result.rows[0]);
+      },
+    );
   }
 
   async collectExpired(now = Date.now(), maxDeletes = 100): Promise<number> {
@@ -269,9 +285,12 @@ export class PostgresScopeReplayStore implements ScopeReplayStore {
       maxDeletes > 1000
     )
       throw new Error("Replay-store collection limit is invalid.");
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const result = await client.query(
-        `WITH expired AS (
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const result = await client.query(
+          `WITH expired AS (
            SELECT ctid
            FROM reaper_control.consumed_scope_nonces
            WHERE workspace_id=$1 AND expires_at <= $2::timestamptz
@@ -282,10 +301,11 @@ export class PostgresScopeReplayStore implements ScopeReplayStore {
          USING expired
          WHERE n.ctid=expired.ctid
          RETURNING n.nonce`,
-        [this.workspaceId, new Date(now).toISOString(), maxDeletes],
-      );
-      return result.rowCount ?? 0;
-    });
+          [this.workspaceId, new Date(now).toISOString(), maxDeletes],
+        );
+        return result.rowCount ?? 0;
+      },
+    );
   }
 }
 
@@ -305,8 +325,7 @@ function sanitizeAuditValue(value: AuditJson, depth = 0): AuditJson {
   if (!value || typeof value !== "object")
     throw new Error("Audit event contains an unsupported value.");
   const entries = Object.entries(value);
-  if (entries.length > 100)
-    throw new Error("Audit event object is too large.");
+  if (entries.length > 100) throw new Error("Audit event object is too large.");
   return Object.fromEntries(
     entries.map(([key, entry]) => [
       sanitizeAuditText(key, 120),
@@ -368,129 +387,140 @@ export class PostgresAuditStore implements AuditStore {
     if (!UUID.test(runId)) throw new Error("Audit runId is invalid.");
     if (!EVENT_TYPES.has(input.type))
       throw new Error("Audit event type is invalid.");
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      await client.query(
-        `SELECT id
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        await client.query(
+          `SELECT id
          FROM reaper_control.runs
          WHERE workspace_id=$1 AND id=$2
          FOR UPDATE`,
-        [this.workspaceId, runId],
-      );
-      const last = await client.query<{
-        sequence: string;
-        event_hash: string;
-      }>(
-        `SELECT sequence,event_hash
+          [this.workspaceId, runId],
+        );
+        const last = await client.query<{
+          sequence: string;
+          event_hash: string;
+        }>(
+          `SELECT sequence,event_hash
          FROM reaper_control.audit_events
          WHERE workspace_id=$1 AND run_id=$2
          ORDER BY sequence DESC
          LIMIT 1`,
-        [this.workspaceId, runId],
-      );
-      const sequence = last.rows[0] ? Number(last.rows[0].sequence) + 1 : 1;
-      if (!Number.isSafeInteger(sequence) || sequence > 5000)
-        throw new Error("Audit trail exceeds its event limit.");
-      const previousHash = last.rows[0]?.event_hash ?? GENESIS;
-      const data = sanitizeAuditValue((input.data ?? {}) as AuditJson) as Record<
-        string,
-        AuditJson
-      >;
-      const base = {
-        version: 1 as const,
-        runId,
-        sequence,
-        previousHash,
-        type: input.type,
-        at: validAuditTimestamp(input.at ?? new Date().toISOString()),
-        data,
-      };
-      const event: AuditEvent = {
-        ...base,
-        eventHash: hashAuditEvent(base),
-      };
-      await client.query(
-        `INSERT INTO reaper_control.audit_events(
-           workspace_id,run_id,sequence,previous_hash,event_hash,event_type,payload,created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::timestamptz)`,
-        [
-          this.workspaceId,
+          [this.workspaceId, runId],
+        );
+        const sequence = last.rows[0] ? Number(last.rows[0].sequence) + 1 : 1;
+        if (!Number.isSafeInteger(sequence) || sequence > 5000)
+          throw new Error("Audit trail exceeds its event limit.");
+        const previousHash = last.rows[0]?.event_hash ?? GENESIS;
+        const data = sanitizeAuditValue(
+          (input.data ?? {}) as AuditJson,
+        ) as Record<string, AuditJson>;
+        const base = {
+          version: 1 as const,
           runId,
           sequence,
-          event.previousHash,
-          event.eventHash,
-          event.type,
-          JSON.stringify(event.data),
-          event.at,
-        ],
-      );
-      await client.query(
-        `INSERT INTO reaper_control.audit_heads(
+          previousHash,
+          type: input.type,
+          at: validAuditTimestamp(input.at ?? new Date().toISOString()),
+          data,
+        };
+        const event: AuditEvent = {
+          ...base,
+          eventHash: hashAuditEvent(base),
+        };
+        await client.query(
+          `INSERT INTO reaper_control.audit_events(
+           workspace_id,run_id,sequence,previous_hash,event_hash,event_type,payload,created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::timestamptz)`,
+          [
+            this.workspaceId,
+            runId,
+            sequence,
+            event.previousHash,
+            event.eventHash,
+            event.type,
+            JSON.stringify(event.data),
+            event.at,
+          ],
+        );
+        await client.query(
+          `INSERT INTO reaper_control.audit_heads(
            workspace_id,run_id,sequence,event_hash,updated_at
          ) VALUES ($1,$2,$3,$4,now())
          ON CONFLICT (workspace_id,run_id)
          DO UPDATE SET sequence=EXCLUDED.sequence,event_hash=EXCLUDED.event_hash,updated_at=now()`,
-        [this.workspaceId, runId, sequence, event.eventHash],
-      );
-      return event;
-    });
+          [this.workspaceId, runId, sequence, event.eventHash],
+        );
+        return event;
+      },
+    );
   }
 
   async read(runId: string): Promise<AuditEvent[]> {
     if (!UUID.test(runId)) throw new Error("Audit runId is invalid.");
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const result = await client.query<{
-        sequence: string;
-        previous_hash: string;
-        event_hash: string;
-        event_type: AuditEventType;
-        payload: Record<string, AuditJson>;
-        created_at: Date;
-      }>(
-        `SELECT sequence,previous_hash,event_hash,event_type,payload,created_at
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const result = await client.query<{
+          sequence: string;
+          previous_hash: string;
+          event_hash: string;
+          event_type: AuditEventType;
+          payload: Record<string, AuditJson>;
+          created_at: Date;
+        }>(
+          `SELECT sequence,previous_hash,event_hash,event_type,payload,created_at
          FROM reaper_control.audit_events
          WHERE workspace_id=$1 AND run_id=$2
          ORDER BY sequence
          LIMIT 5001`,
-        [this.workspaceId, runId],
-      );
-      if (result.rows.length > 5000)
-        throw new Error("Audit trail exceeds its event limit.");
-      const events = result.rows.map((row) => ({
-        version: 1 as const,
-        runId,
-        sequence: Number(row.sequence),
-        previousHash: row.previous_hash,
-        eventHash: row.event_hash,
-        type: row.event_type,
-        at: new Date(row.created_at).toISOString(),
-        data: row.payload,
-      }));
-      verifyAuditEvents(events, runId);
-      return events;
-    });
+          [this.workspaceId, runId],
+        );
+        if (result.rows.length > 5000)
+          throw new Error("Audit trail exceeds its event limit.");
+        const events = result.rows.map((row) => ({
+          version: 1 as const,
+          runId,
+          sequence: Number(row.sequence),
+          previousHash: row.previous_hash,
+          eventHash: row.event_hash,
+          type: row.event_type,
+          at: new Date(row.created_at).toISOString(),
+          data: row.payload,
+        }));
+        verifyAuditEvents(events, runId);
+        return events;
+      },
+    );
   }
 
   async verify(runId: string): Promise<boolean> {
     const events = await this.read(runId);
-    return withWorkspaceTransaction(this.pool, this.workspaceId, async (client) => {
-      const head = await client.query<{
-        sequence: string;
-        event_hash: string;
-      }>(
-        `SELECT sequence,event_hash
+    return withWorkspaceTransaction(
+      this.pool,
+      this.workspaceId,
+      async (client) => {
+        const head = await client.query<{
+          sequence: string;
+          event_hash: string;
+        }>(
+          `SELECT sequence,event_hash
          FROM reaper_control.audit_heads
          WHERE workspace_id=$1 AND run_id=$2`,
-        [this.workspaceId, runId],
-      );
-      if (events.length === 0) return !head.rows[0];
-      const last = events.at(-1)!;
-      if (
-        !head.rows[0] ||
-        Number(head.rows[0].sequence) !== last.sequence ||
-        head.rows[0].event_hash !== last.eventHash
-      )
-        throw new Error("Audit trail truncation or head mismatch detected.");
-      return true;
-    });
+          [this.workspaceId, runId],
+        );
+        if (events.length === 0) return !head.rows[0];
+        const last = events.at(-1)!;
+        if (
+          !head.rows[0] ||
+          Number(head.rows[0].sequence) !== last.sequence ||
+          head.rows[0].event_hash !== last.eventHash
+        )
+          throw new Error("Audit trail truncation or head mismatch detected.");
+        return true;
+      },
+    );
   }
 }
