@@ -251,19 +251,19 @@ BEGIN
     RAISE EXCEPTION 'job lease must be between 15 and 900 seconds';
   END IF;
 
-  SELECT *
+  SELECT j.*
   INTO v_job
-  FROM jobs
+  FROM jobs AS j
   WHERE (
-      status = 'PENDING'
-      AND available_at <= now()
+      j.status = 'PENDING'
+      AND j.available_at <= now()
     ) OR (
-      status = 'RUNNING'
-      AND lease_expires_at <= now()
-      AND attempt < 10
+      j.status = 'RUNNING'
+      AND j.lease_expires_at <= now()
+      AND j.attempt < 10
     )
-  ORDER BY created_at
-  FOR UPDATE SKIP LOCKED
+  ORDER BY j.created_at
+  FOR UPDATE OF j SKIP LOCKED
   LIMIT 1;
 
   IF NOT FOUND THEN
