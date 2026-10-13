@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import postgres from "npm:postgres@3.4.7";
+import { handleFreeRunnerRequest } from "./free-runner.ts";
 
 const DATABASE_URL = Deno.env.get("SUPABASE_DB_URL");
 if (!DATABASE_URL) throw new Error("SUPABASE_DB_URL is required.");
@@ -251,6 +252,16 @@ Deno.serve(async (request: Request) => {
       return json(200, { status: probe[0]?.ok === 1 ? "ok" : "degraded" });
     }
 
+    if (path.startsWith("/runner/")) {
+      return await handleFreeRunnerRequest({
+        request,
+        path,
+        method,
+        sql,
+        json,
+      });
+    }
+
     return await sql.begin(async (tx) => {
       const context = await authenticate(tx, request);
 
@@ -315,6 +326,80 @@ Deno.serve(async (request: Request) => {
           LIMIT 500
         `;
         return json(200, { items });
+      }
+
+      if (method === "POST" && path === "/v1/free-runs") {
+        requireRole(context, "analyst");
+        const body = await readBody(request);
+        const projectId = uuid(body.projectId, "projectId");
+        const targetOrigin = exactOrigin(body.targetOrigin);
+        if (!targetOrigin.startsWith("https://"))
+          throw new Error("Free staging assessments require an HTTPS origin.");
+
+        const project = await tx`
+          SELECT id
+          FROM reaper_control.projects
+          WHERE workspace_id=${context.workspaceId}::uuid
+            AND id=${projectId}::uuid
+        `;
+        if (!project[0]) throw new Error("Project not found.");
+
+        const assessmentId = crypto.randomUUID();
+        const runId = crypto.randomUUID();
+        const jobId = crypto.randomUUID();
+        const limits = {
+          maxRequests: 8,
+          maxCleanupRequests: 1,
+          rateLimitPerSecond: 2,
+          deadlineMs: 60000,
+        };
+        const permissions = ["read"];
+        const reference = "free-" + runId;
+
+        await tx`
+          INSERT INTO reaper_control.assessments(
+            id,workspace_id,project_id,reference
+          ) VALUES (
+            ${assessmentId}::uuid,${context.workspaceId}::uuid,
+            ${projectId}::uuid,${reference}
+          )
+        `;
+
+        const rows = await tx`
+          INSERT INTO reaper_control.runs(
+            id,workspace_id,project_id,assessment_id,status,target_origin,
+            environment,config_path,permissions,limits
+          ) VALUES (
+            ${runId}::uuid,${context.workspaceId}::uuid,${projectId}::uuid,
+            ${assessmentId}::uuid,'PENDING',${targetOrigin},'staging',
+            'free-readonly.ts',${tx.json(permissions)},${tx.json(limits)}
+          )
+          RETURNING id,status,target_origin,environment,created_at,updated_at
+        `;
+
+        await tx`
+          INSERT INTO reaper_control.jobs(
+            id,workspace_id,run_id,status,payload
+          ) VALUES (
+            ${jobId}::uuid,${context.workspaceId}::uuid,${runId}::uuid,
+            'PENDING',${tx.json({
+              projectId,
+              assessmentId,
+              targetOrigin,
+              environment: "staging",
+              configPath: "free-readonly.ts",
+              permissions,
+              limits,
+            })}
+          )
+        `;
+
+        return json(202, {
+          ...rows[0],
+          assessmentId,
+          jobId,
+          runner: "github-actions-free",
+        });
       }
 
       if (method === "POST" && path === "/v1/runs") {
@@ -517,7 +602,9 @@ Deno.serve(async (request: Request) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed.";
-    if (/authentication failed/i.test(message))
+    if (
+      /authentication failed|runner authentication|github oidc/i.test(message)
+    )
       return json(401, { error: "Authentication failed." });
     return json(clientError(message) ? 400 : 500, {
       error: clientError(message) ? message : "Internal server error.",
