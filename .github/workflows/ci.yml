@@ -31,18 +31,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
-      - name: Emit canonical commercial preflight sources
-        if: matrix.node == 22
-        run: |
-          echo FORMAT_BEGIN_SCRIPT
-          npx prettier scripts/verify-gcp-egress.mjs
-          echo FORMAT_END_SCRIPT
-          echo FORMAT_BEGIN_TEST
-          npx prettier test/gcp-egress.test.mjs
-          echo FORMAT_END_TEST
-          echo FORMAT_BEGIN_DOCS
-          npx prettier infra/gcp/README.md
-          echo FORMAT_END_DOCS
       - run: npm run check
       - run: node --test --test-concurrency=1 test/integration/*.mjs
         env:
