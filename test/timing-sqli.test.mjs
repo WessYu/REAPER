@@ -190,3 +190,87 @@ test("timing lab cannot confirm repeated positive timeouts with broken negative 
   assert.equal(result.confirmed, 0);
   assert.equal(result.experiments[0].confidence, "INCONCLUSIVE");
 });
+
+test("localhost timing lab pins outbound requests to a numeric loopback address", async () => {
+  const hosts = [];
+  const result = await runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
+    phpSessionId: "local-session",
+    samples: 3,
+    timeoutMs: 1000,
+    experiments: [
+      {
+        name: "control",
+        positive: "POSITIVE",
+        negative: "NEGATIVE",
+        expectedDelayMs: 80,
+      },
+    ],
+    fetchImpl: async (input) => {
+      hosts.push(new URL(String(input)).hostname);
+      return new Response("SQL Injection", { status: 200 });
+    },
+  });
+  assert.equal(result.confirmed, 0);
+  assert.equal(hosts.length, 9);
+  assert.ok(hosts.every((hostname) => hostname === "127.0.0.1"));
+});
+
+test("timing lab resists a monotonic server-latency drift", async () => {
+  let requests = 0;
+  const fetchImpl = async () => {
+    const delay = 10 + 20 * requests++;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return new Response("SQL Injection", { status: 200 });
+  };
+  const result = await runLocalTimingSqliLab("http://127.0.0.1/dvwa/sqli/", {
+    phpSessionId: "local-session",
+    samples: 3,
+    timeoutMs: 1000,
+    experiments: [
+      {
+        name: "drift without injection",
+        positive: "POSITIVE",
+        negative: "NEGATIVE",
+        expectedDelayMs: 70,
+      },
+    ],
+    fetchImpl,
+  });
+  assert.equal(result.confirmed, 0);
+  assert.equal(result.experiments[0].confidence, "LOW");
+  assert.equal(requests, 9);
+});
+
+test("invalid session cookies are rejected before network activity", async () => {
+  let requests = 0;
+  await assert.rejects(
+    runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
+      phpSessionId: "abc; security=high",
+      fetchImpl: async () => {
+        requests++;
+        return new Response("OK");
+      },
+    }),
+    /valid bounded DVWA PHPSESSID/,
+  );
+  assert.equal(requests, 0);
+});
+
+test("non-200 application responses cannot be treated as timing evidence", async () => {
+  const result = await runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
+    phpSessionId: "local-session",
+    samples: 3,
+    timeoutMs: 1000,
+    experiments: [
+      {
+        name: "unauthenticated",
+        positive: "POSITIVE",
+        negative: "NEGATIVE",
+        expectedDelayMs: 80,
+      },
+    ],
+    fetchImpl: async () => new Response("Unauthorized", { status: 401 }),
+  });
+  assert.equal(result.confirmed, 0);
+  assert.equal(result.experiments[0].confidence, "INCONCLUSIVE");
+});
