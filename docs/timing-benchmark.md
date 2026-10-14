@@ -28,9 +28,9 @@ The virtual model starts with 40 ms of nominal latency, adds synthetic jitter, t
 
 ## Outcome metrics
 
-`fprComposite` measures *false confirmations / all non-vulnerable trials* and includes inconclusive trials in the denominator. Its 95% Wilson interval includes sampling uncertainty, **not** simulator-model error.
+`fprComposite` measures _false confirmations / all non-vulnerable trials_ and includes inconclusive trials in the denominator. Its 95% Wilson interval includes sampling uncertainty, **not** simulator-model error.
 
-`fprAmongDecisions` measures *false confirmations / non-vulnerable trials that reached a decision*. It is `null` when there are no decisions.
+`fprAmongDecisions` measures _false confirmations / non-vulnerable trials that reached a decision_. It is `null` when there are no decisions.
 
 `decisionCoverage` and `inconclusiveRate` must accompany either FPR. A detector that always refuses to decide would have a misleading composite FPR of zero.
 
