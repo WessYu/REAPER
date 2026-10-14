@@ -2,6 +2,7 @@ import ts from "typescript";
 import { readFile } from "node:fs/promises";
 import type { Config } from "./model.js";
 import { validateAttackConfig } from "./attack-config.js";
+import { validateTimingDifferentialConfig } from "./timing-differential.js";
 // Parse a literal export; never import or execute a scanned project's configuration.
 export async function readConfig(file: string): Promise<Config> {
   const source = ts.createSourceFile(
@@ -59,6 +60,7 @@ export function validateConfig(value: unknown): Config {
     "maxFileBytes",
     "verify",
     "attack",
+    "timing",
   ]);
   for (const key of Object.keys(config))
     if (!allowed.has(key)) throw new Error(`Unknown config key: ${key}`);
@@ -102,6 +104,8 @@ export function validateConfig(value: unknown): Config {
     )
       throw new Error(`${key} must be a positive integer.`);
   if (config.attack !== undefined) validateAttackConfig(config.attack);
+  if (config.timing !== undefined)
+    validateTimingDifferentialConfig(config.timing);
   if (config.verify !== undefined) {
     if (
       !config.verify ||
