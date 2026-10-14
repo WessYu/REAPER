@@ -141,8 +141,18 @@ test("timing lab rejects invalid experiments before issuing a request", async ()
     runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
       phpSessionId: "local",
       samples: 3,
-      experiments: [{ name: "invalid", positive: "P", negative: "N", expectedDelayMs: -1 }],
-      fetchImpl: async () => { calls++; return new Response("OK"); },
+      experiments: [
+        {
+          name: "invalid",
+          positive: "P",
+          negative: "N",
+          expectedDelayMs: -1,
+        },
+      ],
+      fetchImpl: async () => {
+        calls++;
+        return new Response("OK");
+      },
     }),
     /definition is invalid/,
   );
@@ -153,14 +163,28 @@ test("timing lab cannot confirm repeated positive timeouts with broken negative 
   const fetchImpl = async (input, init) => {
     const payload = new URL(String(input)).searchParams.get("id");
     if (payload === "NEGATIVE") throw new Error("backend unavailable");
-    if (payload === "POSITIVE") return new Promise((resolve, reject) => {
-      init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-    });
+    if (payload === "POSITIVE")
+      return new Promise((resolve, reject) => {
+        init.signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      });
     return new Response("OK");
   };
   const result = await runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
-    phpSessionId: "local", samples: 3, timeoutMs: 25,
-    experiments: [{ name: "unhealthy controls", positive: "POSITIVE", negative: "NEGATIVE", expectedDelayMs: 80 }],
+    phpSessionId: "local",
+    samples: 3,
+    timeoutMs: 25,
+    experiments: [
+      {
+        name: "unhealthy controls",
+        positive: "POSITIVE",
+        negative: "NEGATIVE",
+        expectedDelayMs: 80,
+      },
+    ],
     fetchImpl,
   });
   assert.equal(result.confirmed, 0);
