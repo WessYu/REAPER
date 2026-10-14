@@ -7,9 +7,13 @@ permissions:
 jobs:
   format-timing-artifact:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/timing-differential-local'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feat/timing-differential-local
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -18,14 +22,18 @@ jobs:
       - name: Format timing sources
         run: |
           npx prettier --write src/cli.ts src/timing-differential.ts test/timing-differential.test.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: formatted-timing
-          path: |
-            src/cli.ts
-            src/timing-differential.ts
-            test/timing-differential.test.mjs
-          if-no-files-found: error
+      - name: Commit formatter output
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/cli.ts src/timing-differential.ts test/timing-differential.test.mjs; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/cli.ts src/timing-differential.ts test/timing-differential.test.mjs
+          git commit -m "style(timing): apply repository formatter"
+          git push origin HEAD:feat/timing-differential-local
 
   quality:
     runs-on: ubuntu-latest
