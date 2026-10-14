@@ -1,4 +1,6 @@
 import { performance } from "node:perf_hooks";
+import { finding } from "./findings.js";
+import type { ScanResult } from "./model.js";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -104,8 +106,8 @@ function validateLoopbackTarget(target: string): URL {
     throw new Error(
       "Timing SQLi lab is restricted to localhost/loopback targets.",
     );
-  if (url.username || url.password)
-    throw new Error("Timing lab target must not embed credentials.");
+  if (url.username || url.password || url.search || url.hash)
+    throw new Error("Timing lab target must not embed credentials, query, or fragment.");
   // Resolve localhost to a literal loopback IP before fetch so host-file or
   // resolver changes cannot turn a local-only probe into remote traffic.
   if (hostname === "localhost") url.hostname = "127.0.0.1";
@@ -427,6 +429,63 @@ export async function runLocalTimingSqliLab(
         : confirmed === 1
           ? "SUSPICIOUS"
           : "NO_CONSISTENT_EVIDENCE",
+  };
+}
+
+export function toTimingSqliScanResult(
+  result: TimingDifferentialResult,
+): ScanResult {
+  const findings = result.experiments
+    .filter((experiment) => experiment.confirmed)
+    .map((experiment) =>
+      finding(
+        {
+          ruleId: "REAPER-TIMING-001",
+          title: "Repeatable timing differential in an authorized local lab",
+          description:
+            "Paired positive and negative requests exhibited timing behavior consistent with a delayed execution path. Timing alone does not prove data exposure.",
+          severity: result.highConfidence >= 2 ? "HIGH" : "MEDIUM",
+          confidence: experiment.confidence === "HIGH" ? "HIGH" : "MEDIUM",
+          category: "Offensive Validation",
+          file: "runtime:timing-lab",
+          line: 1,
+          column: 1,
+          route: new URL(result.target).pathname,
+          evidence: [
+            `Experiment: ${experiment.name}`,
+            `Samples per control: ${result.samples}`,
+            `Expected delay: ${experiment.expectedDelayMs} ms`,
+            `Negative median: ${experiment.negative.medianMs ?? "n/a"} ms`,
+            `Positive median: ${experiment.positive.medianMs ?? "n/a"} ms`,
+            `Differential: ${experiment.deltaMs ?? "timeout-censored"} ms`,
+            `Threshold: ${experiment.thresholdMs ?? "n/a"} ms`,
+            `Confidence: ${experiment.confidence}`,
+          ],
+          dataFlow: [],
+          recommendation:
+            "Use parameterized queries and review the reachable SQL path. Reproduce and remediate in an authorized controlled environment before drawing exploitability conclusions.",
+        },
+        `${experiment.name}:${experiment.expectedDelayMs}`,
+      ),
+    );
+
+  return {
+    version: "0.2.0",
+    root: result.target,
+    findings,
+    diagnostics:
+      result.conclusion === "INCONCLUSIVE"
+        ? [{ message: "Local timing evidence was incomplete or controls were unhealthy." }]
+        : [],
+    graph: { nodes: [], edges: [] },
+    metrics: {
+      files: 0,
+      routes: 0,
+      sinks: 0,
+      durationMs: 0,
+      memoryBytes: 0,
+    },
+    coverage: { source: false, database: false, runtime: true },
   };
 }
 
