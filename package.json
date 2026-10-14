@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "benchmark:fixtures": "npm run build && node scripts/benchmark-fixtures.mjs",
+    "benchmark:timing": "npm run build && node scripts/benchmark-timing.mjs",
     "lint": "eslint src platform/src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
