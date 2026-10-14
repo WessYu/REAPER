@@ -40,6 +40,7 @@ reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run authorized stateful adversarial scenarios
+reaper timing <target>    Run localhost-only paired timing evidence experiments
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
 reaper serve [path]       Start a localhost-only REST service and dashboard
@@ -154,6 +155,28 @@ async function main(): Promise<void> {
     const { discoverRoutes } = await import("./verify.js");
     const endpoints = await discoverRoutes(arg, verifyConfig);
     await output(JSON.stringify(endpoints, null, 2) + "\n");
+    return;
+  }
+  if (command === "timing") {
+    if (!arg) throw new Error("timing requires a localhost target URL.");
+    if (!values.config)
+      throw new Error(
+        "timing requires --config with a literal timing configuration.",
+      );
+    if (!["terminal", "json", "sarif", "markdown"].includes(format))
+      throw new Error("timing supports terminal, json, sarif or markdown output.");
+    const timingConfig = await readConfig(values.config);
+    const { runTimingDifferential } = await import("./timing-differential.js");
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    process.once("SIGINT", cancel);
+    const result = await runTimingDifferential(arg, timingConfig, {
+      signal: controller.signal,
+    }).finally(() => process.removeListener("SIGINT", cancel));
+    await output(report(result, format));
+    if (result.diagnostics.length) process.exitCode = 2;
+    else if (values["fail-on"] && fails(result.findings, values["fail-on"]))
+      process.exitCode = 1;
     return;
   }
   if (command === "attack") {
