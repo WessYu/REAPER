@@ -1,7 +1,11 @@
 import { isIP } from "node:net";
 
 function exactPublicOrigin(value: unknown): string {
-  if (typeof value !== "string" || value.length > 2048 || value.trim() !== value)
+  if (
+    typeof value !== "string" ||
+    value.length > 2048 ||
+    value.trim() !== value
+  )
     throw new Error("Commercial target origin is invalid.");
   const parsed = new URL(value);
   if (
@@ -14,7 +18,7 @@ function exactPublicOrigin(value: unknown): string {
     !parsed.hostname.includes(".") ||
     !/^[a-z0-9.-]+$/.test(parsed.hostname)
   )
-    throw new Error("Commercial target must be an exact public HTTPS hostname origin.");
+    throw new Error("Commercial target requires an exact HTTPS hostname.");
   return value;
 }
 
@@ -34,7 +38,7 @@ export function requireOperatorAuthorizedOrigin(
     throw new Error("Commercial target authorization allowlist is invalid.");
   const origins = decoded.map(exactPublicOrigin);
   if (new Set(origins).size !== origins.length)
-    throw new Error("Commercial target authorization allowlist has duplicate origins.");
+    throw new Error("Commercial origin allowlist has duplicates.");
   if (!origins.includes(exactPublicOrigin(target)))
-    throw new Error("Target is not on the operator-reviewed commercial authorization allowlist.");
+    throw new Error("Commercial target origin was not operator-approved.");
 }
