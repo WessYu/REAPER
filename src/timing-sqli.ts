@@ -274,12 +274,15 @@ export async function runLocalTimingSqliLab(
     throw new Error("Timing lab samples must be an integer between 3 and 9.");
 
   const timeoutMs = options.timeoutMs ?? 10_000;
+  const minimumTimeoutMs = options.fetchImpl ? 25 : 1_000;
   if (
     !Number.isSafeInteger(timeoutMs) ||
-    timeoutMs < 1_000 ||
+    timeoutMs < minimumTimeoutMs ||
     timeoutMs > 15_000
   )
-    throw new Error("Timing lab timeout must be between 1000 and 15000 ms.");
+    throw new Error(
+      `Timing lab timeout must be between ${minimumTimeoutMs} and 15000 ms.`,
+    );
 
   const fetchImpl = options.fetchImpl ?? fetch;
   const common = {
