@@ -76,3 +76,17 @@ variable "allowed_runner_database_cidrs" {
     error_message = "Database egress entries must be at most five exact IPv4 /32 CIDRs."
   }
 }
+
+variable "authorized_runner_origins" {
+  type        = list(string)
+  description = "Explicitly authorized exact HTTPS hostname origins approved by a human operator for this pilot."
+  default     = []
+
+  validation {
+    condition = length(var.authorized_runner_origins) <= 20 && alltrue([
+      for origin in var.authorized_runner_origins :
+      can(regex("^https://[a-z0-9][a-z0-9.-]*[a-z0-9]$", origin))
+    ])
+    error_message = "Authorized runner origins must be exact lowercase HTTPS host origins without paths, credentials, ports or query strings."
+  }
+}
