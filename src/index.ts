@@ -71,3 +71,15 @@ export * from "./isolation.js";
 export * from "./recovery.js";
 
 export * from "./postgres-state.js";
+
+export {
+  DVWA_TIMING_EXPERIMENTS,
+  renderTimingSqliLab,
+  runLocalTimingSqliLab,
+} from "./timing-sqli.js";
+export type {
+  TimingDifferentialResult,
+  TimingExperiment,
+  TimingExperimentResult,
+  TimingMeasurementSet,
+} from "./timing-sqli.js";
