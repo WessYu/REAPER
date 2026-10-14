@@ -18,7 +18,9 @@ test("new API keys expire by default rather than persisting indefinitely", () =>
 
 test("API key expiration validates explicit bounded dates", () => {
   assert.equal(
-    Date.parse(resolveApiKeyExpiry(new Date(now + 10 * day).toISOString(), now)),
+    Date.parse(
+      resolveApiKeyExpiry(new Date(now + 10 * day).toISOString(), now),
+    ),
     now + 10 * day,
   );
   assert.throws(
