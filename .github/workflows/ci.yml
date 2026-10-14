@@ -5,6 +5,26 @@ on:
 permissions:
   contents: read
 jobs:
+  format-timing-lab-artifact:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/local-timing-differential-lab'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Format timing lab sources
+        run: npx prettier --write src/timing-lab.ts test/timing-lab.test.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formatted-timing-lab
+          path: |
+            src/timing-lab.ts
+            test/timing-lab.test.mjs
+          if-no-files-found: error
+
   quality:
     runs-on: ubuntu-latest
     strategy:
