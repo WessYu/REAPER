@@ -128,6 +128,9 @@ test("Terraform defaults to fail-closed until a complete pilot allowlist exists"
   assert.match(runner, /allowed_runner_database_cidrs/);
   assert.match(runner, /allowed_runner_target_cidrs/);
   assert.match(network, /resource "google_compute_firewall" "runner_deny_all"/);
-  assert.match(network, /resource "google_compute_firewall" "runner_target_https"/);
+  assert.match(
+    network,
+    /resource "google_compute_firewall" "runner_target_https"/,
+  );
   assert.match(network, /resource "google_compute_firewall" "runner_postgres"/);
 });
