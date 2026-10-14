@@ -3,10 +3,16 @@ import { isIP } from "node:net";
 import { pathToFileURL } from "node:url";
 
 function exactIps(cidrs, name) {
-  assert.ok(Array.isArray(cidrs) && cidrs.length > 0, name + " must be nonempty");
+  assert.ok(
+    Array.isArray(cidrs) && cidrs.length > 0,
+    name + " must be nonempty",
+  );
   assert.equal(new Set(cidrs).size, cidrs.length, name + " has duplicates");
   for (const cidr of cidrs) {
-    assert.ok(typeof cidr === "string" && cidr.endsWith("/32"), name + " requires exact /32 entries");
+    assert.ok(
+      typeof cidr === "string" && cidr.endsWith("/32"),
+      name + " requires exact /32 entries",
+    );
     const ip = cidr.slice(0, -3);
     assert.equal(isIP(ip), 4, name + " requires valid IPv4 addresses");
     const parts = ip.split(".").map(Number);
@@ -53,7 +59,10 @@ export function assertCommercialEgressBoundary(
   assert.ok(targetCidrs.every((ip) => !databaseCidrs.includes(ip)));
   const template = runner?.template?.template;
   const dispatcherTemplate = dispatcher?.template?.template;
-  assert.ok(template && dispatcherTemplate, "Cloud Run job templates are missing");
+  assert.ok(
+    template && dispatcherTemplate,
+    "Cloud Run job templates are missing",
+  );
   assert.ok(template.serviceAccount && dispatcherTemplate.serviceAccount);
   assert.notEqual(
     template.serviceAccount,
@@ -61,7 +70,11 @@ export function assertCommercialEgressBoundary(
     "runner and dispatcher must have distinct service accounts",
   );
   const vpc = template.vpcAccess;
-  assert.equal(vpc?.egress, "ALL_TRAFFIC", "runner must route ALL_TRAFFIC through VPC");
+  assert.equal(
+    vpc?.egress,
+    "ALL_TRAFFIC",
+    "runner must route ALL_TRAFFIC through VPC",
+  );
   assert.equal(vpc.networkInterfaces?.length, 1);
   const nic = vpc.networkInterfaces[0];
   assert.ok(
@@ -73,9 +86,13 @@ export function assertCommercialEgressBoundary(
       nic.subnetwork?.endsWith("/subnetworks/reaper-execution"),
   );
   assert.ok(nic.tags?.includes("reaper-execution"));
-  const env = Object.fromEntries((template.containers ?? []).flatMap((c) =>
-    (c.env ?? []).filter((e) => typeof e.value === "string").map((e) => [e.name, e.value]),
-  ));
+  const env = Object.fromEntries(
+    (template.containers ?? []).flatMap((c) =>
+      (c.env ?? [])
+        .filter((e) => typeof e.value === "string")
+        .map((e) => [e.name, e.value]),
+    ),
+  );
   assert.equal(env.REAPER_CLOUD_RUN_NETWORK_ENFORCED, "1");
   assert.equal(env.REAPER_CLOUD_RUN_RESOURCE_ENFORCED, "1");
   assert.ok(Array.isArray(firewalls));
@@ -92,8 +109,12 @@ export function assertCommercialEgressBoundary(
   assert.deepEqual(deny.destinationRanges, ["0.0.0.0/0"]);
   assert.deepEqual(deny.denied, [{ IPProtocol: "all" }]);
   assert.ok(!deny.allowed?.length);
-  const target = rules.find((rule) => rule.name === "reaper-runner-target-https");
-  const database = rules.find((rule) => rule.name === "reaper-runner-state-postgres");
+  const target = rules.find(
+    (rule) => rule.name === "reaper-runner-target-https",
+  );
+  const database = rules.find(
+    (rule) => rule.name === "reaper-runner-state-postgres",
+  );
   assert.ok(target && database, "required exact egress allow rules are absent");
   exactRule(target, "reaper-runner-target-https", targetCidrs, "443");
   exactRule(database, "reaper-runner-state-postgres", databaseCidrs, "5432");
@@ -106,7 +127,8 @@ export function assertCommercialEgressBoundary(
   }
   return {
     outcome: "CONFIGURATION_VERIFIED",
-    limitation: "Cloud API configuration checks are not proof of packet-level enforcement or an independent security assessment.",
+    limitation:
+      "Cloud API configuration checks are not proof of packet-level enforcement or an independent security assessment.",
     runnerServiceAccount: template.serviceAccount,
     allowedTargetCount: targetCidrs.length,
     allowedDatabaseCount: databaseCidrs.length,
@@ -122,7 +144,8 @@ async function cloudJson(url, token) {
       redirect: "error",
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error("Cloud API request returned HTTP " + response.status);
+    if (!response.ok)
+      throw new Error("Cloud API request returned HTTP " + response.status);
     return await response.json();
   } finally {
     clearTimeout(timeout);
@@ -138,12 +161,23 @@ async function main() {
   if (!/^[a-z0-9-]{2,32}$/.test(region ?? ""))
     throw new Error("REAPER_GCP_REGION is invalid");
   if (!token || token.length < 20)
-    throw new Error("GOOGLE_OAUTH_ACCESS_TOKEN is required; cannot claim an offline cloud pass");
-  const targetCidrs = (process.env.REAPER_APPROVED_TARGET_CIDRS ?? "").split(",").filter(Boolean);
-  const databaseCidrs = (process.env.REAPER_APPROVED_DATABASE_CIDRS ?? "").split(",").filter(Boolean);
+    throw new Error(
+      "GOOGLE_OAUTH_ACCESS_TOKEN is required; cannot claim an offline cloud pass",
+    );
+  const targetCidrs = (process.env.REAPER_APPROVED_TARGET_CIDRS ?? "")
+    .split(",")
+    .filter(Boolean);
+  const databaseCidrs = (process.env.REAPER_APPROVED_DATABASE_CIDRS ?? "")
+    .split(",")
+    .filter(Boolean);
   exactIps(targetCidrs, "targetCidrs");
   exactIps(databaseCidrs, "databaseCidrs");
-  const jobUrl = "https://run.googleapis.com/v2/projects/" + project + "/locations/" + region + "/jobs/";
+  const jobUrl =
+    "https://run.googleapis.com/v2/projects/" +
+    project +
+    "/locations/" +
+    region +
+    "/jobs/";
   const [runner, dispatcher] = await Promise.all([
     cloudJson(jobUrl + "reaper-runner", token),
     cloudJson(jobUrl + "reaper-dispatcher", token),
@@ -151,14 +185,19 @@ async function main() {
   const firewalls = [];
   let nextPageToken;
   do {
-    const u = new URL("https://compute.googleapis.com/compute/v1/projects/" + project + "/global/firewalls");
+    const u = new URL(
+      "https://compute.googleapis.com/compute/v1/projects/" +
+        project +
+        "/global/firewalls",
+    );
     if (nextPageToken) u.searchParams.set("pageToken", nextPageToken);
     const page = await cloudJson(u.toString(), token);
     if (!Array.isArray(page.items) && page.items !== undefined)
       throw new Error("Firewall response is invalid");
     firewalls.push(...(page.items ?? []));
     nextPageToken = page.nextPageToken;
-    if (firewalls.length > 10_000) throw new Error("Excessive firewall inventory");
+    if (firewalls.length > 10_000)
+      throw new Error("Excessive firewall inventory");
   } while (nextPageToken);
   const evidence = assertCommercialEgressBoundary(
     { runner, dispatcher, firewalls },
@@ -167,7 +206,10 @@ async function main() {
   process.stdout.write(JSON.stringify(evidence, null, 2) + "\n");
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
     console.error("REAPER cloud preflight FAILED: " + error.message);
     process.exitCode = 2;
