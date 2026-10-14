@@ -178,7 +178,9 @@ npm run check
 npm run benchmark:fixtures
 ```
 
-The [seeded detection benchmark](docs/detection-benchmark.md) evaluates three known issue categories against vulnerable and secure fixtures. Its small sample is a regression check, not a real-world accuracy claim.
+The [seeded detection benchmark](docs/detection-benchmark.md) evaluates three known issue categories against vulnerable and secure fixtures.
+
+For timing-classifier experiments, run `npm run benchmark:timing`; see [virtual jitter methodology](docs/timing-benchmark.md). Virtual results are not real-world detection accuracy. Its small sample is a regression check, not a real-world accuracy claim.
 
 ## Documentation
 
