@@ -71,7 +71,7 @@ function requireRole(context: Context, minimum: Role): void {
 
 function parseBearer(request: Request): string {
   const header = request.headers.get("authorization");
-  const match = header ? /^Bearer ([^\s]+)$/.exec(header) : null;
+  const match = header ? /^*** : null;
   if (!match?.[1]) throw new Error("Authentication failed.");
   return match[1];
 }
@@ -584,7 +584,9 @@ Deno.serve(async (request: Request) => {
           expiry <= now ||
           expiry > now + 90 * 24 * 60 * 60 * 1000
         ) {
-          throw new Error("expiresAt must be a future timestamp within 90 days.");
+          throw new Error(
+            "expiresAt must be a future timestamp within 90 days.",
+          );
         }
         const expiresAt = new Date(expiry).toISOString();
         const material = apiKeyMaterial();
