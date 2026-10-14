@@ -1,43 +1,46 @@
 <p align="center">
-  <img src="./assets/reaper-icon.webp" width="128" alt="REAPER icon" />
+  <img src="assets/reaper-icon.webp" alt="REAPER" width="104" />
 </p>
 
 <h1 align="center">REAPER</h1>
-
 <p align="center"><strong>Data Access Security Engine</strong></p>
-<p align="center"><em>Know exactly who can access your data. Before an attacker does.</em></p>
-
-[![CI](https://github.com/WessYu/REAPER/actions/workflows/ci.yml/badge.svg)](https://github.com/WessYu/REAPER/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/@wess2001/reaper.svg)](https://www.npmjs.com/package/@wess2001/reaper)
+<p align="center">Trace how requests reach data. Review authorization, tenancy, SQL, and database exposure before release.</p>
 
 <p align="center">
-  <img src="./assets/reaper-banner.svg" width="100%" alt="REAPER — Data Access Security Engine" />
+  <a href="https://github.com/WessYu/REAPER/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/WessYu/REAPER/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://www.npmjs.com/package/@wess2001/reaper"><img alt="npm version" src="https://img.shields.io/npm/v/@wess2001/reaper.svg" /></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-111111.svg" /></a>
 </p>
 
-REAPER traces request input into supported database calls and reports authorization, tenant-isolation, SQL, migration, secret and database-posture risks. It can combine source analysis with read-only PostgreSQL evidence and can run explicitly configured, bounded authorization assertions against authorized targets.
+<p align="center">
+  <img src="assets/reaper-banner.svg" alt="REAPER — Data Access Security Engine" width="100%" />
+</p>
 
-The current `main` branch is **0.2.0 development**. The latest published npm release is **0.1.1**. Static/catalog findings identify patterns worth investigating, not proof that an application is exploitable. Runtime findings are only marked CONFIRMED when an explicitly configured authorization assertion observes a status different from its declared security expectation. A clean report does not establish security. There is no AI dependency, telemetry or automatic database repair.
+REAPER is a deterministic security analyzer for JavaScript/TypeScript applications and PostgreSQL. It combines source-level data-flow analysis with optional **read-only database catalog inspection** and **explicitly authorized, bounded runtime checks**.
 
-## Install and run
+Its findings are evidence for investigation—not an exploitability guarantee, formal proof of authorization, or substitute for a manual security review.
 
-Requires Node.js 22 or 24.
+## Get started
 
-Run directly from npm:
+**Requirements:** Node.js 22 or 24.
 
-```sh
-npx @wess2001/reaper@0.1.1 --help
-npx @wess2001/reaper@0.1.1 scan ./application
-```
-
-Or install the CLI globally:
+Use the published CLI:
 
 ```sh
-npm install -g @wess2001/reaper@0.1.1
-reaper --help
-reaper scan ./application
+npx @wess2001/reaper@0.2.0 --help
+npx @wess2001/reaper@0.2.0 scan ./your-app
 ```
 
-For local development:
+Or install it globally:
+
+```sh
+npm install -g @wess2001/reaper@0.2.0
+reaper scan ./your-app --format json --output reaper.json
+```
+
+**Release boundary:** `0.2.0` is published on npm. The `main` branch is under active development; changes merged after the npm publication may only be available from source until a new package is released. Use `reaper --help` to check which commands your installed package provides.
+
+To run the current repository code:
 
 ```sh
 git clone https://github.com/WessYu/REAPER.git
@@ -48,61 +51,82 @@ node dist/cli.js scan test/fixtures/vulnerable
 node dist/cli.js scan test/fixtures/secure --fail-on medium
 ```
 
-The vulnerable fixture produces one SQL, one ownership and one tenant finding. The secure fixture produces none of those findings. Both are analysis fixtures, not deployable applications.
+The vulnerable fixture contains known SQL, ownership and tenant-isolation mistakes; the secure control fixture is expected to produce no findings from those rule families. Both are **synthetic source fixtures**, not running targets.
 
-## Brand assets
+## What it checks
 
-The project artwork stays monochrome and keeps the original REAPER icon without redrawing it.
+| Area | Implemented behavior |
+| --- | --- |
+| **Application code** | TypeScript AST/symbol-based tracing across supported Express, Fastify and Next.js handlers, imports, assignments and control flow |
+| **Data access** | Review of ownership and tenant constraints in supported Prisma patterns, with Drizzle, Knex and Supabase data-access discovery |
+| **SQL and migrations** | Unsafe raw query construction, selected unscoped write queries, RLS changes, broad grants and migration risks |
+| **PostgreSQL** | Read-only inspection of tables, grants, role inheritance, RLS policies, views, functions and triggers |
+| **Secrets and cryptography** | Common hard-coded secret patterns and selected unsafe password-hashing practices |
+| **Authorized runtime** | Explicit authorization assertions, bounded OpenAPI GET/HEAD discovery, opt-in synthetic identities and configured adversarial scenarios |
+| **Review and CI** | JSON, Markdown and SARIF 2.1.0, fingerprints, baselines, diffs, graphs, scores and a local report dashboard |
 
-- [Original icon](assets/reaper-icon.webp)
-- [SVG wrapper](assets/reaper-icon.svg)
-- [Transparent-canvas SVG](assets/reaper-icon-transparent.svg)
-- [README / portfolio banner](assets/reaper-banner.svg)
+REAPER does **not** execute the target application's code during a source scan. Dynamic code, unusual middleware, framework-specific data paths and arbitrary SQL policy logic can require manual review.
 
-## Real CI proof
+## Typical workflow
 
-<p align="center">
-  <a href="https://github.com/WessYu/REAPER/actions/runs/38094079292">
-    <img src="./assets/reaper-proof.svg" alt="Real REAPER CI run showing vulnerable and secure fixture scans" width="100%" />
-  </a>
-</p>
+### 1. Scan the application
 
-This proof is rendered from the actual output of GitHub Actions run **#177** on Node.js 22. The vulnerable fixture produced one HIGH and two MEDIUM findings; the secure fixture completed with zero findings at the MEDIUM gate. The workflow executes those CLI commands directly after installing the packed REAPER tarball.
+```sh
+reaper scan ./your-app --format json --output reaper.json
+reaper report reaper.json --format markdown --output review.md
+reaper report reaper.json --format sarif --output reaper.sarif
+```
 
-[View the exact CI run →](https://github.com/WessYu/REAPER/actions/runs/38094079292)
+Results include a rule ID, severity, confidence, evidence location and a stable fingerprint. Use `reaper explain` with an ID from the generated report to inspect a finding.
 
-## Implemented coverage
+### 2. Add a CI gate
 
-| Area            | Current behavior                                                                                                                                                                                                        |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parsing         | TypeScript compiler AST and symbol resolution for JS, TS, JSX and TSX                                                                                                                                                   |
-| Routes          | Express/Fastify registrations, supported sequential middleware and Next.js `route.ts` exported handlers                                                                                                                 |
-| Flow            | Assignments, destructuring, shared-object/property mutation, local imports, direct calls, `.bind`/`.call`/`.apply`, common Object/Reflect alias patterns, arrays, branches, bounded loops, try/catch/finally and switch |
-| SQL             | Tainted SQL text in pg, Prisma unsafe raw calls and Knex raw; parsed constant UPDATE/DELETE without WHERE                                                                                                               |
-| Data access     | Prisma authorization reasoning plus Supabase, Knex and Drizzle data-access discovery                                                                                                                                    |
-| PostgreSQL      | Read-only catalogs for tables, RLS, policies, inherited roles, table/schema/column grants, functions, views/materialized views and triggers                                                                             |
-| RLS             | Identity/tenant/role/constant classification plus bounded AND/OR and permissive/restrictive policy-composition reasoning; arbitrary SQL remains conservative                                                            |
-| Supabase        | Service-role exposure, table/RPC/Storage graph discovery, table/RPC/Storage source-to-catalog correlation                                                                                                               |
-| Migrations      | SQL migration review for RLS removal, policy drops and broad grants                                                                                                                                                     |
-| Secrets/Crypto  | Embedded database credentials/private keys and fast password-hash misuse                                                                                                                                                |
-| Verification    | Authorized assertions, bounded OpenAPI GET/HEAD discovery/probing, optional synthetic-user provisioning and setup/teardown, budgets, rate limits, timeouts and cancellation                                             |
-| Attack          | Explicitly authorized stateful adversarial scenarios with identity switching, captured variables, known-resource authorization checks, cleanup, audit trail, circuit breaker and DNS-change stop                        |
-| Platform        | Self-contained HTML dashboard, localhost-only REST service and programmatic Rule SDK                                                                                                                                    |
-| Output          | Terminal, JSON, Markdown, SARIF 2.1.0, explanations, DOT/JSON graph and explainable security score                                                                                                                      |
-| Review workflow | Stable fingerprints, baselines, justified line suppressions and report diffs                                                                                                                                            |
+```sh
+reaper scan ./your-app --fail-on high
+```
 
-Local import resolution follows standard TypeScript module resolution within discovered files. The scanner does not load the target's compiler plugins, execute its configuration or import its dependencies.
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Completed without failing the configured gate |
+| `1` | A finding reached the configured severity threshold |
+| `2` | Invalid input, operational error or incomplete analysis |
 
-## Authorization assumptions
+Baselines let teams acknowledge reviewed findings without deleting them:
 
-A field named `userId` is not enough to infer an ownership relationship. REAPER uses a recognized Prisma `@relation(fields: [...])` to a conventional `User`/`Owner` or tenant model, or explicit configuration.
+```sh
+reaper baseline reaper.json --output baseline.json
+reaper scan ./your-app --baseline baseline.json --fail-on high
+```
 
-The default trusted principal paths are `req.user.id`, `request.user.id`, `req.auth.userId`, `request.auth.userId`, and the `tenantId`/`organizationId` properties of `req.user` and `request.user`. This is a **modeling assumption**: REAPER does not prove that authentication middleware established those values. Verify that assumption before relying on a scoped-query result.
+A passing gate means the configured checks passed—not that the application is secure.
 
-Ownership and tenant findings are conservative. REAPER can model supported direct post-query deny guards, sequentially resolved Express/Fastify middleware that mutates the shared request object, and explicitly configured contracts for opaque authorization middleware. Dynamically selected wrappers and external authorization services that are neither resolvable nor configured still require review.
+### 3. Inspect PostgreSQL when appropriate
+
+Provide a **dedicated, least-privilege connection** through an environment variable. Database credentials are not accepted as command-line values.
+
+```sh
+reaper schema --db-env DATABASE_URL --output catalog.json
+reaper rls --db-env DATABASE_URL --format json --output rls.json
+reaper scan ./your-app --db-env DATABASE_URL --format json --output combined.json
+```
+
+Catalog inspection uses read-only transactions; it does not read application rows or run migrations. Only connect to databases you own or are authorized to assess.
+
+### 4. Review and share the result
+
+```sh
+reaper dashboard reaper.json --output reaper-dashboard.html
+reaper graph reaper.json --format dot --output data-flow.dot
+reaper diff previous.json reaper.json
+```
+
+Reports may include sensitive architecture and access-control metadata. Handle them as internal security artifacts.
+
+## Configuration
+
+Use a data-only `reaper.config.ts` in the scan root to declare application-specific resource ownership and tenant fields:
 
 ```ts
-// reaper.config.ts — literal data only
 export default {
   resources: {
     invoice: {
@@ -111,253 +135,62 @@ export default {
     },
   },
   principalPaths: ["req.user.id", "req.user.organizationId"],
-  middleware: {
-    requireAuth: {
-      establishes: ["req.user.id"],
-    },
-  },
-  exclude: ["fixtures"],
-  maxFiles: 10000,
-  maxFileBytes: 1000000,
-  verify: {
-    allowedTargets: ["https://preview.example.com"],
-    maxRequests: 20,
-    concurrency: 2,
-    timeoutMs: 5000,
-    rateLimitPerSecond: 5,
-    discoverOpenApi: true,
-    openApiPaths: ["/openapi.json"],
-    probeDiscovered: true,
-    allowMutations: true,
-    syntheticUsers: {
-      count: 2,
-      path: "/test/signup",
-      body: {
-        email: "reaper-{{SYNTHETIC_RUN}}-{{SYNTHETIC_INDEX}}@example.test",
-      },
-      expectStatus: 201,
-      tokenPath: "token",
-      idPath: "user.id",
-      cleanup: {
-        path: "/test/users/{{USER_ID}}",
-        expectStatus: 204,
-      },
-    },
-    assertions: [
-      {
-        name: "cross-tenant order must be denied",
-        path: "/api/orders/synthetic-tenant-b-order",
-        expectStatus: 403,
-        authEnv: "REAPER_TEST_USER_A_TOKEN",
-        dimension: "tenant",
-      },
-    ],
-  },
 };
 ```
 
-The CLI automatically reads this file at the scan root. `--config` selects another file. Calls, imports-as-values and executable expressions are rejected. `exclude` matches directory/file basenames, not glob patterns. The programmatic API accepts `config` or `configFile` explicitly.
+REAPER parses this configuration as literal data; it does not execute it. For trusted middleware contracts, suppression syntax, supported models and rule extensions, see [rules and configuration](docs/rules.md).
 
-## Commands
+## Authorized runtime testing
 
-```sh
-reaper scan ./application --format json --output scan.json
-reaper sql ./application
-reaper authz ./application
-reaper tenants ./application
-reaper supabase ./application
-reaper migrations ./application
-reaper crypto ./application
-reaper scan ./application --db-env DATABASE_URL --format json --output combined.json
-reaper graph combined.json --format dot --output graph.dot
-reaper cfg ./application --format dot --output control-flow.dot
-reaper score combined.json
-reaper discover http://localhost:3000 --config reaper.config.ts
-reaper verify http://localhost:3000 --config reaper.config.ts --fail-on high
-reaper attack https://preview.example.com --config reaper.config.ts --fail-on high
-reaper dashboard combined.json --output reaper-dashboard.html
-reaper serve ./application --port 7337
-reaper baseline scan.json --output baseline.json
-reaper scan ./application --baseline baseline.json --fail-on high
-reaper report scan.json --format sarif --output reaper.sarif
-reaper report scan.json --format markdown --output review.md
-reaper diff previous.json scan.json
-reaper explain REAPER-SQL-001:0123456789ab --input scan.json
-reaper doctor
-```
+REAPER also offers security validation against **systems you control or have explicit permission to test**. These modes are distinct from a regular source scan.
 
-Use an actual finding ID from your report with `explain`. `diff` compares saved findings, not SQL migrations or Git trees. Baselines only acknowledge exact fingerprints; findings remain in the report. Fingerprints are stable across blank-line changes but may change after query, route or path edits. Identical queries in the same file and route currently share an identity.
+- `verify` checks user-defined authorization expectations. Remote targets require an exact-origin allowlist; discovery and request volume are bounded.
+- `attack` runs configured, stateful authorization scenarios with target restrictions, acknowledgement/reference, request budgets and cleanup requirements. It is not an unrestricted exploit engine.
+- `timing-sqli` provides a **localhost-only DVWA laboratory** for timing-differential observations. It does not scan arbitrary remote sites or establish data exfiltration.
 
-Exit codes: **0** completed without a failed gate; **1** new findings meet `--fail-on`; **2** invalid input, operational error or reported incomplete analysis. A completed scan still has the coverage limits below.
+Read the [authorized testing safety contract](docs/offensive-safety-contract.md) and [local timing laboratory guide](docs/timing-sqli.md) before using these commands. Production mutation restrictions and strict runner prerequisites are enforced separately.
 
-Suppression applies to the immediately following finding line and requires a specific rule and a reason of at least ten characters:
+## Platform status
 
-```ts
-// reaper-ignore REAPER-AUTH-001 -- reason: ownership is enforced by the reviewed object guard
-return prisma.order.findUnique({ where: { id: req.params.id } });
-```
+The public CLI/library works independently of a hosted service. The repository additionally contains a workspace-scoped PostgreSQL control plane, API-key authentication, an operator dashboard, a restricted staging runner and infrastructure code for an isolated execution plane.
 
-## PostgreSQL
+| Surface | Status |
+| --- | --- |
+| CLI, static analysis and local reports | Usable and tested |
+| Local authorization tests and controlled labs | Available with the required configuration and permission |
+| Workspace staging and operator dashboard | Development/staging infrastructure; not a public customer SaaS |
+| Google Cloud isolated commercial runners | Infrastructure code and checks exist; live deployment and packet-level enforcement are not certified |
+| Customer SSO/MFA, billing, backup restoration drills and independent pentest | Not complete |
 
-Set `DATABASE_URL` through your shell or secret manager. It is never accepted as a CLI flag value or stored by REAPER.
+The strict runner contract rejects execution without the required isolation capabilities; environment flags or successful unit tests alone do not prove that cloud-level isolation exists. See [runner isolation](docs/runner-isolation.md), [GCP deployment](infra/gcp/README.md) and [operator access](docs/operator-access.md).
+
+## Evidence and development
+
+The project CI runs quality checks on Node.js 22/24 and Windows, PostgreSQL integration tests, CLI packaging checks, and a runner-image build. Supply-chain evidence is documented separately. Check the [latest workflow execution](https://github.com/WessYu/REAPER/actions/workflows/ci.yml) for the status of a specific commit.
+
+An archived [real CLI fixture run](https://github.com/WessYu/REAPER/actions/runs/38094079292) demonstrates the earlier vulnerable/secure comparison. It is historical evidence, **not** the result of the latest commit.
+
+To reproduce the current repository checks:
 
 ```sh
-reaper schema --db-env DATABASE_URL --output catalog.json
-reaper rls --db-env DATABASE_URL --format json --output rls.json
-reaper privileges --db-env DATABASE_URL
-```
-
-Inspection uses a repeatable-read, read-only transaction with connection, query, statement and lock timeouts. It reads system catalogs; it does not fetch application rows, execute migrations or invoke application functions. TLS follows the pg connection settings; certificate checks are not disabled.
-
-Passing `--db-env` to a source command explicitly combines source findings with a database snapshot. Supported Supabase table, RPC and Storage paths can be correlated with PostgreSQL grants, RLS policies and SECURITY DEFINER posture. This raises confidence because both source and catalog evidence were observed, but it still does not prove internet exposure or exploitability.
-
-A broad table grant plus missing RLS is a review candidate, not proof of public API exposure. RLS with no policies is default-deny information. REAPER classifies common `auth.uid()`, JWT tenant, role-only and constant policy predicates, while arbitrary SQL predicates remain conservative. Role membership with ROLINHERIT is expanded for effective grants. Broad schema CREATE, BYPASSRLS/SUPERUSER roles, client-readable owner-rights views, privilege-sensitive triggers and broadly executable SECURITY DEFINER functions with unsafe `search_path` are reviewed.
-
-Only connect to databases you are authorized to inspect. Start with a dedicated low-privilege role. Catalog snapshots reveal schema and role names; handle reports as internal security material.
-
-## Authorized runtime verification
-
-`reaper verify` remains authorization-scoped rather than an open-ended web scanner. Localhost targets are permitted automatically. Remote origins are blocked unless their exact origin is listed in `verify.allowedTargets`.
-
-REAPER can optionally discover GET/HEAD operations from an allowlisted target's OpenAPI document and, when `probeDiscovered: true`, issue bounded safe probes to non-templated discovered GET/HEAD routes. Assertions remain operator-defined. Synthetic scenario setup/teardown can use POST, PUT, PATCH or DELETE only when `verify.allowMutations: true` is explicitly configured. `syntheticUsers` can provision 2–4 test identities from an explicitly configured signup template, capture token/ID JSON paths in memory, expose `USER_1_TOKEN`/ `USER_1_ID`-style variables to assertions, and clean the identities up through an explicitly configured DELETE path. Token values are not copied into findings.
-
-Redirect following is disabled. Concurrency, request rate, total request budget, response-capture size and per-request timeout are bounded, and Ctrl+C cancellation is propagated through the scenario. A runtime finding means a security property that **you explicitly declared** did not produce the expected HTTP status. REAPER does not brute-force credentials, crawl arbitrary internet targets or invent destructive requests.
-
-Library callers can use `createAttackJob` and `runAttackJob` to execute the trusted engine through a runner-isolation provider. Standard mode uses a separate Node child process with a validated job, bounded input/report/stdout/stderr, filtered environment, V8 heap limit, temporary working directory, deadline and cleanup grace; it is explicitly not an OS sandbox. Strict mode fails closed unless its provider declares process, filesystem, network and enforceable resource-limit isolation and a persistent state directory is provided. The existing CLI and direct `runAttack` API remain in-process.
-
-## Authorized adversarial validation
-
-`reaper attack` is a stateful authorization-focused validation mode. It is intentionally configuration-driven rather than an unrestricted crawler or exploit framework.
-
-Every attack run requires an exact target origin, an explicit authorization acknowledgement/reference, bounded active and cleanup request budgets, and configured scenarios or authorization matrices. Production runs cannot enable mutations and production authorization must have an expiry that remains valid throughout the run. Nonproduction scenarios that mutate state must declare cleanup steps. RFC1918/ULA-style private targets require a separate `allowPrivateNetwork` opt-in; link-local, unspecified, multicast and reserved infrastructure addresses remain blocked. Redirects are not followed, outbound connections are pinned to the initially approved DNS resolution and resolution changes stop the run, consecutive server errors open a circuit breaker, and authentication values loaded from environment/captured variables are not written into findings.
-
-Strict deployments can set `attack.requireSignedScope: true` and pass an Ed25519 manifest plus a trusted-key source to the attack runner. The manifest binds approved origins, assessment reference, environment, expiry, permissions, request caps and a global deadline. Strict runner mode additionally requires atomic nonce consumption, persistent write-ahead cleanup journal state, and a tamper-evident audit store; scope replay fails closed. The included trust-store boundary supports key lifecycle/revocation metadata, while private signing keys and managed KMS/HSM distribution remain external. See [the authorization scope contract](docs/offensive-safety-contract.md) and [runner isolation profile](docs/runner-isolation.md).
-
-Release SBOM, SHA-256 hashes and tag provenance details are documented in [supply-chain evidence](docs/supply-chain.md).
-
-Signed, data-only literal-matching rule packs can be applied through the `scan` API. They are versioned, engine-compatible, size-bounded, and verified against caller-supplied Ed25519 public keys; they do not execute code. See [rule pack format and limits](docs/rule-packs.md). The separate `ReaperRule` callback API remains trusted local JavaScript.
-
-Stateful flows can capture JSON values and session cookies, then reuse them through bearer, cookie or secret-backed header identities. Ownership/tenant matrices can systematically test each configured actor against foreign-owned test resources. For ownership, tenant and vertical-authorization confirmation, a denial expectation must identify both a configured actor and a known test resource. HTTP 5xx, redirects and ambiguous 4xx responses remain inconclusive by default: confirmation defaults to HTTP 2xx unless `confirmStatuses` narrows that set. Optional `jsonEquals` response proof can additionally require the returned JSON to match known resource identity/ownership fields before a `REAPER-ATTACK-001` finding becomes CONFIRMED.
-
-A saved source/database report can be supplied with `--input`. REAPER then correlates the confirmed runtime route with matching source graph routes, reachable data resources and related static/catalog findings; this adds evidence but does not replace the runtime proof.
-
-```ts
-export default {
-  attack: {
-    allowedTargets: ["https://preview.example.com"],
-    authorization: {
-      acknowledged: true,
-      reference: "SEC-1842 / approved preview assessment",
-      environment: "preview",
-      expiresAt: "2026-10-13T12:00:00.000Z",
-    },
-    maxRequests: 40,
-    maxCleanupRequests: 10,
-    timeoutMs: 5000,
-    rateLimitPerSecond: 3,
-    maxConsecutiveServerErrors: 3,
-    identities: {
-      userA: { tokenEnv: "REAPER_USER_A_TOKEN" },
-    },
-    scenarios: [
-      {
-        id: "cross-user-order",
-        title: "User A must not read User B order",
-        dimension: "ownership",
-        steps: [
-          {
-            name: "cross-user read",
-            path: "/api/orders/{{USER_B_ORDER_ID}}",
-            actor: "userA",
-            resource: "order:{{USER_B_ORDER_ID}}:owner:userB",
-            expect: {
-              deniedStatuses: [403, 404],
-              confirmStatuses: [200],
-              jsonEquals: {
-                id: "{{USER_B_ORDER_ID}}",
-                ownerId: "{{USER_B_ID}}",
-              },
-            },
-          },
-        ],
-      },
-    ],
-  },
-};
-```
-
-The example assumes `USER_B_ORDER_ID` and `USER_B_ID` were captured by earlier explicitly configured setup steps. For broader BOLA/tenant coverage, `attack.matrices` accepts configured actors plus owned test resources and executes only foreign actor/resource combinations. Matrix paths use `{{RESOURCE_ID}}`; optional proof expressions can also reference `{{RESOURCE_OWNER}}` and `{{ACTOR}}`.
-
-Session-based applications can capture a named `Set-Cookie` value with `captureCookies` and attach it through an identity `cookie.valueVar`. API keys or other request credentials can be sourced from named environment variables through `headerEnvs`; protocol-sensitive headers such as Host, Authorization and Cookie cannot be injected through that generic header map.
-
-To correlate runtime evidence back to an earlier source/database report:
-
-```sh
-reaper attack https://preview.example.com --config reaper.config.ts --input combined.json --format json
-```
-
-Cleanup uses a separate bounded reserve so normal request-budget exhaustion does not strand declared test data. On Ctrl+C or external cancellation, active work stops while declared cleanup receives a bounded best-effort attempt using its own per-request timeout.
-
-REAPER does not invent users, credentials, ownership or destructive requests. See [offensive safety contract](docs/offensive-safety-contract.md).
-
-## TypeScript API
-
-```ts
-import { scan, report } from "@wess2001/reaper";
-
-const result = await scan({
-  root: process.cwd(),
-  rules: [
-    {
-      id: "REAPER-CUSTOM-001",
-      run(context) {
-        // Programmatic custom rules can inspect the normalized report/graph
-        // and emit deterministic findings through context.add(...).
-      },
-    },
-  ],
-});
-
-console.log(report(result, "json"));
-```
-
-## Architecture
-
-`project.ts` bounds file discovery and extracts basic Prisma relationships. `analysis.ts` uses the compiler's symbols and a bounded abstract interpreter to propagate input provenance into database sinks. `cfg.ts` builds an explicit statement/branch/loop control-flow graph for review/export. `sql.ts` parses constant SQL. `postgres.ts` collects and reviews catalog evidence, including view dependencies and function definitions. `model.ts`, `findings.ts` and `reporter.ts` define the public result contract, fingerprints and output formats. `cli.ts` orchestrates those modules.
-
-The graph represents observed route → query → resource edges. It is not yet a complete authorization or privilege graph. Source text and credentials are not copied into findings; flow evidence contains labels and locations.
-
-## Validation and CI
-
-```sh
+npm ci --ignore-scripts
 npm run check
-npm pack
-# A disposable database is required for this separate integration suite:
-node --test test/integration/postgres.mjs
+npm run benchmark:fixtures
 ```
 
-For the integration command, set `REAPER_TEST_DATABASE_URL` to a disposable PostgreSQL database. **The test harness creates and drops synthetic tables and a test role**; production introspection does not. GitHub Actions runs Node 22/24, PostgreSQL 17 integration, lint, formatting, strict typechecking, unit/CLI tests and installation from the packed tarball.
+The [seeded detection benchmark](docs/detection-benchmark.md) evaluates three known issue categories against vulnerable and secure fixtures. Its small sample is a regression check, not a real-world accuracy claim.
 
-SARIF can be uploaded with GitHub's Code Scanning action in a consuming repository. Review repository access and report sensitivity before uploading. REAPER itself does not upload reports.
+## Documentation
 
-## What REAPER does not pretend to solve
+- [Rules and configuration](docs/rules.md)
+- [Authorization and offensive safety](docs/offensive-safety-contract.md)
+- [PostgreSQL and commercial architecture boundaries](docs/commercial-architecture.md)
+- [Runner isolation](docs/runner-isolation.md)
+- [Staging restrictions](docs/free-staging.md)
+- [Operator access and report exports](docs/operator-access.md)
+- [Signed rule packs](docs/rule-packs.md)
+- [Supply-chain evidence](docs/supply-chain.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
 
-REAPER is not a complete JavaScript interpreter, a formal authorization prover or an unrestricted penetration-testing engine.
-
-Real boundaries remain: proof-complete CFG/points-to analysis, arbitrary proxies and runtime metaprogramming, dynamically selected middleware without an explicit contract, unrestricted symbolic reasoning over RLS SQL/functions/subqueries, complete transitive semantics for views/triggers/functions, endpoint discovery beyond authorized OpenAPI GET/HEAD probing, and autonomous account creation without an operator-supplied test flow.
-
-The dashboard, localhost REST service and Rule SDK are implemented support surfaces; they do not replace engine precision. The priority remains deterministic evidence, deeper framework/data-layer correlation and resistance to false positives and false negatives rather than inflating the feature list.
-
-## Known limits and next work
-
-- Control-flow and alias analysis are **bounded abstract interpretation**, not a proof-complete JavaScript execution model. Loops are analyzed conservatively without arbitrary fixed-point iteration, recursion is bounded, and async/event context is not fully reconstructed.
-- Shared-object property mutation, direct function calls, `.bind`/`.call`/`.apply`, `Object.assign`, `Object.defineProperty`, `Reflect.get`/`Reflect.set`, supported middleware chains, try/catch/finally and switch are modeled. Proxies, runtime code generation, arbitrary decorators and highly dynamic dispatch remain conservative.
-- Next.js support is centered on exported route handlers. Express/Fastify middleware can be resolved from source or represented by literal `middleware.*.establishes` contracts; dynamically selected middleware without a contract still requires review.
-- RLS reasoning recognizes common identity, tenant, role-only and constant patterns, bounded AND/OR composition and PostgreSQL permissive/restrictive interaction. It does not theorem-prove arbitrary SQL functions, subqueries or procedural policy helpers.
-- PostgreSQL view dependencies, trigger metadata and SECURITY DEFINER function definitions are inspected, including dynamic-SQL review. Full transitive privilege composition, trigger-body semantics and extension-specific authorization models remain conservative. Column grants are collected but are not yet fully correlated with selected fields.
-- Prisma has the deepest authorization semantics. Drizzle and Knex are represented in the data-access graph, but their ownership/tenant reasoning is not yet as rich as Prisma's.
-- OpenAPI discovery/probing is intentionally limited to GET/HEAD operations from configured documentation endpoints and skips templated paths during automatic probes. Synthetic identity creation is template-driven; REAPER does not guess signup flows, MFA/CAPTCHA handling, credentials or destructive cleanup semantics.
-- The localhost REST service is intentionally small and unauthenticated because it binds only to `127.0.0.1`; it is not a hosted multi-user service.
-- The numerical score is a triage aid. A clean scan or a high score is not authorization assurance.
-
-The next work should focus on precision, framework-specific authorization adapters and deeper data-layer correlation rather than adding unsupported breadth. See [rules](docs/rules.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md).
+REAPER is published under the [MIT License](LICENSE). It is under active development, and security-critical findings should be validated in their application context.
