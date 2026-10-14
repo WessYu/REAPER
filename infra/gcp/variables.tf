@@ -37,3 +37,42 @@ variable "deletion_protection" {
   description = "Protect Cloud Run jobs from accidental deletion."
   default     = false
 }
+
+variable "runner_subnet_cidr" {
+  type        = string
+  description = "IPv4 subnet used exclusively by the Cloud Run execution network."
+  default     = "10.92.0.0/24"
+
+  validation {
+    condition     = can(cidrhost(var.runner_subnet_cidr, 0))
+    error_message = "runner_subnet_cidr must be a valid IPv4 subnet."
+  }
+}
+
+variable "allowed_runner_target_cidrs" {
+  type        = list(string)
+  description = "Explicitly approved public IPv4 /32 addresses of authorized HTTPS assessment targets."
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for cidr in var.allowed_runner_target_cidrs :
+      can(cidrhost(cidr, 0)) && can(regex("^[0-9.]+/32$", cidr))
+    ]) && length(var.allowed_runner_target_cidrs) <= 10
+    error_message = "Target egress entries must be at most ten exact IPv4 /32 CIDRs."
+  }
+}
+
+variable "allowed_runner_database_cidrs" {
+  type        = list(string)
+  description = "Reviewed IPv4 /32 addresses for the durable PostgreSQL database, TCP 5432 only."
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for cidr in var.allowed_runner_database_cidrs :
+      can(cidrhost(cidr, 0)) && can(regex("^[0-9.]+/32$", cidr))
+    ]) && length(var.allowed_runner_database_cidrs) <= 5
+    error_message = "Database egress entries must be at most five exact IPv4 /32 CIDRs."
+  }
+}
