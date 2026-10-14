@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { runLocalTimingSqliLab } from "../dist/index.js";
 
-test("real HTTP loopback distinguishes delayed and stable controls", async () => {
+test("real localhost HTTP fixture has positive and negative controls", async () => {
   let requests = 0;
   let validCookies = true;
   const server = createServer((request, response) => {
