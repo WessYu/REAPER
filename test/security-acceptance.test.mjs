@@ -47,7 +47,7 @@ test("acceptance: rejected remote URLs never reach the transport", async () => {
   assert.equal(requests, 0);
 });
 
-test("acceptance: HTTP failures do not produce high confidence findings", async () => {
+test("acceptance: HTTP errors are inconclusive", async () => {
   for (const status of [401, 403, 404, 429, 500]) {
     const result = await setup(async () => new Response("error", { status }));
     assert.equal(result.confirmed, 0);
@@ -55,7 +55,7 @@ test("acceptance: HTTP failures do not produce high confidence findings", async 
   }
 });
 
-test("acceptance: mismatched body markers do not produce positive evidence", async () => {
+test("acceptance: wrong body marker is inconclusive", async () => {
   const result = await setup(
     async () => new Response("login page", { status: 200 }),
     { responseMarker: "SQL Injection" },
@@ -64,7 +64,7 @@ test("acceptance: mismatched body markers do not produce positive evidence", asy
   assert.equal(result.experiments[0].confidence, "INCONCLUSIVE");
 });
 
-test("acceptance: exactly bounded requests and alternated controls", async () => {
+test("acceptance: bounded and alternated requests", async () => {
   const sequence = [];
   const result = await setup(async (input) => {
     sequence.push(new URL(String(input)).searchParams.get("id"));
@@ -74,7 +74,7 @@ test("acceptance: exactly bounded requests and alternated controls", async () =>
   assert.equal(result.confirmed, 0);
 });
 
-test("acceptance: impossible experiment definitions fail before network access", async () => {
+test("acceptance: reject invalid definition before requests", async () => {
   let called = false;
   await assert.rejects(
     setup(async () => {
