@@ -2,10 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
-import {
-  runTimingDifferential,
-  validateConfig,
-} from "../dist/index.js";
+import { runTimingDifferential, validateConfig } from "../dist/index.js";
 
 async function server(handler) {
   const instance = http.createServer(handler);
@@ -58,7 +55,8 @@ test("timing differential confirms a stable positive/negative delay on loopback"
   const { instance, origin } = await server(async (req, res) => {
     const url = new URL(req.url, origin);
     const id = url.searchParams.get("id");
-    if (id === "positive") await new Promise((resolve) => setTimeout(resolve, 240));
+    if (id === "positive")
+      await new Promise((resolve) => setTimeout(resolve, 240));
     else await new Promise((resolve) => setTimeout(resolve, 15));
     res.statusCode = 200;
     res.end("<h1>SQL Injection</h1>");

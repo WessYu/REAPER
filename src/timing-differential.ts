@@ -33,7 +33,9 @@ function assertLocalTarget(value: string): URL {
   if (!["http:", "https:"].includes(target.protocol))
     throw new Error("Timing differential target must use HTTP(S).");
   if (target.username || target.password || target.hash)
-    throw new Error("Timing differential target cannot contain credentials or a fragment.");
+    throw new Error(
+      "Timing differential target cannot contain credentials or a fragment.",
+    );
   if (!isLoopbackHostname(target.hostname))
     throw new Error(
       "Timing differential execution is restricted to localhost/loopback laboratory targets.",
@@ -76,7 +78,9 @@ function requestSpec(value: unknown, label: string): TimingDifferentialRequest {
           entry.length <= 4096,
       )
     )
-      throw new Error(`${label}.query must map query names to bounded strings.`);
+      throw new Error(
+        `${label}.query must map query names to bounded strings.`,
+      );
   }
 
   return item as unknown as TimingDifferentialRequest;
@@ -167,7 +171,9 @@ export function validateTimingDifferentialConfig(
       if (!COOKIE_NAME.test(cookie))
         throw new Error("timing.cookieEnvs contains an invalid cookie name.");
       if (typeof env !== "string" || !ENV_NAME.test(env))
-        throw new Error("timing.cookieEnvs values must be environment variable names.");
+        throw new Error(
+          "timing.cookieEnvs values must be environment variable names.",
+        );
     }
   }
 
@@ -178,9 +184,7 @@ export function validateTimingDifferentialConfig(
       timing.responseMustInclude.length > 10 ||
       !timing.responseMustInclude.every(
         (entry) =>
-          typeof entry === "string" &&
-          entry.length >= 1 &&
-          entry.length <= 200,
+          typeof entry === "string" && entry.length >= 1 && entry.length <= 200,
       )
     )
       throw new Error(
@@ -205,9 +209,14 @@ export function validateTimingDifferentialConfig(
     const item = raw as Record<string, unknown>;
     for (const key of Object.keys(item))
       if (
-        !["id", "title", "severity", "expectedDelayMs", "negative", "positive"].includes(
-          key,
-        )
+        ![
+          "id",
+          "title",
+          "severity",
+          "expectedDelayMs",
+          "negative",
+          "positive",
+        ].includes(key)
       )
         throw new Error(`Unknown ${label} key: ${key}`);
 
@@ -237,16 +246,19 @@ export function validateTimingDifferentialConfig(
       Number(item.expectedDelayMs) < 100 ||
       Number(item.expectedDelayMs) > 15_000
     )
-      throw new Error(`${label}.expectedDelayMs must be between 100 and 15000.`);
+      throw new Error(
+        `${label}.expectedDelayMs must be between 100 and 15000.`,
+      );
 
     requestSpec(item.negative, `${label}.negative`);
     requestSpec(item.positive, `${label}.positive`);
   }
 
-  const requestBudget =
-    Number(samples) * (1 + 2 * timing.experiments.length);
+  const requestBudget = Number(samples) * (1 + 2 * timing.experiments.length);
   if (requestBudget > 153)
-    throw new Error("timing configuration exceeds the 153-request laboratory cap.");
+    throw new Error(
+      "timing configuration exceeds the 153-request laboratory cap.",
+    );
 
   return timing as unknown as TimingDifferentialConfig;
 }
@@ -301,12 +313,13 @@ function cookieHeader(config: TimingDifferentialConfig): string | undefined {
   for (const [cookie, envName] of Object.entries(config.cookieEnvs ?? {})) {
     const value = process.env[envName];
     if (!value)
-      throw new Error(`Timing cookie environment variable ${envName} is not set.`);
-    if (
-      Buffer.byteLength(value, "utf8") > 4096 ||
-      /[\r\n;]/.test(value)
-    )
-      throw new Error(`Timing cookie environment variable ${envName} is unsafe.`);
+      throw new Error(
+        `Timing cookie environment variable ${envName} is not set.`,
+      );
+    if (Buffer.byteLength(value, "utf8") > 4096 || /[\r\n;]/.test(value))
+      throw new Error(
+        `Timing cookie environment variable ${envName} is unsafe.`,
+      );
     values.push(`${cookie}=${value}`);
   }
   return values.length ? values.join("; ") : undefined;
@@ -345,15 +358,23 @@ async function measure(
 
     if (REDIRECTS.has(response.status)) {
       await response.body?.cancel().catch(() => {});
-      return { kind: "error", message: `unexpected HTTP redirect ${response.status}` };
+      return {
+        kind: "error",
+        message: `unexpected HTTP redirect ${response.status}`,
+      };
     }
     if (response.status >= 500) {
       await response.body?.cancel().catch(() => {});
       return { kind: "error", message: `unexpected HTTP ${response.status}` };
     }
 
-    if ((config.responseMustInclude?.length ?? 0) > 0 && spec.method !== "HEAD") {
-      const contentLength = Number(response.headers.get("content-length") ?? "0");
+    if (
+      (config.responseMustInclude?.length ?? 0) > 0 &&
+      spec.method !== "HEAD"
+    ) {
+      const contentLength = Number(
+        response.headers.get("content-length") ?? "0",
+      );
       if (Number.isFinite(contentLength) && contentLength > 1_048_576) {
         await response.body?.cancel().catch(() => {});
         return { kind: "error", message: "response body exceeds 1 MiB" };
@@ -373,7 +394,8 @@ async function measure(
     return { kind: "duration", durationMs: elapsed };
   } catch (error) {
     if (combined.aborted) {
-      if (signal?.aborted) throw new Error("Timing differential run cancelled.");
+      if (signal?.aborted)
+        throw new Error("Timing differential run cancelled.");
       return { kind: "timeout" };
     }
     return {
@@ -445,7 +467,8 @@ async function collectPair(
           ] as const);
 
     for (const [kind, spec] of order) {
-      if (signal?.aborted) throw new Error("Timing differential run cancelled.");
+      if (signal?.aborted)
+        throw new Error("Timing differential run cancelled.");
       const result = await measure(target, spec, config, signal);
       if (kind === "negative")
         record(
@@ -486,12 +509,7 @@ function analyze(
   config: TimingDifferentialConfig,
 ): Pick<
   TimingDifferentialExperimentResult,
-  | "confirmed"
-  | "confidence"
-  | "reason"
-  | "deltaMs"
-  | "thresholdMs"
-  | "jitterMs"
+  "confirmed" | "confidence" | "reason" | "deltaMs" | "thresholdMs" | "jitterMs"
 > {
   const positiveTimeoutRatio = timeoutRatio(positive);
   const negativeTimeoutRatio = timeoutRatio(negative);
@@ -550,7 +568,8 @@ function analyze(
     return {
       confirmed: false,
       confidence: "LOW",
-      reason: "positive/negative timing delta did not cross the evidence threshold",
+      reason:
+        "positive/negative timing delta did not cross the evidence threshold",
       deltaMs,
       thresholdMs,
       jitterMs,
@@ -647,7 +666,8 @@ export async function runTimingDifferential(
       const created = finding(
         {
           ruleId: "REAPER-TIMING-001",
-          title: "Timing differential indicates a reproducible delayed execution path",
+          title:
+            "Timing differential indicates a reproducible delayed execution path",
           description:
             "A localhost-only paired timing experiment produced a positive/negative response-time delta consistent with the configured delay.",
           severity: experiment.severity ?? ("HIGH" as Severity),
@@ -664,11 +684,15 @@ export async function runTimingDifferential(
             `Baseline median: ${baseline.medianMs ?? "n/a"} ms`,
             `Negative median: ${pair.negative.medianMs ?? "n/a"} ms`,
             `Positive median: ${pair.positive.medianMs ?? "n/a"} ms`,
-            ...(item.deltaMs === undefined ? [] : [`Delta: ${item.deltaMs} ms`]),
+            ...(item.deltaMs === undefined
+              ? []
+              : [`Delta: ${item.deltaMs} ms`]),
             ...(item.thresholdMs === undefined
               ? []
               : [`Evidence threshold: ${item.thresholdMs} ms`]),
-            ...(item.jitterMs === undefined ? [] : [`Observed MAD jitter: ${item.jitterMs} ms`]),
+            ...(item.jitterMs === undefined
+              ? []
+              : [`Observed MAD jitter: ${item.jitterMs} ms`]),
             `Confidence: ${item.confidence}`,
             `Reason: ${item.reason}`,
           ],

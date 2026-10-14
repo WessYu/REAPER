@@ -164,7 +164,9 @@ async function main(): Promise<void> {
         "timing requires --config with a literal timing configuration.",
       );
     if (!["terminal", "json", "sarif", "markdown"].includes(format))
-      throw new Error("timing supports terminal, json, sarif or markdown output.");
+      throw new Error(
+        "timing supports terminal, json, sarif or markdown output.",
+      );
     const timingConfig = await readConfig(values.config);
     const { runTimingDifferential } = await import("./timing-differential.js");
     const controller = new AbortController();
