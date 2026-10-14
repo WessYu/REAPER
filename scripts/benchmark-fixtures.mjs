@@ -1,11 +1,7 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { scan } from "../dist/index.js";
 
-const seededRules = [
-  "REAPER-AUTH-001",
-  "REAPER-SQL-001",
-  "REAPER-TENANT-001",
-];
+const seededRules = ["REAPER-AUTH-001", "REAPER-SQL-001", "REAPER-TENANT-001"];
 
 function proportion(numerator, denominator) {
   return denominator === 0 ? null : numerator / denominator;
@@ -80,7 +76,10 @@ async function main() {
   if (result.metrics.fp || result.metrics.fn) process.exitCode = 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
     console.error("Seeded detection benchmark failed: " + error.message);
     process.exitCode = 2;
