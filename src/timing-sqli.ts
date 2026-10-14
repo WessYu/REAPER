@@ -1,6 +1,8 @@
 import { performance } from "node:perf_hooks";
 import { finding } from "./findings.js";
 import type { ScanResult } from "./model.js";
+import { classifyTimingMeasurements } from "./timing-classifier.js";
+import type { TimingReasonCodeV1 } from "./timing-classifier.js";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -27,6 +29,8 @@ export interface TimingExperimentResult {
   confirmed: boolean;
   confidence: "HIGH" | "MEDIUM" | "LOW" | "INCONCLUSIVE";
   reason: string;
+  reasonCode: TimingReasonCodeV1;
+  reasonSchemaVersion: 1;
   deltaMs?: number;
   thresholdMs?: number;
   observedJitterMs?: number;
@@ -241,90 +245,6 @@ async function collectPaired(
   };
 }
 
-function analyze(
-  baseline: TimingMeasurementSet,
-  negative: TimingMeasurementSet,
-  positive: TimingMeasurementSet,
-  expectedDelayMs: number,
-): Omit<
-  TimingExperimentResult,
-  "name" | "expectedDelayMs" | "negative" | "positive"
-> {
-  const totalPositive =
-    positive.timesMs.length + positive.timeouts + positive.errors;
-  const positiveTimeoutRatio =
-    totalPositive === 0 ? 0 : positive.timeouts / totalPositive;
-  const totalNegative =
-    negative.timesMs.length + negative.timeouts + negative.errors;
-  const negativeTimeoutRatio =
-    totalNegative === 0 ? 0 : negative.timeouts / totalNegative;
-
-  if (
-    baseline.timesMs.length >= 3 &&
-    baseline.timeouts === 0 &&
-    baseline.errors === 0 &&
-    negative.timesMs.length >= 3 &&
-    negative.timeouts === 0 &&
-    negative.errors === 0 &&
-    positive.errors === 0 &&
-    positiveTimeoutRatio >= 0.6 &&
-    negativeTimeoutRatio === 0
-  ) {
-    return {
-      confirmed: true,
-      confidence: "HIGH",
-      reason:
-        "Positive control repeatedly exceeded timeout while the negative control remained responsive.",
-    };
-  }
-
-  if (
-    baseline.errors > 0 ||
-    negative.errors > 0 ||
-    positive.errors > 0 ||
-    baseline.timeouts > 0 ||
-    negative.timeouts > 0 ||
-    positive.timeouts > 0 ||
-    baseline.timesMs.length < 3 ||
-    negative.timesMs.length < 3 ||
-    positive.timesMs.length < 3 ||
-    baseline.medianMs === undefined ||
-    negative.medianMs === undefined ||
-    positive.medianMs === undefined
-  ) {
-    return {
-      confirmed: false,
-      confidence: "INCONCLUSIVE",
-      reason: "Insufficient valid samples for differential timing analysis.",
-    };
-  }
-
-  const deltaMs = positive.medianMs - negative.medianMs;
-  const observedJitterMs = Math.max(baseline.madMs ?? 0, negative.madMs ?? 0);
-  const thresholdMs = Math.max(
-    expectedDelayMs * 0.8,
-    observedJitterMs * 6,
-    Math.min(500, expectedDelayMs * 0.25),
-  );
-  const confirmed = deltaMs >= thresholdMs;
-  const confidence = confirmed
-    ? observedJitterMs < 250 && deltaMs >= expectedDelayMs * 0.9
-      ? "HIGH"
-      : "MEDIUM"
-    : "LOW";
-
-  return {
-    confirmed,
-    confidence,
-    reason: confirmed
-      ? "Positive/negative timing delta is consistent with the expected delay."
-      : "Observed timing delta is below the required differential threshold.",
-    deltaMs,
-    thresholdMs,
-    observedJitterMs,
-  };
-}
-
 export async function runLocalTimingSqliLab(
   target: string,
   options: {
@@ -404,7 +324,12 @@ export async function runLocalTimingSqliLab(
       expectedDelayMs: experiment.expectedDelayMs,
       negative,
       positive,
-      ...analyze(baseline, negative, positive, experiment.expectedDelayMs),
+      ...classifyTimingMeasurements(
+        baseline,
+        negative,
+        positive,
+        experiment.expectedDelayMs,
+      ),
     });
   }
 
@@ -462,6 +387,7 @@ export function toTimingSqliScanResult(
             `Differential: ${experiment.deltaMs ?? "timeout-censored"} ms`,
             `Threshold: ${experiment.thresholdMs ?? "n/a"} ms`,
             `Confidence: ${experiment.confidence}`,
+            `Reason v${experiment.reasonSchemaVersion}: ${experiment.reasonCode}`,
           ],
           dataFlow: [],
           recommendation:
@@ -514,7 +440,7 @@ export function renderTimingSqliLab(result: TimingDifferentialResult): string {
       `    negative median=${fmt(item.negative.medianMs)} MAD=${fmt(item.negative.madMs)} timeouts=${item.negative.timeouts}`,
       `    positive median=${fmt(item.positive.medianMs)} MAD=${fmt(item.positive.madMs)} timeouts=${item.positive.timeouts}`,
       `    delta=${fmt(item.deltaMs)} threshold=${fmt(item.thresholdMs)} confidence=${item.confidence}`,
-      `    ${item.reason}`,
+      `    reason=v${item.reasonSchemaVersion}:${item.reasonCode} ${item.reason}`,
       "",
     );
   }
