@@ -15,10 +15,13 @@ test("real loopback HTTP controls", async () => {
     const delayed =
       parsed.pathname === "/vulnerable" &&
       parsed.searchParams.get("id") === "POSITIVE";
-    setTimeout(() => {
-      response.writeHead(200, { "content-type": "text/html" });
-      response.end("<h1>SQL Injection</h1>");
-    }, delayed ? 130 : 5);
+    setTimeout(
+      () => {
+        response.writeHead(200, { "content-type": "text/html" });
+        response.end("<h1>SQL Injection</h1>");
+      },
+      delayed ? 130 : 5,
+    );
   });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
