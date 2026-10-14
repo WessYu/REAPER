@@ -573,17 +573,20 @@ Deno.serve(async (request: Request) => {
           "principalId",
         );
         const name = textValue(body.name, "name");
-        const expiresAt =
+        const now = Date.now();
+        const requested =
           body.expiresAt === undefined || body.expiresAt === null
-            ? null
+            ? new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString()
             : textValue(body.expiresAt, "expiresAt", 50);
+        const expiry = Date.parse(requested);
         if (
-          expiresAt &&
-          (!Number.isFinite(Date.parse(expiresAt)) ||
-            Date.parse(expiresAt) <= Date.now())
+          !Number.isFinite(expiry) ||
+          expiry <= now ||
+          expiry > now + 90 * 24 * 60 * 60 * 1000
         ) {
-          throw new Error("expiresAt must be a future timestamp.");
+          throw new Error("expiresAt must be a future timestamp within 90 days.");
         }
+        const expiresAt = new Date(expiry).toISOString();
         const material = apiKeyMaterial();
         const digest = await sha256(material.token);
         await tx`
