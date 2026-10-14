@@ -33,10 +33,7 @@ function jitterSource(distribution, sigmaMs, random) {
     if (distribution === "lognormal") {
       const z = gaussian(random);
       const width = 0.7;
-      return (
-        (Math.exp(width * z) - Math.exp((width * width) / 2)) *
-        sigmaMs
-      );
+      return (Math.exp(width * z) - Math.exp((width * width) / 2)) * sigmaMs;
     }
     if (distribution === "bimodal")
       return (random() < 0.13 ? 2.5 : -0.3736) * sigmaMs;
@@ -48,15 +45,24 @@ function jitterSource(distribution, sigmaMs, random) {
     if (distribution === "correlated") {
       if (correlatedSpike > 0) correlatedSpike--;
       else if (random() < 0.08) correlatedSpike = 2;
-      return gaussian(random) * sigmaMs * 0.3 +
-        (correlatedSpike > 0 ? sigmaMs * 4 : 0);
+      return (
+        gaussian(random) * sigmaMs * 0.3 +
+        (correlatedSpike > 0 ? sigmaMs * 4 : 0)
+      );
     }
     throw new Error("Unknown jitter distribution.");
   };
 }
 
 export function virtualTimingTrial(options, random) {
-  const { samples, expectedDelayMs, sigma, jitterRegime, distribution, vulnerable } = options;
+  const {
+    samples,
+    expectedDelayMs,
+    sigma,
+    jitterRegime,
+    distribution,
+    vulnerable,
+  } = options;
   if (![3, 5, 7, 9].includes(samples))
     throw new Error("Sample count must be 3, 5, 7 or 9.");
   if (!Number.isFinite(expectedDelayMs) || expectedDelayMs < 50)
@@ -203,8 +209,7 @@ export function benchmarkTimingScenario(options) {
       simulatedCostMsPerDecision: divide(totalDecidedCostMs, decisions),
     },
     reasonCounts: reasons,
-    note:
-      "Virtual additive jitter is not wall-clock latency; equal response bodies are retained in all eligible ground-truth trials.",
+    note: "Virtual additive jitter is not wall-clock latency; equal response bodies are retained in all eligible ground-truth trials.",
   };
 }
 
@@ -256,7 +261,10 @@ async function main() {
   );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
     console.error(error.message);
     process.exitCode = 2;
