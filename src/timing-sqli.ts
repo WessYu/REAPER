@@ -107,7 +107,9 @@ function validateLoopbackTarget(target: string): URL {
       "Timing SQLi lab is restricted to localhost/loopback targets.",
     );
   if (url.username || url.password || url.search || url.hash)
-    throw new Error("Timing lab target must not embed credentials, query, or fragment.");
+    throw new Error(
+      "Timing lab target must not embed credentials, query, or fragment.",
+    );
   // Resolve localhost to a literal loopback IP before fetch so host-file or
   // resolver changes cannot turn a local-only probe into remote traffic.
   if (hostname === "localhost") url.hostname = "127.0.0.1";
@@ -475,7 +477,12 @@ export function toTimingSqliScanResult(
     findings,
     diagnostics:
       result.conclusion === "INCONCLUSIVE"
-        ? [{ message: "Local timing evidence was incomplete or controls were unhealthy." }]
+        ? [
+            {
+              message:
+                "Local timing evidence was incomplete or controls were unhealthy.",
+            },
+          ]
         : [],
     graph: { nodes: [], edges: [] },
     metrics: {
