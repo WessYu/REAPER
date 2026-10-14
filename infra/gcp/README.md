@@ -40,7 +40,7 @@ The runner receives the `reaper-execution` network tag and
 `ALL_TRAFFIC` VPC routing. The dispatcher is **not** attached to this network.
 
 Set `network_egress_enforced=true` only for a reviewed **single-customer pilot**.
-Before applying, supply **both**:
+Before applying, supply **all three**:
 
 - `allowed_runner_target_cidrs`: one or more _verified and explicitly
   authorized_ target IPv4 addresses as /32s; only TCP 443 is allowed;
