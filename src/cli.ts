@@ -40,6 +40,7 @@ reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run authorized stateful adversarial scenarios
+reaper timing-lab <url>   Run localhost-only differential timing evidence lab
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
 reaper serve [path]       Start a localhost-only REST service and dashboard
@@ -57,6 +58,7 @@ reaper doctor           Check runtime version
 Exit 0: completed, gate passed; 1: gate failed; 2: error/incomplete analysis.
 Runtime verification is authorization-scoped: localhost or exact allowlist, bounded discovery, explicit assertions and opt-in synthetic setup/teardown.
 Attack mode additionally requires an explicit target allowlist and authorization acknowledgement/reference.
+Timing lab is hard-limited to localhost/loopback and reads DVWA session state from REAPER_LAB_PHPSESSID.
 `;
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -144,6 +146,41 @@ async function main(): Promise<void> {
   if (command === "doctor") {
     await output(
       `Node ${process.versions.node}; supported: ${Number(process.versions.node.split(".")[0]) >= 22}\n`,
+    );
+    return;
+  }
+  if (command === "timing-lab") {
+    if (!arg) throw new Error("timing-lab requires a localhost DVWA URL.");
+    if (!["terminal", "json"].includes(format))
+      throw new Error("timing-lab format must be terminal or json.");
+    const phpSessionId = process.env.REAPER_LAB_PHPSESSID;
+    if (!phpSessionId)
+      throw new Error(
+        "timing-lab requires REAPER_LAB_PHPSESSID; do not pass session cookies on the command line.",
+      );
+    const optionalInteger = (name: string): number | undefined => {
+      const raw = process.env[name];
+      if (raw === undefined || raw === "") return undefined;
+      const parsed = Number(raw);
+      if (!Number.isSafeInteger(parsed))
+        throw new Error(`${name} must be an integer.`);
+      return parsed;
+    };
+    const { runLocalTimingDifferentialLab, renderTimingLab } = await import(
+      "./timing-lab.js"
+    );
+    const result = await runLocalTimingDifferentialLab({
+      target: arg,
+      phpSessionId,
+      securityLevel: "low",
+      samples: optionalInteger("REAPER_LAB_SAMPLES"),
+      delayMs: optionalInteger("REAPER_LAB_DELAY_MS"),
+      timeoutMs: optionalInteger("REAPER_LAB_TIMEOUT_MS"),
+    });
+    await output(
+      format === "json"
+        ? JSON.stringify(result, null, 2) + "\n"
+        : renderTimingLab(result),
     );
     return;
   }
