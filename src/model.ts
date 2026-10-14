@@ -100,6 +100,75 @@ export interface VerifyConfig {
   teardown?: VerifyLifecycleRequest[];
   assertions: VerifyAssertion[];
 }
+
+export interface TimingDifferentialRequest {
+  path?: string;
+  method?: "GET" | "HEAD";
+  query?: Record<string, string>;
+}
+
+export interface TimingDifferentialExperiment {
+  id: string;
+  title: string;
+  severity?: Severity;
+  expectedDelayMs: number;
+  negative: TimingDifferentialRequest;
+  positive: TimingDifferentialRequest;
+}
+
+export interface TimingDifferentialConfig {
+  authorization: {
+    acknowledged: true;
+    reference: string;
+  };
+  samples?: number;
+  timeoutMs?: number;
+  thresholdRatio?: number;
+  minDeltaMs?: number;
+  cookieEnvs?: Record<string, string>;
+  responseMustInclude?: string[];
+  baseline: TimingDifferentialRequest;
+  experiments: TimingDifferentialExperiment[];
+}
+
+export interface TimingDifferentialMeasurementSet {
+  durationsMs: number[];
+  timeouts: number;
+  errors: number;
+  successfulSamples: number;
+  totalSamples: number;
+  medianMs?: number;
+  madMs?: number;
+}
+
+export interface TimingDifferentialExperimentResult {
+  id: string;
+  title: string;
+  expectedDelayMs: number;
+  negative: TimingDifferentialMeasurementSet;
+  positive: TimingDifferentialMeasurementSet;
+  confirmed: boolean;
+  confidence: "HIGH" | "MEDIUM" | "LOW" | "INCONCLUSIVE";
+  reason: string;
+  deltaMs?: number;
+  thresholdMs?: number;
+  jitterMs?: number;
+}
+
+export interface TimingDifferentialReport {
+  version: 1;
+  target: string;
+  authorizationReference: string;
+  startedAt: string;
+  completedAt: string;
+  samples: number;
+  timeoutMs: number;
+  baseline: TimingDifferentialMeasurementSet;
+  experiments: TimingDifferentialExperimentResult[];
+  confirmedCount: number;
+  highConfidenceCount: number;
+}
+
 export type AttackDimension =
   | "ownership"
   | "tenant"
@@ -248,6 +317,7 @@ export interface Config {
   maxFileBytes?: number;
   verify?: VerifyConfig;
   attack?: AttackConfig;
+  timing?: TimingDifferentialConfig;
 }
 export interface Diagnostic extends Partial<Location> {
   message: string;
@@ -278,6 +348,7 @@ export interface ScanResult {
   coverage: { source: boolean; database: boolean; runtime: boolean };
   rulePacks?: Array<{ packId: string; version: string; hash: string }>;
   attack?: AttackRunMetadata;
+  timing?: TimingDifferentialReport;
 }
 export const severities: Severity[] = [
   "CRITICAL",
