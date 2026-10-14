@@ -126,6 +126,19 @@ resource "google_cloud_run_v2_job" "runner" {
       max_retries     = 0
       timeout         = "1900s"
 
+      dynamic "vpc_access" {
+        for_each = var.network_egress_enforced ? [1] : []
+
+        content {
+          egress = "ALL_TRAFFIC"
+          network_interfaces {
+            network    = google_compute_network.execution[0].name
+            subnetwork = google_compute_subnetwork.execution[0].name
+            tags       = ["reaper-execution"]
+          }
+        }
+      }
+
       containers {
         image   = var.runner_image
         command = ["node"]
@@ -161,9 +174,23 @@ resource "google_cloud_run_v2_job" "runner" {
     }
   }
 
+  lifecycle {
+    precondition {
+      condition = !var.network_egress_enforced || (
+        length(var.allowed_runner_target_cidrs) > 0 &&
+        length(var.allowed_runner_database_cidrs) > 0
+      )
+      error_message = "REAPER commercial runner egress requires explicit target HTTPS and PostgreSQL /32 destination lists."
+    }
+  }
+
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_iam_member.runner_database,
+    google_compute_firewall.runner_deny_all,
+    google_compute_firewall.runner_target_https,
+    google_compute_firewall.runner_postgres,
+    google_compute_router_nat.execution,
   ]
 }
 
