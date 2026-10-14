@@ -256,13 +256,21 @@
           const detail = await api("/v1/runs/" + encodeURIComponent(run.id));
           if (detail.status !== "COMPLETED" || !detail.report)
             throw new Error("No completed report is available for this run.");
+          let savedReport = detail.report;
+          if (typeof savedReport === "string") {
+            try {
+              savedReport = JSON.parse(savedReport);
+            } catch {
+              // Preserve historical string reports if they are not JSON.
+            }
+          }
           const content = JSON.stringify(
             {
               runId: detail.id,
               targetOrigin: detail.target_origin,
               status: detail.status,
               environment: detail.environment,
-              report: detail.report,
+              report: savedReport,
             },
             null,
             2,
