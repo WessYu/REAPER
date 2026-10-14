@@ -44,7 +44,10 @@ test("real loopback HTTP controls distinguish delayed and non-delayed lab endpoi
       target + "/vulnerable",
       common,
     );
-    const secure = await runLocalTimingSqliLab(target + "/secure", common);
+    const secure = await runLocalTimingSqliLab(
+      target + "/secure",
+      common,
+    );
 
     assert.equal(validCookies, true);
     assert.equal(requests, 18);
