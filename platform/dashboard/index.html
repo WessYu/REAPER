@@ -181,6 +181,7 @@
             autocomplete="off"
             placeholder="reaper_live_…"
           /><button id="connect">Connect</button>
+          <button id="disconnect">Disconnect</button>
         </div>
       </header>
 
@@ -222,7 +223,7 @@
     </main>
     <script>
       const $ = (id) => document.getElementById(id);
-      let token = sessionStorage.getItem("reaper.token") || "";
+      let token = "";
       $("token").value = token;
       function headers(json = false) {
         return {
@@ -249,6 +250,35 @@
       function clearFail() {
         $("notice").classList.add("hidden");
       }
+      async function exportReport(run) {
+        clearFail();
+        try {
+          const detail = await api("/v1/runs/" + encodeURIComponent(run.id));
+          if (detail.status !== "COMPLETED" || !detail.report)
+            throw new Error("No completed report is available for this run.");
+          const content = JSON.stringify(
+            {
+              runId: detail.id,
+              targetOrigin: detail.target_origin,
+              status: detail.status,
+              environment: detail.environment,
+              report: detail.report,
+            },
+            null,
+            2,
+          );
+          const href = URL.createObjectURL(
+            new Blob([content], { type: "application/json" }),
+          );
+          const link = document.createElement("a");
+          link.href = href;
+          link.download = "reaper-run-" + run.id + ".json";
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(href), 1000);
+        } catch (error) {
+          fail(error);
+        }
+      }
       function runRow(run) {
         const div = document.createElement("div");
         div.className = "row";
@@ -263,7 +293,12 @@
         const status = document.createElement("span");
         status.className = "status";
         status.textContent = run.status;
-        div.append(left, status);
+        const exportButton = document.createElement("button");
+        exportButton.type = "button";
+        exportButton.textContent = "Export JSON";
+        exportButton.disabled = run.status !== "COMPLETED";
+        exportButton.onclick = () => void exportReport(run);
+        div.append(left, status, exportButton);
         return div;
       }
       async function refresh() {
@@ -278,6 +313,7 @@
           $("principal").textContent = me.principalId + " · " + me.role;
           $("projectCount").textContent = projects.items.length;
           $("runCount").textContent = runs.items.length;
+          $("createProject").disabled = me.role === "viewer";
           $("runs").replaceChildren(
             ...(runs.items.length
               ? runs.items.map(runRow)
@@ -294,8 +330,21 @@
       }
       $("connect").onclick = () => {
         token = $("token").value.trim();
-        sessionStorage.setItem("reaper.token", token);
+        if (!token) {
+          fail(new Error("Enter an API key."));
+          return;
+        }
         void refresh();
+      };
+      $("disconnect").onclick = () => {
+        token = "";
+        $("token").value = "";
+        $("workspace").textContent = "—";
+        $("principal").textContent = "";
+        $("projectCount").textContent = "—";
+        $("runCount").textContent = "—";
+        $("runs").textContent = "Disconnected.";
+        clearFail();
       };
       $("refresh").onclick = () => void refresh();
       $("createProject").onclick = async () => {
@@ -311,7 +360,6 @@
           fail(e);
         }
       };
-      if (token) void refresh();
     </script>
   </body>
 </html>
