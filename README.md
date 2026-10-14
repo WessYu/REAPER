@@ -55,15 +55,15 @@ The vulnerable fixture contains known SQL, ownership and tenant-isolation mistak
 
 ## What it checks
 
-| Area | Implemented behavior |
-| --- | --- |
-| **Application code** | TypeScript AST/symbol-based tracing across supported Express, Fastify and Next.js handlers, imports, assignments and control flow |
-| **Data access** | Review of ownership and tenant constraints in supported Prisma patterns, with Drizzle, Knex and Supabase data-access discovery |
-| **SQL and migrations** | Unsafe raw query construction, selected unscoped write queries, RLS changes, broad grants and migration risks |
-| **PostgreSQL** | Read-only inspection of tables, grants, role inheritance, RLS policies, views, functions and triggers |
-| **Secrets and cryptography** | Common hard-coded secret patterns and selected unsafe password-hashing practices |
-| **Authorized runtime** | Explicit authorization assertions, bounded OpenAPI GET/HEAD discovery, opt-in synthetic identities and configured adversarial scenarios |
-| **Review and CI** | JSON, Markdown and SARIF 2.1.0, fingerprints, baselines, diffs, graphs, scores and a local report dashboard |
+| Area                         | Implemented behavior                                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Application code**         | TypeScript AST/symbol-based tracing across supported Express, Fastify and Next.js handlers, imports, assignments and control flow       |
+| **Data access**              | Review of ownership and tenant constraints in supported Prisma patterns, with Drizzle, Knex and Supabase data-access discovery          |
+| **SQL and migrations**       | Unsafe raw query construction, selected unscoped write queries, RLS changes, broad grants and migration risks                           |
+| **PostgreSQL**               | Read-only inspection of tables, grants, role inheritance, RLS policies, views, functions and triggers                                   |
+| **Secrets and cryptography** | Common hard-coded secret patterns and selected unsafe password-hashing practices                                                        |
+| **Authorized runtime**       | Explicit authorization assertions, bounded OpenAPI GET/HEAD discovery, opt-in synthetic identities and configured adversarial scenarios |
+| **Review and CI**            | JSON, Markdown and SARIF 2.1.0, fingerprints, baselines, diffs, graphs, scores and a local report dashboard                             |
 
 REAPER does **not** execute the target application's code during a source scan. Dynamic code, unusual middleware, framework-specific data paths and arbitrary SQL policy logic can require manual review.
 
@@ -85,11 +85,11 @@ Results include a rule ID, severity, confidence, evidence location and a stable 
 reaper scan ./your-app --fail-on high
 ```
 
-| Exit code | Meaning |
-| --- | --- |
-| `0` | Completed without failing the configured gate |
-| `1` | A finding reached the configured severity threshold |
-| `2` | Invalid input, operational error or incomplete analysis |
+| Exit code | Meaning                                                 |
+| --------- | ------------------------------------------------------- |
+| `0`       | Completed without failing the configured gate           |
+| `1`       | A finding reached the configured severity threshold     |
+| `2`       | Invalid input, operational error or incomplete analysis |
 
 Baselines let teams acknowledge reviewed findings without deleting them:
 
@@ -154,13 +154,13 @@ Read the [authorized testing safety contract](docs/offensive-safety-contract.md)
 
 The public CLI/library works independently of a hosted service. The repository additionally contains a workspace-scoped PostgreSQL control plane, API-key authentication, an operator dashboard, a restricted staging runner and infrastructure code for an isolated execution plane.
 
-| Surface | Status |
-| --- | --- |
-| CLI, static analysis and local reports | Usable and tested |
-| Local authorization tests and controlled labs | Available with the required configuration and permission |
-| Workspace staging and operator dashboard | Development/staging infrastructure; not a public customer SaaS |
-| Google Cloud isolated commercial runners | Infrastructure code and checks exist; live deployment and packet-level enforcement are not certified |
-| Customer SSO/MFA, billing, backup restoration drills and independent pentest | Not complete |
+| Surface                                                                      | Status                                                                                               |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| CLI, static analysis and local reports                                       | Usable and tested                                                                                    |
+| Local authorization tests and controlled labs                                | Available with the required configuration and permission                                             |
+| Workspace staging and operator dashboard                                     | Development/staging infrastructure; not a public customer SaaS                                       |
+| Google Cloud isolated commercial runners                                     | Infrastructure code and checks exist; live deployment and packet-level enforcement are not certified |
+| Customer SSO/MFA, billing, backup restoration drills and independent pentest | Not complete                                                                                         |
 
 The strict runner contract rejects execution without the required isolation capabilities; environment flags or successful unit tests alone do not prove that cloud-level isolation exists. See [runner isolation](docs/runner-isolation.md), [GCP deployment](infra/gcp/README.md) and [operator access](docs/operator-access.md).
 
