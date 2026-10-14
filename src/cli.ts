@@ -172,8 +172,9 @@ async function main(): Promise<void> {
     const timeoutMs = process.env.REAPER_TIMING_TIMEOUT_MS
       ? Number(process.env.REAPER_TIMING_TIMEOUT_MS)
       : undefined;
-    const { runLocalTimingSqliLab, renderTimingSqliLab } =
-      await import("./timing-sqli.js");
+    const { runLocalTimingSqliLab, renderTimingSqliLab } = await import(
+      "./timing-sqli.js"
+    );
     const result = await runLocalTimingSqliLab(arg, {
       phpSessionId,
       securityLevel: "low",
