@@ -31,6 +31,12 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
+      - name: Print canonical README formatting
+        if: matrix.node == 22
+        run: |
+          echo REAPER_README_FORMAT_BEGIN
+          npx prettier README.md
+          echo REAPER_README_FORMAT_END
       - run: npm run check
       - run: node --test --test-concurrency=1 test/integration/*.mjs
         env:
