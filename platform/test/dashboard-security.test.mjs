@@ -12,7 +12,7 @@ test("platform dashboards do not persist API credentials to web storage", async 
     const source = await readFile(file, "utf8");
     assert.doesNotMatch(source, /sessionStorage|localStorage/);
     assert.match(source, /id="disconnect"/);
-    assert.match(source, /token=""/);
+    assert.match(source, /let token\s*=\s*""/);
   }
 });
 
@@ -23,6 +23,6 @@ test("platform dashboards only export completed workspace-authenticated reports"
     assert.match(source, /encodeURIComponent\(run\.id\)/);
     assert.match(source, /detail\.status\s*!==\s*"COMPLETED"/);
     assert.match(source, /URL\.createObjectURL/);
-    assert.match(source, /button\.disabled\s*=\s*run\.status\s*!==\s*"COMPLETED"|b\.disabled=run\.status!=="COMPLETED"/);
+    assert.match(source, /exportButton\.disabled\s*=\s*run\.status\s*!==\s*"COMPLETED"|b\.disabled=run\.status!=="COMPLETED"/);
   }
 });
