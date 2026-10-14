@@ -42,8 +42,8 @@ The runner receives the `reaper-execution` network tag and
 Set `network_egress_enforced=true` only for a reviewed **single-customer pilot**.
 Before applying, supply **both**:
 
-- `allowed_runner_target_cidrs`: one or more *verified and explicitly
-  authorized* target IPv4 addresses as /32s; only TCP 443 is allowed;
+- `allowed_runner_target_cidrs`: one or more _verified and explicitly
+  authorized_ target IPv4 addresses as /32s; only TCP 443 is allowed;
 - `allowed_runner_database_cidrs`: independently reviewed, reachable
   PostgreSQL IPv4 address(es) as /32s; only TCP 5432 is allowed.
 
