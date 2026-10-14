@@ -84,3 +84,18 @@ export type {
   TimingExperimentResult,
   TimingMeasurementSet,
 } from "./timing-sqli.js";
+
+export {
+  TIMING_REASON_SCHEMA_VERSION,
+  classifyTimingMeasurements,
+  classifyTimingObservations,
+  summarizeTimingObservations,
+  contentEffectDiagnostic,
+  timingDriftDiagnostic,
+} from "./timing-classifier.js";
+export type {
+  TimingObservation,
+  TimingObservationOutcome,
+  TimingClassification,
+  TimingReasonCodeV1,
+} from "./timing-classifier.js";
