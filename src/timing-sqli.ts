@@ -201,7 +201,11 @@ function analyze(
   const negativeTimeoutRatio =
     totalNegative === 0 ? 0 : negative.timeouts / totalNegative;
 
-  if (positiveTimeoutRatio >= 0.6 && negativeTimeoutRatio === 0) {
+  if (
+    baseline.timesMs.length >= 3 && baseline.timeouts === 0 && baseline.errors === 0 &&
+    negative.timesMs.length >= 3 && negative.timeouts === 0 && negative.errors === 0 &&
+    positive.errors === 0 && positiveTimeoutRatio >= 0.6 && negativeTimeoutRatio === 0
+  ) {
     return {
       confirmed: true,
       confidence: "HIGH",
@@ -211,6 +215,9 @@ function analyze(
   }
 
   if (
+    baseline.errors > 0 || negative.errors > 0 || positive.errors > 0 ||
+    baseline.timeouts > 0 || negative.timeouts > 0 || positive.timeouts > 0 ||
+    baseline.timesMs.length < 3 || negative.timesMs.length < 3 || positive.timesMs.length < 3 ||
     baseline.medianMs === undefined ||
     negative.medianMs === undefined ||
     positive.medianMs === undefined
@@ -296,13 +303,9 @@ export async function runLocalTimingSqliLab(
     fetchImpl,
   };
 
-  const baseline = await collect(url, options.baselinePayload ?? "1", common);
-
   const experimentDefinitions = options.experiments ?? DVWA_TIMING_EXPERIMENTS;
   if (!experimentDefinitions.length || experimentDefinitions.length > 6)
     throw new Error("Timing lab requires between 1 and 6 experiments.");
-
-  const experiments: TimingExperimentResult[] = [];
   for (const experiment of experimentDefinitions) {
     if (
       !experiment.name ||
@@ -314,7 +317,12 @@ export async function runLocalTimingSqliLab(
       experiment.expectedDelayMs > 10_000
     )
       throw new Error("Timing experiment definition is invalid.");
+  }
 
+  const baseline = await collect(url, options.baselinePayload ?? "1", common);
+
+  const experiments: TimingExperimentResult[] = [];
+  for (const experiment of experimentDefinitions) {
     const negative = await collect(url, experiment.negative, common);
     const positive = await collect(url, experiment.positive, common);
     experiments.push({
