@@ -5,26 +5,6 @@ on:
 permissions:
   contents: read
 jobs:
-  format-timing-sqli-artifact:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/local-timing-sqli-lab'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - run: npx prettier --write src/cli.ts src/timing-sqli.ts test/timing-sqli.test.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: formatted-timing-sqli
-          path: |
-            src/cli.ts
-            src/timing-sqli.ts
-            test/timing-sqli.test.mjs
-          if-no-files-found: error
-
   quality:
     runs-on: ubuntu-latest
     strategy:
