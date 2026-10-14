@@ -159,8 +159,8 @@ async function main(): Promise<void> {
   }
   if (command === "timing-sqli") {
     if (!arg) throw new Error("timing-sqli requires a localhost DVWA URL.");
-    if (!["terminal", "json"].includes(format))
-      throw new Error("timing-sqli supports terminal or json output.");
+    if (!["terminal", "json", "sarif", "markdown"].includes(format))
+      throw new Error("timing-sqli supports terminal, json, sarif, or markdown output.");
     const phpSessionId = process.env.REAPER_DVWA_PHPSESSID;
     if (!phpSessionId)
       throw new Error(
@@ -172,9 +172,8 @@ async function main(): Promise<void> {
     const timeoutMs = process.env.REAPER_TIMING_TIMEOUT_MS
       ? Number(process.env.REAPER_TIMING_TIMEOUT_MS)
       : undefined;
-    const { runLocalTimingSqliLab, renderTimingSqliLab } = await import(
-      "./timing-sqli.js"
-    );
+    const { runLocalTimingSqliLab, renderTimingSqliLab, toTimingSqliScanResult } =
+      await import("./timing-sqli.js");
     const result = await runLocalTimingSqliLab(arg, {
       phpSessionId,
       securityLevel: "low",
@@ -182,11 +181,19 @@ async function main(): Promise<void> {
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       responseMarker: "SQL Injection",
     });
+    const normalized =
+      format === "sarif" || format === "markdown" || values["fail-on"]
+        ? toTimingSqliScanResult(result)
+        : undefined;
     await output(
       format === "json"
         ? JSON.stringify(result, null, 2) + "\n"
-        : renderTimingSqliLab(result),
+        : format === "terminal"
+          ? renderTimingSqliLab(result)
+          : report(normalized!, format),
     );
+    if (values["fail-on"] && normalized && fails(normalized.findings, values["fail-on"]))
+      process.exitCode = 1;
     if (result.conclusion === "INCONCLUSIVE") process.exitCode = 2;
     return;
   }
