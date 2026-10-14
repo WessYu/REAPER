@@ -73,7 +73,7 @@ test("invalid successful HTTP metadata cannot be treated as valid latency", () =
     /metadata is inconsistent/,
   );
   assert.throws(
-    () => classifyTimingObservations(samples, 0),
+    () => classifyTimingObservations(observations({ delay: 100 }), 0),
     /must be positive/,
   );
 });
