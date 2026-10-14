@@ -89,7 +89,9 @@ function summarize(
     timesMs,
     timeouts,
     errors,
-    ...(medianMs === undefined ? {} : { medianMs, madMs: mad(timesMs, medianMs) }),
+    ...(medianMs === undefined
+      ? {}
+      : { medianMs, madMs: mad(timesMs, medianMs) }),
   };
 }
 
@@ -98,7 +100,9 @@ function validateLoopbackTarget(target: string): URL {
   if (!["http:", "https:"].includes(url.protocol))
     throw new Error("Timing lab target must use HTTP(S).");
   if (!LOOPBACK_HOSTS.has(url.hostname))
-    throw new Error("Timing SQLi lab is restricted to localhost/loopback targets.");
+    throw new Error(
+      "Timing SQLi lab is restricted to localhost/loopback targets.",
+    );
   if (url.username || url.password)
     throw new Error("Timing lab target must not embed credentials.");
   return url;
@@ -142,7 +146,9 @@ async function measure(
 
     const body = await response.text();
     if (options.responseMarker && !body.includes(options.responseMarker))
-      throw new Error("Unexpected DVWA response; session or target may be invalid.");
+      throw new Error(
+        "Unexpected DVWA response; session or target may be invalid.",
+      );
 
     return elapsed;
   } finally {
@@ -182,7 +188,10 @@ function analyze(
   negative: TimingMeasurementSet,
   positive: TimingMeasurementSet,
   expectedDelayMs: number,
-): Omit<TimingExperimentResult, "name" | "expectedDelayMs" | "negative" | "positive"> {
+): Omit<
+  TimingExperimentResult,
+  "name" | "expectedDelayMs" | "negative" | "positive"
+> {
   const totalPositive =
     positive.timesMs.length + positive.timeouts + positive.errors;
   const positiveTimeoutRatio =
@@ -214,10 +223,7 @@ function analyze(
   }
 
   const deltaMs = positive.medianMs - negative.medianMs;
-  const observedJitterMs = Math.max(
-    baseline.madMs ?? 0,
-    negative.madMs ?? 0,
-  );
+  const observedJitterMs = Math.max(baseline.madMs ?? 0, negative.madMs ?? 0);
   const thresholdMs = Math.max(
     expectedDelayMs * 0.8,
     observedJitterMs * 6,
@@ -259,14 +265,20 @@ export async function runLocalTimingSqliLab(
   if (!options.phpSessionId || options.phpSessionId.length > 512)
     throw new Error("A bounded DVWA PHPSESSID is required.");
   if ((options.securityLevel ?? "low") !== "low")
-    throw new Error('Timing SQLi lab currently requires DVWA security level "low".');
+    throw new Error(
+      'Timing SQLi lab currently requires DVWA security level "low".',
+    );
 
   const samples = options.samples ?? 5;
   if (!Number.isSafeInteger(samples) || samples < 3 || samples > 9)
     throw new Error("Timing lab samples must be an integer between 3 and 9.");
 
   const timeoutMs = options.timeoutMs ?? 10_000;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 15_000)
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1_000 ||
+    timeoutMs > 15_000
+  )
     throw new Error("Timing lab timeout must be between 1000 and 15000 ms.");
 
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -275,15 +287,13 @@ export async function runLocalTimingSqliLab(
     timeoutMs,
     phpSessionId: options.phpSessionId,
     securityLevel: "low" as const,
-    ...(options.responseMarker ? { responseMarker: options.responseMarker } : {}),
+    ...(options.responseMarker
+      ? { responseMarker: options.responseMarker }
+      : {}),
     fetchImpl,
   };
 
-  const baseline = await collect(
-    url,
-    options.baselinePayload ?? "1",
-    common,
-  );
+  const baseline = await collect(url, options.baselinePayload ?? "1", common);
 
   const experimentDefinitions = options.experiments ?? DVWA_TIMING_EXPERIMENTS;
   if (!experimentDefinitions.length || experimentDefinitions.length > 6)

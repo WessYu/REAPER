@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  renderTimingSqliLab,
-  runLocalTimingSqliLab,
-} from "../dist/index.js";
+import { renderTimingSqliLab, runLocalTimingSqliLab } from "../dist/index.js";
 
 function delayedFetch(delays) {
   return async (input, init = {}) => {
