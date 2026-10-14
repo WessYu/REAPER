@@ -11,6 +11,21 @@ This guide describes currently implemented staging and local-platform behavior. 
 
 Do not copy keys into issue comments, GitHub Actions logs or report files. Prefer short-lived, least-privilege API keys for individual operators. API keys are not a replacement for an identity provider, per-user audit trails, MFA and session management in a public SaaS deployment.
 
+## API key rotation
+
+Newly issued API keys expire after **30 days** unless the administrator
+requests a shorter date, with an absolute **90-day maximum**. A request with
+`expiresAt: null` no longer creates a permanent key. Existing keys, including
+the initial bootstrap credential, keep their original expiry until explicitly
+rotated or revoked. This change does **not** silently revoke existing keys.
+
+For the staging workspace, create a replacement admin key while the bootstrap
+credential remains valid, store the new token securely, confirm a successful
+authenticated request, and only then revoke the old credential. A zero-expiry
+bootstrap key is a tracked release risk until rotated. If every admin
+credential expires, recovery requires a separately reviewed administrative
+database bootstrap/recovery procedure; do not bypass authentication on the API.
+
 ## Projects and workspaces
 
 All `/v1` requests require the `Authorization: Bearer` header. Projects, assessments, runs, findings, audit events and API keys are scoped by the authenticated workspace. Viewer roles cannot create new projects or runs; admin role is needed to issue or revoke API keys. Node database access additionally uses workspace RLS; privileged Supabase Edge calls must filter explicitly by workspace.

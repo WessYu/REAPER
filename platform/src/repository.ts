@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { createApiKeyMaterial, requireRole } from "./auth.js";
+import { resolveApiKeyExpiry } from "./api-key-expiry.js";
 import { withWorkspaceContext } from "./db.js";
 import type {
   CreateAssessmentInput,
@@ -284,13 +285,7 @@ export class PlatformRepository {
       input.principalId ?? context.principalId,
       "principalId",
     );
-    const expiresAt = input.expiresAt ?? null;
-    if (
-      expiresAt !== null &&
-      (!Number.isFinite(Date.parse(expiresAt)) ||
-        Date.parse(expiresAt) <= Date.now())
-    )
-      throw new Error("expiresAt must be a future timestamp.");
+    const expiresAt = resolveApiKeyExpiry(input.expiresAt);
 
     const material = createApiKeyMaterial(this.apiKeyPepper, expiresAt);
     await withWorkspaceContext(this.pool, context, async (client) => {
