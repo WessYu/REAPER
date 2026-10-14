@@ -71,3 +71,8 @@ export * from "./isolation.js";
 export * from "./recovery.js";
 
 export * from "./postgres-state.js";
+
+export {
+  runTimingDifferential,
+  validateTimingDifferentialConfig,
+} from "./timing-differential.js";
