@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { runLocalTimingSqliLab } from "../dist/index.js";
 
-test("real loopback HTTP controls distinguish delayed and non-delayed lab endpoints", async () => {
+test("real HTTP loopback distinguishes delayed and stable controls", async () => {
   let requests = 0;
   let validCookies = true;
   const server = createServer((request, response) => {
@@ -44,10 +44,7 @@ test("real loopback HTTP controls distinguish delayed and non-delayed lab endpoi
       target + "/vulnerable",
       common,
     );
-    const secure = await runLocalTimingSqliLab(
-      target + "/secure",
-      common,
-    );
+    const secure = await runLocalTimingSqliLab(target + "/secure", common);
 
     assert.equal(validCookies, true);
     assert.equal(requests, 18);
