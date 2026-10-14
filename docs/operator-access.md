@@ -11,7 +11,6 @@ This guide describes currently implemented staging and local-platform behavior. 
 
 Do not copy keys into issue comments, GitHub Actions logs or report files. Prefer short-lived, least-privilege API keys for individual operators. API keys are not a replacement for an identity provider, per-user audit trails, MFA and session management in a public SaaS deployment.
 
-
 ## API key rotation
 
 Newly issued API keys expire after **30 days** unless the administrator
