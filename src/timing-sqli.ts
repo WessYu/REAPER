@@ -99,12 +99,16 @@ function validateLoopbackTarget(target: string): URL {
   const url = new URL(target);
   if (!["http:", "https:"].includes(url.protocol))
     throw new Error("Timing lab target must use HTTP(S).");
-  if (!LOOPBACK_HOSTS.has(url.hostname))
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!LOOPBACK_HOSTS.has(hostname))
     throw new Error(
       "Timing SQLi lab is restricted to localhost/loopback targets.",
     );
   if (url.username || url.password)
     throw new Error("Timing lab target must not embed credentials.");
+  // Resolve localhost to a literal loopback IP before fetch so host-file or
+  // resolver changes cannot turn a local-only probe into remote traffic.
+  if (hostname === "localhost") url.hostname = "127.0.0.1";
   return url;
 }
 
@@ -141,8 +145,8 @@ async function measure(
 
     if ([301, 302, 303, 307, 308].includes(response.status))
       throw new Error("DVWA session redirected; refresh the local PHPSESSID.");
-    if (response.status >= 500)
-      throw new Error(`DVWA returned HTTP ${response.status}.`);
+    if (response.status !== 200)
+      throw new Error(`Unexpected DVWA HTTP status ${response.status}.`);
 
     const body = await response.text();
     if (options.responseMarker && !body.includes(options.responseMarker))
@@ -181,6 +185,56 @@ async function collect(
     }
   }
   return summarize(timesMs, timeouts, errors);
+}
+
+async function collectPaired(
+  target: URL,
+  negativePayload: string,
+  positivePayload: string,
+  options: {
+    samples: number;
+    timeoutMs: number;
+    phpSessionId: string;
+    securityLevel: "low";
+    responseMarker?: string;
+    fetchImpl: typeof fetch;
+  },
+): Promise<{ negative: TimingMeasurementSet; positive: TimingMeasurementSet }> {
+  const negativeTimes: number[] = [];
+  const positiveTimes: number[] = [];
+  let negativeTimeouts = 0;
+  let positiveTimeouts = 0;
+  let negativeErrors = 0;
+  let positiveErrors = 0;
+
+  const observe = async (payload: string, positive: boolean): Promise<void> => {
+    try {
+      const elapsed = await measure(target, payload, options);
+      (positive ? positiveTimes : negativeTimes).push(elapsed);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        if (positive) positiveTimeouts++;
+        else negativeTimeouts++;
+      } else if (positive) positiveErrors++;
+      else negativeErrors++;
+    }
+  };
+
+  for (let i = 0; i < options.samples; i++) {
+    // Alternating control order reduces bias from monotonic server load drift.
+    if (i % 2 === 0) {
+      await observe(negativePayload, false);
+      await observe(positivePayload, true);
+    } else {
+      await observe(positivePayload, true);
+      await observe(negativePayload, false);
+    }
+  }
+
+  return {
+    negative: summarize(negativeTimes, negativeTimeouts, negativeErrors),
+    positive: summarize(positiveTimes, positiveTimeouts, positiveErrors),
+  };
 }
 
 function analyze(
@@ -281,8 +335,8 @@ export async function runLocalTimingSqliLab(
   },
 ): Promise<TimingDifferentialResult> {
   const url = validateLoopbackTarget(target);
-  if (!options.phpSessionId || options.phpSessionId.length > 512)
-    throw new Error("A bounded DVWA PHPSESSID is required.");
+  if (!/^[A-Za-z0-9,-]{1,512}$/.test(options.phpSessionId))
+    throw new Error("A valid bounded DVWA PHPSESSID is required.");
   if ((options.securityLevel ?? "low") !== "low")
     throw new Error(
       'Timing SQLi lab currently requires DVWA security level "low".',
@@ -335,8 +389,12 @@ export async function runLocalTimingSqliLab(
 
   const experiments: TimingExperimentResult[] = [];
   for (const experiment of experimentDefinitions) {
-    const negative = await collect(url, experiment.negative, common);
-    const positive = await collect(url, experiment.positive, common);
+    const { negative, positive } = await collectPaired(
+      url,
+      experiment.negative,
+      experiment.positive,
+      common,
+    );
     experiments.push({
       name: experiment.name,
       expectedDelayMs: experiment.expectedDelayMs,
