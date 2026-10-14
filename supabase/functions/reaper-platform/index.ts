@@ -71,7 +71,7 @@ function requireRole(context: Context, minimum: Role): void {
 
 function parseBearer(request: Request): string {
   const header = request.headers.get("authorization");
-  const match = header ? /^*** : null;
+  const match = header ? /^Bearer ([^\s]+)$/.exec(header) : null;
   if (!match?.[1]) throw new Error("Authentication failed.");
   return match[1];
 }
