@@ -5,6 +5,7 @@ import { PlatformRepository } from "./repository.js";
 import { buildScopePayload } from "./scope-signer.js";
 import { GcpKmsScopeSigner } from "./gcp-kms-signer.js";
 import { CloudRunJobClient } from "./cloud-run-job.js";
+import { requireOperatorAuthorizedOrigin } from "./authorized-targets.js";
 import type { PlatformJob } from "./types.js";
 
 function required(name: string): string {
@@ -38,6 +39,11 @@ async function buildAttackJob(
   const model = (await import(new URL("model.js", rootDist).href)) as {
     ENGINE_VERSION: string;
   };
+
+  requireOperatorAuthorizedOrigin(
+    job.payload.targetOrigin,
+    process.env.REAPER_CLOUD_AUTHORIZED_ORIGINS,
+  );
 
   const permissions = job.payload.permissions ?? ["read"];
   const limits = {
