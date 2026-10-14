@@ -23,6 +23,9 @@ test("platform dashboards only export completed workspace-authenticated reports"
     assert.match(source, /encodeURIComponent\(run\.id\)/);
     assert.match(source, /detail\.status\s*!==\s*"COMPLETED"/);
     assert.match(source, /URL\.createObjectURL/);
-    assert.match(source, /exportButton\.disabled\s*=\s*run\.status\s*!==\s*"COMPLETED"|b\.disabled=run\.status!=="COMPLETED"/);
+    assert.match(
+      source,
+      /exportButton\.disabled\s*=\s*run\.status\s*!==\s*"COMPLETED"|b\.disabled=run\.status!=="COMPLETED"/,
+    );
   }
 });
