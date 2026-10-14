@@ -76,6 +76,7 @@ export {
   DVWA_TIMING_EXPERIMENTS,
   renderTimingSqliLab,
   runLocalTimingSqliLab,
+  toTimingSqliScanResult,
 } from "./timing-sqli.js";
 export type {
   TimingDifferentialResult,

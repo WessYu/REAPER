@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderTimingSqliLab, runLocalTimingSqliLab } from "../dist/index.js";
+import {
+  renderTimingSqliLab,
+  runLocalTimingSqliLab,
+  toTimingSqliScanResult,
+} from "../dist/index.js";
+import { report } from "../dist/reporter.js";
 
 function delayedFetch(delays) {
   return async (input, init = {}) => {
@@ -189,4 +194,145 @@ test("timing lab cannot confirm repeated positive timeouts with broken negative 
   });
   assert.equal(result.confirmed, 0);
   assert.equal(result.experiments[0].confidence, "INCONCLUSIVE");
+});
+
+test("localhost timing lab pins outbound requests to a numeric loopback address", async () => {
+  const hosts = [];
+  const result = await runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
+    phpSessionId: "local-session",
+    samples: 3,
+    timeoutMs: 1000,
+    experiments: [
+      {
+        name: "control",
+        positive: "POSITIVE",
+        negative: "NEGATIVE",
+        expectedDelayMs: 80,
+      },
+    ],
+    fetchImpl: async (input) => {
+      hosts.push(new URL(String(input)).hostname);
+      return new Response("SQL Injection", { status: 200 });
+    },
+  });
+  assert.equal(result.confirmed, 0);
+  assert.equal(hosts.length, 9);
+  assert.ok(hosts.every((hostname) => hostname === "127.0.0.1"));
+});
+
+test("timing lab resists a monotonic server-latency drift", async () => {
+  let requests = 0;
+  const fetchImpl = async () => {
+    const delay = 10 + 20 * requests++;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return new Response("SQL Injection", { status: 200 });
+  };
+  const result = await runLocalTimingSqliLab("http://127.0.0.1/dvwa/sqli/", {
+    phpSessionId: "local-session",
+    samples: 3,
+    timeoutMs: 1000,
+    experiments: [
+      {
+        name: "drift without injection",
+        positive: "POSITIVE",
+        negative: "NEGATIVE",
+        expectedDelayMs: 70,
+      },
+    ],
+    fetchImpl,
+  });
+  assert.equal(result.confirmed, 0);
+  assert.equal(result.experiments[0].confidence, "LOW");
+  assert.equal(requests, 9);
+});
+
+test("invalid session cookies are rejected before network activity", async () => {
+  let requests = 0;
+  await assert.rejects(
+    runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
+      phpSessionId: "abc; security=high",
+      fetchImpl: async () => {
+        requests++;
+        return new Response("OK");
+      },
+    }),
+    /valid bounded DVWA PHPSESSID/,
+  );
+  assert.equal(requests, 0);
+});
+
+test("non-200 application responses cannot be treated as timing evidence", async () => {
+  const result = await runLocalTimingSqliLab("http://localhost/dvwa/sqli/", {
+    phpSessionId: "local-session",
+    samples: 3,
+    timeoutMs: 1000,
+    experiments: [
+      {
+        name: "unauthenticated",
+        positive: "POSITIVE",
+        negative: "NEGATIVE",
+        expectedDelayMs: 80,
+      },
+    ],
+    fetchImpl: async () => new Response("Unauthorized", { status: 401 }),
+  });
+  assert.equal(result.confirmed, 0);
+  assert.equal(result.experiments[0].confidence, "INCONCLUSIVE");
+});
+
+test("timing evidence is exported as sanitized SARIF findings and Markdown", () => {
+  const sample = {
+    timesMs: [1, 2, 3],
+    timeouts: 0,
+    errors: 0,
+    medianMs: 2,
+    madMs: 1,
+  };
+  const result = {
+    target: "http://127.0.0.1/dvwa/sqli/",
+    samples: 3,
+    timeoutMs: 1000,
+    baseline: sample,
+    experiments: [
+      {
+        name: "synthetic timing",
+        expectedDelayMs: 80,
+        negative: sample,
+        positive: { ...sample, medianMs: 100 },
+        confirmed: true,
+        confidence: "HIGH",
+        reason: "controlled differential",
+        deltaMs: 98,
+        thresholdMs: 64,
+      },
+    ],
+    confirmed: 1,
+    highConfidence: 1,
+    conclusion: "SUSPICIOUS",
+  };
+  const scan = toTimingSqliScanResult(result);
+  assert.equal(scan.findings.length, 1);
+  assert.equal(scan.findings[0].ruleId, "REAPER-TIMING-001");
+  assert.equal(scan.findings[0].severity, "MEDIUM");
+  assert.notEqual(scan.findings[0].confidence, "CONFIRMED");
+  const sarif = JSON.parse(report(scan, "sarif"));
+  assert.equal(sarif.version, "2.1.0");
+  assert.equal(sarif.runs[0].results[0].ruleId, "REAPER-TIMING-001");
+  assert.match(report(scan, "markdown"), /REAPER-TIMING-001/);
+  assert.doesNotMatch(JSON.stringify(sarif), /PHPSESSID|REAPER_DVWA/);
+});
+
+test("timing lab rejects query strings and fragments before networking", async () => {
+  let requested = false;
+  await assert.rejects(
+    runLocalTimingSqliLab("http://127.0.0.1/dvwa/sqli/?token=secret", {
+      phpSessionId: "valid",
+      fetchImpl: async () => {
+        requested = true;
+        return new Response("OK");
+      },
+    }),
+    /query, or fragment/,
+  );
+  assert.equal(requested, false);
 });
