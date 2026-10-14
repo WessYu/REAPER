@@ -39,10 +39,12 @@ test("classification is invariant under changes to sample collection order", () 
   const initial = observations({ delay: 100 });
   const original = classifyTimingObservations(initial, 100);
   const reversed = classifyTimingObservations(
-    initial.map((sample, index) => ({
-      ...sample,
-      order: initial.length - index,
-    })).reverse(),
+    initial
+      .map((sample, index) => ({
+        ...sample,
+        order: initial.length - index,
+      }))
+      .reverse(),
     100,
   );
   assert.deepEqual(original, reversed);
