@@ -197,7 +197,10 @@ export function classifyTimingObservations(
 
 export function contentEffectDiagnostic(
   observations: readonly TimingObservation[],
-): "CONTENT_EFFECT_OBSERVED" | "CONTENT_EFFECT_UNOBSERVED" | "CONTENT_NOT_MEASURED" {
+):
+  | "CONTENT_EFFECT_OBSERVED"
+  | "CONTENT_EFFECT_UNOBSERVED"
+  | "CONTENT_NOT_MEASURED" {
   const relevant = observations.filter(
     (sample) =>
       sample.outcome === "ok" &&
