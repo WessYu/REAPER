@@ -281,7 +281,13 @@ test("non-200 application responses cannot be treated as timing evidence", async
 });
 
 test("timing evidence is exported as sanitized SARIF findings and Markdown", () => {
-  const sample = { timesMs: [1, 2, 3], timeouts: 0, errors: 0, medianMs: 2, madMs: 1 };
+  const sample = {
+    timesMs: [1, 2, 3],
+    timeouts: 0,
+    errors: 0,
+    medianMs: 2,
+    madMs: 1,
+  };
   const result = {
     target: "http://127.0.0.1/dvwa/sqli/",
     samples: 3,
