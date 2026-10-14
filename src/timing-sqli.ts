@@ -202,9 +202,15 @@ function analyze(
     totalNegative === 0 ? 0 : negative.timeouts / totalNegative;
 
   if (
-    baseline.timesMs.length >= 3 && baseline.timeouts === 0 && baseline.errors === 0 &&
-    negative.timesMs.length >= 3 && negative.timeouts === 0 && negative.errors === 0 &&
-    positive.errors === 0 && positiveTimeoutRatio >= 0.6 && negativeTimeoutRatio === 0
+    baseline.timesMs.length >= 3 &&
+    baseline.timeouts === 0 &&
+    baseline.errors === 0 &&
+    negative.timesMs.length >= 3 &&
+    negative.timeouts === 0 &&
+    negative.errors === 0 &&
+    positive.errors === 0 &&
+    positiveTimeoutRatio >= 0.6 &&
+    negativeTimeoutRatio === 0
   ) {
     return {
       confirmed: true,
@@ -215,9 +221,15 @@ function analyze(
   }
 
   if (
-    baseline.errors > 0 || negative.errors > 0 || positive.errors > 0 ||
-    baseline.timeouts > 0 || negative.timeouts > 0 || positive.timeouts > 0 ||
-    baseline.timesMs.length < 3 || negative.timesMs.length < 3 || positive.timesMs.length < 3 ||
+    baseline.errors > 0 ||
+    negative.errors > 0 ||
+    positive.errors > 0 ||
+    baseline.timeouts > 0 ||
+    negative.timeouts > 0 ||
+    positive.timeouts > 0 ||
+    baseline.timesMs.length < 3 ||
+    negative.timesMs.length < 3 ||
+    positive.timesMs.length < 3 ||
     baseline.medianMs === undefined ||
     negative.medianMs === undefined ||
     positive.medianMs === undefined
