@@ -221,7 +221,7 @@ function analyze(
   const thresholdMs = Math.max(
     expectedDelayMs * 0.8,
     observedJitterMs * 6,
-    500,
+    Math.min(500, expectedDelayMs * 0.25),
   );
   const confirmed = deltaMs >= thresholdMs;
   const confidence = confirmed
