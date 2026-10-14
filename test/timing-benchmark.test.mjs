@@ -16,7 +16,10 @@ const config = {
 };
 
 test("seeded benchmark is bit-for-bit reproducible", () => {
-  assert.deepEqual(benchmarkTimingScenario(config), benchmarkTimingScenario(config));
+  assert.deepEqual(
+    benchmarkTimingScenario(config),
+    benchmarkTimingScenario(config),
+  );
 });
 
 test("zero jitter separates the two ground-truth populations", () => {
@@ -43,7 +46,11 @@ test("timeout and invalid jitter budgets are refused", () => {
     /Jitter scale is invalid/,
   );
   assert.throws(
-    () => virtualTimingTrial({ ...config, samples: 2, vulnerable: false }, () => 0.5),
+    () =>
+      virtualTimingTrial(
+        { ...config, samples: 2, vulnerable: false },
+        () => 0.5,
+      ),
     /Sample count must be/,
   );
 });
