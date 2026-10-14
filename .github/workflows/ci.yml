@@ -31,6 +31,12 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
+      - name: Emit canonical benchmark formatter
+        if: matrix.node == 22
+        run: |
+          echo BENCHMARK_FORMAT_BEGIN
+          npx prettier scripts/benchmark-fixtures.mjs
+          echo BENCHMARK_FORMAT_END
       - run: npm run check
       - run: node --test --test-concurrency=1 test/integration/*.mjs
         env:
