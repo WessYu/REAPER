@@ -27,7 +27,9 @@ export function requireOperatorAuthorizedOrigin(
   configured: string | undefined,
 ): void {
   if (!configured || configured.length > 8192)
-    throw new Error("Commercial target authorization allowlist is unavailable.");
+    throw new Error(
+      "Commercial target authorization allowlist is unavailable.",
+    );
   let decoded: unknown;
   try {
     decoded = JSON.parse(configured);
