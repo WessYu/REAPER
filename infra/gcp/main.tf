@@ -178,7 +178,8 @@ resource "google_cloud_run_v2_job" "runner" {
     precondition {
       condition = !var.network_egress_enforced || (
         length(var.allowed_runner_target_cidrs) > 0 &&
-        length(var.allowed_runner_database_cidrs) > 0
+        length(var.allowed_runner_database_cidrs) > 0 &&
+        length(var.authorized_runner_origins) > 0
       )
       error_message = "REAPER commercial runner egress requires explicit target HTTPS and PostgreSQL /32 destination lists."
     }
@@ -232,6 +233,11 @@ resource "google_cloud_run_v2_job" "dispatcher" {
         env {
           name  = "REAPER_GCP_RUNNER_JOB"
           value = google_cloud_run_v2_job.runner.name
+        }
+
+        env {
+          name  = "REAPER_CLOUD_AUTHORIZED_ORIGINS"
+          value = jsonencode(var.authorized_runner_origins)
         }
 
         env {
