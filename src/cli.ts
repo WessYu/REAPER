@@ -40,6 +40,7 @@ reaper cfg [path]        Build an explicit JS/TS control-flow graph
 reaper score <json>      Calculate an explainable score from a saved report
 reaper verify <target>    Run configured authorization scenarios
 reaper attack <target>    Run authorized stateful adversarial scenarios
+reaper timing-sqli <url>   Run localhost-only DVWA timing-differential SQLi lab
 reaper discover <target>  Discover GET/HEAD routes from allowlisted OpenAPI docs
 reaper dashboard <json>  Render a self-contained HTML security dashboard
 reaper serve [path]       Start a localhost-only REST service and dashboard
@@ -154,6 +155,39 @@ async function main(): Promise<void> {
     const { discoverRoutes } = await import("./verify.js");
     const endpoints = await discoverRoutes(arg, verifyConfig);
     await output(JSON.stringify(endpoints, null, 2) + "\n");
+    return;
+  }
+  if (command === "timing-sqli") {
+    if (!arg) throw new Error("timing-sqli requires a localhost DVWA URL.");
+    if (!["terminal", "json"].includes(format))
+      throw new Error("timing-sqli supports terminal or json output.");
+    const phpSessionId = process.env.REAPER_DVWA_PHPSESSID;
+    if (!phpSessionId)
+      throw new Error(
+        "Set REAPER_DVWA_PHPSESSID to the current local DVWA session id.",
+      );
+    const samples = process.env.REAPER_TIMING_SAMPLES
+      ? Number(process.env.REAPER_TIMING_SAMPLES)
+      : undefined;
+    const timeoutMs = process.env.REAPER_TIMING_TIMEOUT_MS
+      ? Number(process.env.REAPER_TIMING_TIMEOUT_MS)
+      : undefined;
+    const { runLocalTimingSqliLab, renderTimingSqliLab } = await import(
+      "./timing-sqli.js"
+    );
+    const result = await runLocalTimingSqliLab(arg, {
+      phpSessionId,
+      securityLevel: "low",
+      ...(samples === undefined ? {} : { samples }),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      responseMarker: "SQL Injection",
+    });
+    await output(
+      format === "json"
+        ? JSON.stringify(result, null, 2) + "\n"
+        : renderTimingSqliLab(result),
+    );
+    if (result.conclusion === "INCONCLUSIVE") process.exitCode = 2;
     return;
   }
   if (command === "attack") {
