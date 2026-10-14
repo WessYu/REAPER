@@ -77,12 +77,15 @@ test("acceptance: bounded and alternated requests", async () => {
 test("acceptance: reject invalid definition before requests", async () => {
   let called = false;
   await assert.rejects(
-    setup(async () => {
-      called = true;
-      return new Response("OK");
-    }, {
-      experiments: [{ ...experiment, expectedDelayMs: 10001 }],
-    }),
+    setup(
+      async () => {
+        called = true;
+        return new Response("OK");
+      },
+      {
+        experiments: [{ ...experiment, expectedDelayMs: 10001 }],
+      },
+    ),
     /invalid/,
   );
   assert.equal(called, false);
