@@ -31,9 +31,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
-      - name: Print expected acceptance-test formatting
-        if: matrix.node == 22
-        run: npx prettier test/security-acceptance.test.mjs
       - run: npm run check
       - run: node --test --test-concurrency=1 test/integration/*.mjs
         env:
