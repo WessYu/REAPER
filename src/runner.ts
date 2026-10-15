@@ -56,6 +56,13 @@ const JOB_FILE = fileURLToPath(new URL("./runner-worker.js", import.meta.url));
 const STDIO_LIMIT = 16 * 1024;
 const MAX_JOB_BYTES = 5 * 1024 * 1024;
 const MAX_JOB_OUTPUT = 10 * 1024 * 1024;
+const RESERVED_RUNNER_ENV = new Set([
+  "REAPER_RUNNER_MODE",
+  "REAPER_RUNNER_STATE_DIR",
+  "REAPER_RUNNER_DATABASE_URL",
+  "REAPER_RUNNER_WORKSPACE_ID",
+  "REAPER_RUNNER_TRUSTED_SCOPE_KEYS_JSON",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -174,13 +181,10 @@ function secretReferences(config: Config): Set<string> {
     for (const step of [...scenario.steps, ...(scenario.cleanup ?? [])])
       visit(step.body);
   for (const ref of refs)
-    if (!/^[A-Z_][A-Z0-9_]*$/i.test(ref) || [
-        "REAPER_RUNNER_MODE",
-        "REAPER_RUNNER_STATE_DIR",
-        "REAPER_RUNNER_DATABASE_URL",
-        "REAPER_RUNNER_WORKSPACE_ID",
-        "REAPER_RUNNER_TRUSTED_SCOPE_KEYS_JSON",
-      ].includes(ref.toUpperCase()))
+    if (
+      !/^[A-Z_][A-Z0-9_]*$/i.test(ref) ||
+      RESERVED_RUNNER_ENV.has(ref.toUpperCase())
+    )
       throw new Error(
         "Attack job contains an invalid or reserved secret reference.",
       );
