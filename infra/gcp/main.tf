@@ -273,12 +273,12 @@ resource "google_cloud_run_v2_job" "dispatcher" {
 
         env {
           name  = "REAPER_GCP_KMS_KEY_VERSION"
-          value = "${google_kms_crypto_key.scope_signing.id}/cryptoKeyVersions/1"
+          value = "${google_kms_crypto_key.scope_signing.id}/cryptoKeyVersions/${var.scope_signing_key_version}"
         }
 
         env {
           name  = "REAPER_GCP_KMS_KEY_ID"
-          value = "gcp-kms-authorization-scope-v1"
+          value = var.scope_signing_key_id
         }
 
         env {
