@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ENGINE_VERSION, type Config, type ScanResult } from "./model.js";
-import { verifyAuthorizationScope, type SignedAuthorizationScope } from "./scope.js";
+import {
+  verifyAuthorizationScope,
+  type SignedAuthorizationScope,
+} from "./scope.js";
 import { parseRunnerTrustConfig, RUNNER_TRUST_ENV } from "./runner-trust.js";
 import {
   ProcessIsolationProvider,
@@ -171,11 +174,10 @@ function secretReferences(config: Config): Set<string> {
     for (const step of [...scenario.steps, ...(scenario.cleanup ?? [])])
       visit(step.body);
   for (const ref of refs)
-    if (
-      !/^[A-Z_][A-Z0-9_]*$/i.test(ref) ||
-      /^REAPER_RUNNER_/i.test(ref)
-    )
-      throw new Error("Attack job contains an invalid or reserved secret reference.");
+    if (!/^[A-Z_][A-Z0-9_]*$/i.test(ref) || /^REAPER_RUNNER_/i.test(ref))
+      throw new Error(
+        "Attack job contains an invalid or reserved secret reference.",
+      );
   return refs;
 }
 
@@ -265,7 +267,9 @@ export async function runAttackJob(
       reference: snapshot.authorization.reference,
     });
   } else if (isolationMode === "strict") {
-    throw new Error("Strict runner requires independently provisioned signed-scope trust.");
+    throw new Error(
+      "Strict runner requires independently provisioned signed-scope trust.",
+    );
   }
   if (options.signal?.aborted)
     return { status: "INTERRUPTED", exitCode: null, reason: "cancelled" };
