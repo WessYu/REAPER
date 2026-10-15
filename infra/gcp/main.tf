@@ -93,6 +93,14 @@ resource "google_secret_manager_secret" "dispatcher_database_url" {
   depends_on = [google_project_service.secretmanager]
 }
 
+resource "google_secret_manager_secret" "runner_trusted_scope_keys" {
+  secret_id = "reaper-runner-trusted-scope-keys"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.secretmanager]
+}
+
 resource "google_secret_manager_secret" "runner_database_url" {
   secret_id = "reaper-runner-database-url"
   replication {
@@ -105,6 +113,12 @@ resource "google_secret_manager_secret_iam_member" "dispatcher_database" {
   secret_id = google_secret_manager_secret.dispatcher_database_url.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.dispatcher.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "runner_trust" {
+  secret_id = google_secret_manager_secret.runner_trusted_scope_keys.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runner.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "runner_database" {
@@ -139,10 +153,26 @@ resource "google_cloud_run_v2_job" "runner" {
         }
       }
 
+      volumes {
+        name = "runner-trust"
+        secret {
+          secret = google_secret_manager_secret.runner_trusted_scope_keys.secret_id
+          items {
+            version = "latest"
+            path    = "trusted-scope-keys.json"
+          }
+        }
+      }
+
       containers {
         image   = var.runner_image
         command = ["node"]
         args    = ["/app/platform/dist/cloud-run-entry.js"]
+
+        volume_mounts {
+          name       = "runner-trust"
+          mount_path = "/var/run/reaper-trust"
+        }
 
         resources {
           limits = {
@@ -188,6 +218,7 @@ resource "google_cloud_run_v2_job" "runner" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_iam_member.runner_database,
+    google_secret_manager_secret_iam_member.runner_trust,
     google_compute_firewall.runner_deny_all,
     google_compute_firewall.runner_target_https,
     google_compute_firewall.runner_postgres,
@@ -242,12 +273,12 @@ resource "google_cloud_run_v2_job" "dispatcher" {
 
         env {
           name  = "REAPER_GCP_KMS_KEY_VERSION"
-          value = "${google_kms_crypto_key.scope_signing.id}/cryptoKeyVersions/1"
+          value = "${google_kms_crypto_key.scope_signing.id}/cryptoKeyVersions/${var.scope_signing_key_version}"
         }
 
         env {
           name  = "REAPER_GCP_KMS_KEY_ID"
-          value = "gcp-kms-authorization-scope-v1"
+          value = var.scope_signing_key_id
         }
 
         env {

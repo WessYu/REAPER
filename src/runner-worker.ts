@@ -10,6 +10,7 @@ import {
   PostgresAuditStore,
 } from "./postgres-state.js";
 import type { AttackJob } from "./runner.js";
+import { parseRunnerTrustConfig, RUNNER_TRUST_ENV } from "./runner-trust.js";
 
 let activeController: AbortController | undefined;
 let started = false;
@@ -79,6 +80,9 @@ process.on("message", (message: unknown) => {
           : stateDirectory
             ? new FileAuditStore(path.join(stateDirectory, "audit"))
             : undefined;
+      const trustedScopeKeys = job.scopeManifest
+        ? parseRunnerTrustConfig(process.env[RUNNER_TRUST_ENV] ?? "")
+        : undefined;
       activeController = new AbortController();
       let result;
       try {
@@ -89,7 +93,7 @@ process.on("message", (message: unknown) => {
           workspaceId: job.workspaceId,
           projectId: job.projectId,
           scopeManifest: job.scopeManifest,
-          trustedScopeKeys: job.trustedScopeKeys,
+          trustedScopeKeys,
           strictCommercial,
           journalStore,
           scopeReplayStore,

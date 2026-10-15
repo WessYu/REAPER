@@ -6,6 +6,7 @@ export interface TrustedPublicKey {
   keyId: string;
   publicKey: KeyLike | string | Buffer;
   status: TrustedKeyStatus;
+  issuer?: string;
   notBefore?: string;
   notAfter?: string;
   revokedAt?: string;
@@ -36,6 +37,13 @@ function validate(entry: TrustedPublicKey): TrustedPublicKey {
   if (!entry || typeof entry !== "object" || Array.isArray(entry))
     throw new Error("Trusted key entry is invalid.");
   if (!KEY_ID.test(entry.keyId)) throw new Error("Trusted key id is invalid.");
+  if (
+    entry.issuer !== undefined &&
+    (typeof entry.issuer !== "string" ||
+      !entry.issuer.trim() ||
+      entry.issuer.length > 200)
+  )
+    throw new Error("Trusted key issuer is invalid.");
   if (!["active", "retired", "revoked"].includes(entry.status))
     throw new Error("Trusted key status is invalid.");
   const notBefore = timestamp(entry.notBefore, "notBefore");

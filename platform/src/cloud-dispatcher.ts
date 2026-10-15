@@ -125,7 +125,6 @@ async function buildAttackJob(
     workspaceId: job.workspaceId,
     projectId: job.payload.projectId,
     scopeManifest: scope,
-    trustedScopeKeys: { [scope.keyId]: signer.publicKeyPem },
     platform: {
       jobId: job.id,
       workerId,

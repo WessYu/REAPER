@@ -1,5 +1,6 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { Pool } from "pg";
+import { readFile } from "node:fs/promises";
 
 interface ExecutionEnvelope {
   version: 1;
@@ -129,7 +130,14 @@ async function main(): Promise<void> {
     await renew();
     const { platform: _platform, ...attackJob } = envelope;
     void _platform;
+    // This fixed Secret Manager volume path is part of the runner image/config.
+    // Cloud Run job execution overrides cannot replace mounted secret volumes.
+    const trustedScopeConfig = await readFile(
+      "/var/run/reaper-trust/trusted-scope-keys.json",
+      "utf8",
+    );
     const outcome = await engine.runAttackJob(attackJob, {
+      trustedScopeConfig,
       isolationMode: "strict",
       isolationProvider: new CloudRunIsolationProvider(),
       durableState: {

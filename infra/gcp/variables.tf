@@ -90,3 +90,25 @@ variable "authorized_runner_origins" {
     error_message = "Authorized runner origins must be exact lowercase HTTPS host origins without paths, credentials, ports or query strings."
   }
 }
+
+variable "scope_signing_key_version" {
+  type        = number
+  description = "Reviewed Cloud KMS Ed25519 signing key version number. Rotate only with the runner trust registry updated first."
+  default     = 1
+
+  validation {
+    condition     = var.scope_signing_key_version >= 1 && var.scope_signing_key_version == floor(var.scope_signing_key_version)
+    error_message = "scope_signing_key_version must be a positive integer."
+  }
+}
+
+variable "scope_signing_key_id" {
+  type        = string
+  description = "Distinct trusted key id for the selected KMS version. Never reuse a key id after rotation."
+  default     = "gcp-kms-authorization-scope-v1"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._-]{1,100}$", var.scope_signing_key_id))
+    error_message = "scope_signing_key_id must be a valid bounded identifier."
+  }
+}
