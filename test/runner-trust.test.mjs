@@ -27,7 +27,12 @@ function entry(keyId, issuer, publicKey, status = "active", extra = {}) {
   };
 }
 
-function scope(target, privateKey, keyId = "key-a", issuer = "reaper-platform") {
+function scope(
+  target,
+  privateKey,
+  keyId = "key-a",
+  issuer = "reaper-platform",
+) {
   const now = Date.now();
   return createSignedAuthorizationScope(
     {
@@ -229,12 +234,20 @@ test("signed envelope with embedded public key B is rejected even when A is trus
   const target = "https://preview.example.test";
   const signed = scope(target, a.privateKey);
   const store = new InMemoryTrustStore([
-    { keyId: "key-a", issuer: "reaper-platform", publicKey: a.publicKey, status: "active" },
+    {
+      keyId: "key-a",
+      issuer: "reaper-platform",
+      publicKey: a.publicKey,
+      status: "active",
+    },
   ]);
   assert.throws(
     () =>
       verifyAuthorizationScope(
-        { ...signed, publicKey: b.publicKey.export({ type: "spki", format: "pem" }) },
+        {
+          ...signed,
+          publicKey: b.publicKey.export({ type: "spki", format: "pem" }),
+        },
         store,
         {
           target,
@@ -293,7 +306,10 @@ test("runner uses independent trusted key to verify a signed job end-to-end", as
     assert.equal(result.status, "COMPLETED");
     if (result.status === "COMPLETED") {
       assert.equal(result.result.attack?.requests, 1);
-      assert.equal(result.result.attack?.signedScope?.issuer, "reaper-platform");
+      assert.equal(
+        result.result.attack?.signedScope?.issuer,
+        "reaper-platform",
+      );
     }
   } finally {
     server.closeAllConnections?.();
