@@ -28,6 +28,88 @@ GRANT reaper_platform_runner TO <runner-login>;
 Store each connection URL as the latest version of the matching Secret Manager
 secret output by this module.
 
+## Independent authorization trust root
+
+The Cloud Run **runner**, not the dispatcher, owns the trust registry used to
+verify signed assessment scopes. The dispatcher can request a signature using
+Cloud KMS, but **must never** include its fetched public key in the execution
+envelope. The runner refuses any job that includes `trustedScopeKeys`,
+`trustedKeys`, or `publicKey`.
+
+Terraform creates `reaper-runner-trusted-scope-keys` in Secret Manager, grants
+**only the runner service account** read access, and mounts the secret at the
+fixed read-only volume path:
+
+```text
+/var/run/reaper-trust/trusted-scope-keys.json
+```
+
+The runner code reads this file directly. It does not accept a trust root from
+job fields or a Cloud Run execution environment-variable override. The
+dispatcher cannot replace this volume via the overrides used by
+`CloudRunJobClient`.
+
+An operator must independently retrieve the reviewed KMS public key, verify
+its key version/fingerprint through the trusted cloud account, and populate a
+secret version **before** enabling managed execution. Example file format:
+
+```json
+{
+  "version": 1,
+  "keys": [
+    {
+      "keyId": "gcp-kms-authorization-scope-v1",
+      "issuer": "reaper-platform",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\\nREPLACE_WITH_VERIFIED_KEY\\n-----END PUBLIC KEY-----\\n",
+      "status": "active"
+    }
+  ]
+}
+```
+
+The example is not a valid key. Use a real independently reviewed Ed25519
+public key from the **exact** configured KMS key version. The trust registry
+must not be generated from a signed job or its embedded metadata.
+
+After provisioning the secret resource, a privileged operator can add the
+reviewed local JSON without writing the key registry into Terraform state:
+
+```sh
+gcloud secrets versions add reaper-runner-trusted-scope-keys \\
+  --project=YOUR_PROJECT_ID \\
+  --data-file=./reviewed-trusted-scope-keys.json
+```
+
+This configuration is **integrity-sensitive**, although the verification keys
+are public. Restrict write access to the secret and audit version changes.
+The dispatcher service account must not have `secretAccessor` or write
+permissions on this registry. The runner must not have KMS signing permission.
+
+### Signing-key rotation
+
+1. Create a new Ed25519 KMS key version and independently verify its public key.
+2. Publish a new trusted registry secret version containing **both** the old
+   and new keys. Give the old key status `retired` with an explicit
+   `notAfter` overlap cutoff, and the new key status `active`.
+3. Update Terraform `scope_signing_key_version` and
+   `scope_signing_key_id` together. Key IDs are never reused.
+4. Verify signed runs with the new key and that old scopes remain valid only
+   during the declared overlap. After the cutoff, remove the old key.
+5. For compromise, mark the old key `revoked` with `revokedAt` and publish
+   the registry immediately; do not wait for the normal overlap.
+
+Missing, invalid, expired, revoked, wrong-issuer or wrong-key trust entries
+must fail closed **before** the runner makes a request. A Cloud Run job whose
+secret version has not yet been populated cannot execute an assessment.
+
+**Security boundary:** the runner-only secret volume prevents *job-envelope
+self-attestation*. It is not a defense against a fully compromised cloud
+administrator or an actor with arbitrary `run.jobsExecutorWithOverrides`
+permissions, which can potentially change execution arguments. Minimize that
+IAM grant and monitor job execution overrides. Do not claim full isolation
+from a compromised dispatcher until the invocation authority is redesigned
+and independently reviewed.
+
 ## Network gate
 
 `network_egress_enforced` defaults to `false`. With the default, the REAPER
