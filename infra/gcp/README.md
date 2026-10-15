@@ -102,8 +102,8 @@ Missing, invalid, expired, revoked, wrong-issuer or wrong-key trust entries
 must fail closed **before** the runner makes a request. A Cloud Run job whose
 secret version has not yet been populated cannot execute an assessment.
 
-**Security boundary:** the runner-only secret volume prevents *job-envelope
-self-attestation*. It is not a defense against a fully compromised cloud
+**Security boundary:** the runner-only secret volume prevents _job-envelope
+self-attestation_. It is not a defense against a fully compromised cloud
 administrator or an actor with arbitrary `run.jobsExecutorWithOverrides`
 permissions, which can potentially change execution arguments. Minimize that
 IAM grant and monitor job execution overrides. Do not claim full isolation
