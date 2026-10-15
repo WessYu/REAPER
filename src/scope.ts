@@ -214,8 +214,14 @@ export function verifyAuthorizationScope(
 ): AuthorizationScopePayload {
   if (!scope || typeof scope !== "object" || Array.isArray(scope))
     throw new Error("A signed authorization scope is required.");
-  if (Object.keys(scope).some((key) => !["keyId", "payload", "signature"].includes(key)))
-    throw new Error("Signed authorization scope envelope contains unknown fields.");
+  if (
+    Object.keys(scope).some(
+      (key) => !["keyId", "payload", "signature"].includes(key),
+    )
+  )
+    throw new Error(
+      "Signed authorization scope envelope contains unknown fields.",
+    );
   if (!/^[A-Za-z0-9._-]{1,100}$/.test(scope.keyId))
     throw new Error("Signed scope keyId is invalid.");
   if (
@@ -244,7 +250,9 @@ export function verifyAuthorizationScope(
   if ("get" in trustedKeys && typeof trustedKeys.get === "function") {
     const trustedIssuer = trustedKeys.get(scope.keyId)?.issuer;
     if (trustedIssuer !== undefined && trustedIssuer !== payload.issuer)
-      throw new Error("Signed authorization scope issuer does not match trusted key.");
+      throw new Error(
+        "Signed authorization scope issuer does not match trusted key.",
+      );
   }
   const valid = verify(
     null,
