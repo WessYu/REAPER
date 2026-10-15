@@ -3,7 +3,8 @@ import { InMemoryTrustStore, type TrustedPublicKey } from "./trust.js";
 
 // Cloud Run reads this content from a mounted Secret Manager volume. It is
 // never accepted from the execution envelope or a dispatcher-supplied key.
-export const RUNNER_TRUST_FILE = "/var/run/reaper-trust/trusted-scope-keys.json";
+export const RUNNER_TRUST_FILE =
+  "/var/run/reaper-trust/trusted-scope-keys.json";
 export const RUNNER_TRUST_ENV = "REAPER_RUNNER_TRUSTED_SCOPE_KEYS_JSON";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -76,7 +77,10 @@ export function parseRunnerTrustConfig(input: string): InMemoryTrustStore {
     } catch {
       throw new Error("Runner trusted public key is invalid.");
     }
-    if (publicKey.type !== "public" || publicKey.asymmetricKeyType !== "ed25519")
+    if (
+      publicKey.type !== "public" ||
+      publicKey.asymmetricKeyType !== "ed25519"
+    )
       throw new Error("Runner trusted key must be an Ed25519 public key.");
     return {
       keyId: value.keyId as string,
