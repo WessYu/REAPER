@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ENGINE_VERSION, type Config, type ScanResult } from "./model.js";
-import type { SignedAuthorizationScope } from "./scope.js";
+import { verifyAuthorizationScope, type SignedAuthorizationScope } from "./scope.js";
+import { parseRunnerTrustConfig, RUNNER_TRUST_ENV } from "./runner-trust.js";
 import {
   ProcessIsolationProvider,
   assertRunnerIsolation,
@@ -37,7 +38,6 @@ export interface AttackJob {
   workspaceId?: string;
   projectId?: string;
   scopeManifest?: SignedAuthorizationScope;
-  trustedScopeKeys?: Record<string, string>;
 }
 
 export type AttackJobOutcome =
@@ -61,6 +61,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function assertJob(value: AttackJob): void {
   if (!isRecord(value) || value.version !== 1)
     throw new Error("Attack job protocol version is invalid.");
+  if (
+    Object.hasOwn(value, "trustedScopeKeys") ||
+    Object.hasOwn(value, "trustedKeys") ||
+    Object.hasOwn(value, "publicKey")
+  )
+    throw new Error("Attack job must not supply its own verification keys.");
   if (
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       value.runId,
@@ -165,8 +171,11 @@ function secretReferences(config: Config): Set<string> {
     for (const step of [...scenario.steps, ...(scenario.cleanup ?? [])])
       visit(step.body);
   for (const ref of refs)
-    if (!/^[A-Z_][A-Z0-9_]*$/i.test(ref))
-      throw new Error("Attack job contains an invalid secret reference.");
+    if (
+      !/^[A-Z_][A-Z0-9_]*$/i.test(ref) ||
+      /^REAPER_RUNNER_/i.test(ref)
+    )
+      throw new Error("Attack job contains an invalid or reserved secret reference.");
   return refs;
 }
 
@@ -175,6 +184,7 @@ function childEnvironment(
   stateDirectory: string | undefined,
   durableState: { databaseUrl: string; workspaceId: string } | undefined,
   isolationMode: RunnerIsolationMode,
+  trustedScopeConfig: string | undefined,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const name of ["SystemRoot", "WINDIR", "TEMP", "TMP"])
@@ -186,6 +196,7 @@ function childEnvironment(
     env.REAPER_RUNNER_WORKSPACE_ID = durableState.workspaceId;
   }
   env.REAPER_RUNNER_MODE = isolationMode;
+  if (trustedScopeConfig) env[RUNNER_TRUST_ENV] = trustedScopeConfig;
   for (const ref of secretReferences(job.config))
     if (process.env[ref] !== undefined) {
       if (Buffer.byteLength(process.env[ref]!, "utf8") > 16_384)
@@ -199,6 +210,8 @@ export async function runAttackJob(
   job: AttackJob,
   options: {
     signal?: AbortSignal;
+    // Trusted caller configuration, never a field of AttackJob.
+    trustedScopeConfig?: string;
     isolationMode?: RunnerIsolationMode;
     isolationProvider?: RunnerIsolationProvider;
     stateDirectory?: string;
@@ -243,6 +256,17 @@ export async function runAttackJob(
     throw new Error("Attack job exceeds the 5 MiB input limit.");
   const snapshot = JSON.parse(serializedJob) as AttackJob;
   assertJob(snapshot);
+  const trustedScopeConfig = options.trustedScopeConfig;
+  if (snapshot.scopeManifest) {
+    const trust = parseRunnerTrustConfig(trustedScopeConfig ?? "");
+    verifyAuthorizationScope(snapshot.scopeManifest, trust, {
+      target: snapshot.target,
+      environment: snapshot.authorization.environment,
+      reference: snapshot.authorization.reference,
+    });
+  } else if (isolationMode === "strict") {
+    throw new Error("Strict runner requires independently provisioned signed-scope trust.");
+  }
   if (options.signal?.aborted)
     return { status: "INTERRUPTED", exitCode: null, reason: "cancelled" };
 
@@ -257,6 +281,7 @@ export async function runAttackJob(
         stateDirectory,
         options.durableState,
         isolationMode,
+        snapshot.scopeManifest ? trustedScopeConfig : undefined,
       ),
       execArgv: [`--max-old-space-size=${snapshot.limits.memoryMb}`],
     });
