@@ -268,6 +268,8 @@ export async function runAttackJob(
     throw new Error("Attack job exceeds the 5 MiB input limit.");
   const snapshot = JSON.parse(serializedJob) as AttackJob;
   assertJob(snapshot);
+  // Reject attacker-controlled internal env references before creating a worker.
+  secretReferences(snapshot.config);
   const trustedScopeConfig = options.trustedScopeConfig;
   if (snapshot.scopeManifest) {
     const trust = parseRunnerTrustConfig(trustedScopeConfig ?? "");
