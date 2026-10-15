@@ -317,3 +317,21 @@ test("runner uses independent trusted key to verify a signed job end-to-end", as
     await once(server, "close");
   }
 });
+
+test("runner refuses attacker-selected internal trust env as identity secret", async () => {
+  const a = generateKeyPairSync("ed25519");
+  const target = "http://127.0.0.1:45001";
+  const current = job(target, scope(target, a.privateKey));
+  current.config.attack.identities = {
+    testUser: { tokenEnv: "REAPER_RUNNER_TRUSTED_SCOPE_KEYS_JSON" },
+  };
+  await assert.rejects(
+    () =>
+      runAttackJob(current, {
+        trustedScopeConfig: trustConfig([
+          entry("key-a", "reaper-platform", a.publicKey),
+        ]),
+      }),
+    /invalid or reserved secret reference/,
+  );
+});
